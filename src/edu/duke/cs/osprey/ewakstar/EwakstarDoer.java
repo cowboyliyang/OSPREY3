@@ -1,4 +1,4 @@
-package edu.duke.cs.osprey.newEwakstar;
+package edu.duke.cs.osprey.ewakstar;
 
 import edu.duke.cs.osprey.astar.conf.ConfAStarTree;
 import edu.duke.cs.osprey.astar.conf.RCs;
@@ -15,8 +15,6 @@ import edu.duke.cs.osprey.ematrix.SimplerEnergyMatrixCalculator;
 import edu.duke.cs.osprey.energy.ConfEnergyCalculator;
 import edu.duke.cs.osprey.energy.EnergyCalculator;
 import edu.duke.cs.osprey.energy.forcefield.ForcefieldParams;
-import edu.duke.cs.osprey.ewakstar.EWAKStar;
-import edu.duke.cs.osprey.ewakstar.EWAKStarBBKStar;
 import edu.duke.cs.osprey.kstar.pfunc.BoltzmannCalculator;
 import edu.duke.cs.osprey.kstar.pfunc.PartitionFunction;
 import edu.duke.cs.osprey.parallelism.Parallelism;
@@ -45,7 +43,7 @@ import static edu.duke.cs.osprey.tools.Log.formatBig;
  * algorithm to optimize binding affinity and specificity with respect to sequence.
  * Journal of Computational Biology, 23(5), 311-321.}.
  */
-public class Ewakstar {
+public class EwakstarDoer {
 
     public static class Results {
         private EWAKStarBBKStar bbkstar;
@@ -514,8 +512,8 @@ public class Ewakstar {
             return this;
         }
 
-        public Ewakstar build() {
-            return new Ewakstar(state,
+        public EwakstarDoer build() {
+            return new EwakstarDoer(state,
                     eW,
                     mutableType,
                     numMutable,
@@ -553,13 +551,13 @@ public class Ewakstar {
     public String mutableType;
     public int numMutable;
     public boolean useExact;
-    public Ewakstar ewakstarP;
-    public Ewakstar ewakstarL;
-    public Ewakstar ewakstarPL;
+    public EwakstarDoer ewakstarDoerP;
+    public EwakstarDoer ewakstarDoerL;
+    public EwakstarDoer ewakstarDoerPL;
 
     private final Map<StateConfs.Key,StateConfs> stateConfsCache = new HashMap<>();
 
-    private Ewakstar(State state, double eW, String mutableType, int numMutable, int numCpus, boolean printToConsole, boolean seqFilterOnly, File logFile, int numEWAKStarSeqs, boolean useWtBenchmark, int orderOfMag, double pfEw, int numPfConfs, double epsilon, int numTopOverallSeqs) {
+    private EwakstarDoer(State state, double eW, String mutableType, int numMutable, int numCpus, boolean printToConsole, boolean seqFilterOnly, File logFile, int numEWAKStarSeqs, boolean useWtBenchmark, int orderOfMag, double pfEw, int numPfConfs, double epsilon, int numTopOverallSeqs) {
 
         if(mutableType.equals("exact") || mutableType.equals("max")){
             this.numMutable = numMutable;
@@ -600,7 +598,7 @@ public class Ewakstar {
      */
     public Set<Sequence> run(State PL) {
 
-        ewakstarPL = this;
+        ewakstarDoerPL = this;
         // reset any previous state
         stateConfsCache.clear();
 
@@ -638,19 +636,19 @@ public class Ewakstar {
         Set<String> filteredSeqsPL = new HashSet<>();
 
         for(SequenceInfo si : bestPLSeqs){
-            filteredSeqsP.add(si.sequence.filter(ewakstarP.seqSpace));
-            filteredSeqsL.add(si.sequence.filter(ewakstarL.seqSpace));
+            filteredSeqsP.add(si.sequence.filter(ewakstarDoerP.seqSpace));
+            filteredSeqsL.add(si.sequence.filter(ewakstarDoerL.seqSpace));
             filteredSeqsPL.add(si.sequence.toString());
         }
 
-        EwakstarLimitedSequenceTrie elstP = new EwakstarLimitedSequenceTrie(ewakstarP.seqSpace);
+        EwakstarLimitedSequenceTrie elstP = new EwakstarLimitedSequenceTrie(ewakstarDoerP.seqSpace);
         if(filteredSeqsP.size()!=1) {
             for (Sequence s : filteredSeqsP) {
                 elstP.addSeq(s.toString());
             }
         }
 
-        EwakstarLimitedSequenceTrie elstL = new EwakstarLimitedSequenceTrie(ewakstarL.seqSpace);
+        EwakstarLimitedSequenceTrie elstL = new EwakstarLimitedSequenceTrie(ewakstarDoerL.seqSpace);
         if(filteredSeqsL.size()!=1) {
             for (Sequence s : filteredSeqsL) {
                 elstL.addSeq(s.toString());
@@ -660,11 +658,11 @@ public class Ewakstar {
         List<SequenceInfo> bestPSeqs = null;
         List<SequenceInfo> bestLSeqs = null;
         stateConfsCache.clear();
-        if(ewakstarP.state.confSpace.mutablePositions.size()!=0)
-            bestPSeqs = ewakstarP.extractUnboundSeqsByLB(orderOfMag, filteredSeqsP, elstP);
+        if(ewakstarDoerP.state.confSpace.mutablePositions.size()!=0)
+            bestPSeqs = ewakstarDoerP.extractUnboundSeqsByLB(orderOfMag, filteredSeqsP, elstP);
         stateConfsCache.clear();
-        if(ewakstarL.state.confSpace.mutablePositions.size()!=0)
-            bestLSeqs = ewakstarL.extractUnboundSeqsByLB(orderOfMag, filteredSeqsL, elstL);
+        if(ewakstarDoerL.state.confSpace.mutablePositions.size()!=0)
+            bestLSeqs = ewakstarDoerL.extractUnboundSeqsByLB(orderOfMag, filteredSeqsL, elstL);
 
 
         Set<Sequence> newPSeqs = new HashSet<>();
@@ -685,13 +683,13 @@ public class Ewakstar {
 
         long stopEWAKStarTime;
         if (!seqFilterOnly) {
-            EwakstarLimitedSequenceTrie elstPL = new EwakstarLimitedSequenceTrie(ewakstarPL.seqSpace);
+            EwakstarLimitedSequenceTrie elstPL = new EwakstarLimitedSequenceTrie(ewakstarDoerPL.seqSpace);
             if(filteredSeqsPL.size()!=1) {
                 for (String s : filteredSeqsPL) {
                     elstPL.addSeq(s);
                 }
             }
-            runEWAKStarBBKStar(elstPL, ewakstarPL.state, ewakstarP.state, ewakstarL.state);
+            runEWAKStarBBKStar(elstPL, ewakstarDoerPL.state, ewakstarDoerP.state, ewakstarDoerL.state);
         }
         if(seqFilterOnly) {
             writeSeqsToFile(fullSeqs);
@@ -810,13 +808,13 @@ public class Ewakstar {
         for(Sequence sP : P){
             for(Sequence sL : L){
                 resTypes = new ArrayList<>();
-                for (String p: ewakstarPL.seqSpace.getResNums()) {
-                    if (ewakstarP.seqSpace.positions.contains(p)) {
+                for (String p: ewakstarDoerPL.seqSpace.getResNums()) {
+                    if (ewakstarDoerP.seqSpace.positions.contains(p)) {
                         resTypes.add(sP.get(p).name);
                     } else
                         resTypes.add(sL.get(p).name);
                 }
-                Sequence newSeq = ewakstarPL.seqSpace.makeSequence(resTypes);
+                Sequence newSeq = ewakstarDoerPL.seqSpace.makeSequence(resTypes);
                 System.out.println(newSeq);
                 if (PL.contains(newSeq.toString())){
                     newPL.add(newSeq);
@@ -832,28 +830,28 @@ public class Ewakstar {
         Strand protein = state.confSpace.strands.get(0);
         Strand ligand = state.confSpace.strands.get(1);
 
-        Ewakstar.State P = new Ewakstar.State(
+        EwakstarDoer.State P = new EwakstarDoer.State(
                 "P",
                 new SimpleConfSpace.Builder()
                         .addStrand(protein)
                         .build()
         );
 
-        Ewakstar.State L = new Ewakstar.State(
+        EwakstarDoer.State L = new EwakstarDoer.State(
                 "L",
                 new SimpleConfSpace.Builder()
                         .addStrand(ligand)
                         .build()
         );
 
-        ewakstarP = new Ewakstar.Builder()
+        ewakstarDoerP = new EwakstarDoer.Builder()
                 .addState(P)
                 .setEw(eW)
                 .setNumCpus(numCpus)
                 .setMutableType("all")
                 .build();
 
-        ewakstarL = new Ewakstar.Builder()
+        ewakstarDoerL = new EwakstarDoer.Builder()
                 .addState(L)
                 .setEw(eW)
                 .setNumCpus(numCpus)
@@ -863,11 +861,11 @@ public class Ewakstar {
         ForcefieldParams ffparams = new ForcefieldParams();
 
         EnergyCalculator ecalcP = new EnergyCalculator.Builder(P.confSpace, ffparams)
-                .setParallelism(Parallelism.makeCpu(ewakstarP.numCpus))
+                .setParallelism(Parallelism.makeCpu(ewakstarDoerP.numCpus))
                 .build();
         EnergyCalculator rigidEcalcP = new EnergyCalculator.Builder(P.confSpace, ffparams)
                 .setIsMinimizing(false)
-                .setParallelism(Parallelism.makeCpu(ewakstarP.numCpus))
+                .setParallelism(Parallelism.makeCpu(ewakstarDoerP.numCpus))
                 .build();
 
         // what are conformation energies?
@@ -914,11 +912,11 @@ public class Ewakstar {
 
         //do all of this for ligand also
         EnergyCalculator ecalcL = new EnergyCalculator.Builder(L.confSpace, ffparams)
-                .setParallelism(Parallelism.makeCpu(ewakstarL.numCpus))
+                .setParallelism(Parallelism.makeCpu(ewakstarDoerL.numCpus))
                 .build();
         EnergyCalculator rigidEcalcL = new EnergyCalculator.Builder(L.confSpace, ffparams)
                 .setIsMinimizing(false)
-                .setParallelism(Parallelism.makeCpu(ewakstarL.numCpus))
+                .setParallelism(Parallelism.makeCpu(ewakstarDoerL.numCpus))
                 .build();
 
         // what are conformation energies?

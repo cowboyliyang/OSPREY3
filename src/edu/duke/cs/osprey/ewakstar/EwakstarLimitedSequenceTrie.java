@@ -1,4 +1,4 @@
-package edu.duke.cs.osprey.newEwakstar;
+package edu.duke.cs.osprey.ewakstar;
 
 import edu.duke.cs.osprey.confspace.SeqSpace;
 
