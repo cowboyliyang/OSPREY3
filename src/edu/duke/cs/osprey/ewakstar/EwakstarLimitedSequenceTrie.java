@@ -1,9 +1,14 @@
-package edu.duke.cs.osprey.astar.ewakstar;
+package edu.duke.cs.osprey.ewakstar;
 
-import java.util.*;
+import edu.duke.cs.osprey.confspace.SeqSpace;
+
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 
 
-public class EWAKStarLimitedSequenceTrie {
+public class EwakstarLimitedSequenceTrie {
 
     private static final TrieNode[] EMPTYNODES = new TrieNode[0];
 
@@ -57,11 +62,13 @@ public class EWAKStarLimitedSequenceTrie {
     }
 
     private final TrieNode root;
+    public final SeqSpace seqSpace;
     private int size = 0;
 
-    public EWAKStarLimitedSequenceTrie(){
+    public EwakstarLimitedSequenceTrie(SeqSpace ss){
         // root has null character.
         root = new TrieNode("null");
+        seqSpace = ss;
     }
 
     public void addSeq(String sequence){
@@ -96,7 +103,7 @@ public class EWAKStarLimitedSequenceTrie {
         }
         Set<String> resTypes = new HashSet<>();
         for(TrieNode n:node.getChildNodes()){
-            resTypes.add(n.getAA());
+            resTypes.add(n.getAA().split("=")[1].toUpperCase());
         }
         return resTypes;
     }
