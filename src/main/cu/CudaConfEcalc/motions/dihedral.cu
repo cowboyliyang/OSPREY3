@@ -1,14 +1,15 @@
 
-#include "global.h"
-#include "cuda.h"
-#include "array.h"
-#include "formats.h"
-#include "rotation.h"
-#include "atoms.h"
-#include "confspace.h"
-#include "assignment.h"
-#include "energy.h"
-#include "motions.h"
+#include "../global.h"
+#include "../cuda.h"
+#include "../array.h"
+#include "../formats.h"
+#include "../rotation.h"
+#include "../atoms.h"
+#include "../confspace.h"
+#include "../assignment.h"
+#include "../energy.h"
+#include "../motions.h"
+#include "../minimization.h"
 
 
 namespace osprey {
@@ -66,12 +67,16 @@ namespace osprey {
 			auto dof = reinterpret_cast<DihedralDof<float64_t> *>(pdof);
 
 			// slice up the shared memory
+			static_assert(osprey::Dofs<float64_t>::dofs_shared_size >=
+				sizeof(Real3<float64_t>)
+				+ sizeof(Rotation<float64_t>)
+				+ sizeof(RotationZ<float64_t>)
+			, "using too much shared memory");
 			auto b = reinterpret_cast<Real3<float64_t> *>(shared_mem);
 			shared_mem += sizeof(Real3<float64_t>);
 			auto r = reinterpret_cast<Rotation<float64_t> *>(shared_mem);
 			shared_mem += sizeof(Rotation<float64_t>);
 			auto r_z = reinterpret_cast<RotationZ<float64_t> *>(shared_mem);
-			shared_mem += sizeof(RotationZ<float64_t>);
 
 			// copy b to shared mem
 			Real3<float64_t> * atoms = assignment.atoms.items();
