@@ -1,0 +1,92 @@
+ATOM      1  HA  ASN A   1       0.806  -0.564  -0.493
+ATOM      2  CB  ASN A   1      -0.942  -1.022   0.606
+ATOM      3 HB2  ASN A   1      -1.337  -1.700  -0.166
+ATOM      4 HB3  ASN A   1      -0.379  -1.670   1.298
+ATOM      5  CG  ASN A   1      -2.085  -0.331   1.306
+ATOM      6 OD1  ASN A   1      -2.101   0.906   1.507
+ATOM      7 ND2  ASN A   1      -3.043  -1.129   1.693
+ATOM      8 HD21 ASN A   1      -3.820  -0.729   2.169
+ATOM      9 HD22 ASN A   1      -2.992  -2.134   1.509
+ATOM     10  CA  ASN A   1       0.000   0.000   0.000
+ATOM     11  N   ASN A   1       0.605   0.856   1.016
+ATOM     12  C   ASN A   1      -0.742   0.854  -1.028
+TER
+ATOM     10  HA  ASN B   2       0.806  -0.564  -0.493
+ATOM     11  CB  ASN B   2      -0.942  -1.022   0.606
+ATOM     12 HB2  ASN B   2      -1.337  -1.700  -0.166
+ATOM     13 HB3  ASN B   2      -0.379  -1.670   1.298
+ATOM     14  CG  ASN B   2      -2.085  -0.331   1.306
+ATOM     15 OD1  ASN B   2      -2.529   0.780   0.949
+ATOM     16 ND2  ASN B   2      -2.560  -0.980   2.316
+ATOM     17 HD21 ASN B   2      -3.311  -0.567   2.822
+ATOM     18 HD22 ASN B   2      -2.170  -1.885   2.574
+ATOM     19  CA  ASN B   2       0.000   0.000   0.000
+ATOM     20  N   ASN B   2       0.605   0.856   1.016
+ATOM     21  C   ASN B   2      -0.742   0.854  -1.028
+TER
+ATOM     19  HA  ASN C   3       0.806  -0.564  -0.493
+ATOM     20  CB  ASN C   3      -0.942  -1.022   0.606
+ATOM     21 HB2  ASN C   3      -0.411  -1.579   1.388
+ATOM     22 HB3  ASN C   3      -1.773  -0.462   1.063
+ATOM     23  CG  ASN C   3      -1.487  -2.033  -0.385
+ATOM     24 OD1  ASN C   3      -1.482  -1.790  -1.559
+ATOM     25 ND2  ASN C   3      -1.971  -3.169   0.083
+ATOM     26 HD21 ASN C   3      -2.353  -3.870  -0.527
+ATOM     27 HD22 ASN C   3      -1.955  -3.327   1.047
+ATOM     28  CA  ASN C   3       0.000   0.000   0.000
+ATOM     29  N   ASN C   3       0.605   0.856   1.016
+ATOM     30  C   ASN C   3      -0.742   0.854  -1.028
+TER
+ATOM     28  HA  ASN D   4       0.806  -0.564  -0.493
+ATOM     29  CB  ASN D   4      -0.942  -1.022   0.606
+ATOM     30 HB2  ASN D   4      -0.397  -1.617   1.351
+ATOM     31 HB3  ASN D   4      -1.744  -0.461   1.108
+ATOM     32  CG  ASN D   4      -1.543  -1.986  -0.397
+ATOM     33 OD1  ASN D   4      -0.938  -2.317  -1.386
+ATOM     34 ND2  ASN D   4      -2.744  -2.432  -0.154
+ATOM     35 HD21 ASN D   4      -3.194  -3.064  -0.788
+ATOM     36 HD22 ASN D   4      -3.202  -2.137   0.665
+ATOM     37  CA  ASN D   4       0.000   0.000   0.000
+ATOM     38  N   ASN D   4       0.605   0.856   1.016
+ATOM     39  C   ASN D   4      -0.742   0.854  -1.028
+TER
+ATOM     37  HA  ASN E   5       0.806  -0.564  -0.493
+ATOM     38  CB  ASN E   5      -0.942  -1.022   0.606
+ATOM     39 HB2  ASN E   5      -1.694  -0.463   1.178
+ATOM     40 HB3  ASN E   5      -1.476  -1.574  -0.179
+ATOM     41  CG  ASN E   5      -0.223  -2.040   1.476
+ATOM     42 OD1  ASN E   5       0.977  -2.255   1.376
+ATOM     43 ND2  ASN E   5      -0.954  -2.682   2.325
+ATOM     44 HD21 ASN E   5      -0.533  -3.373   2.919
+ATOM     45 HD22 ASN E   5      -1.929  -2.476   2.374
+ATOM     46  CA  ASN E   5       0.000   0.000   0.000
+ATOM     47  N   ASN E   5       0.605   0.856   1.016
+ATOM     48  C   ASN E   5      -0.742   0.854  -1.028
+TER
+ATOM     46  HA  ASN F   6       0.806  -0.564  -0.493
+ATOM     47  CB  ASN F   6      -0.942  -1.022   0.606
+ATOM     48 HB2  ASN F   6      -1.694  -0.463   1.178
+ATOM     49 HB3  ASN F   6      -1.476  -1.574  -0.179
+ATOM     50  CG  ASN F   6      -0.223  -2.040   1.476
+ATOM     51 OD1  ASN F   6       0.439  -2.983   1.007
+ATOM     52 ND2  ASN F   6      -0.358  -1.862   2.748
+ATOM     53 HD21 ASN F   6       0.088  -2.510   3.370
+ATOM     54 HD22 ASN F   6      -0.906  -1.079   3.089
+ATOM     55  CA  ASN F   6       0.000   0.000   0.000
+ATOM     56  N   ASN F   6       0.605   0.856   1.016
+ATOM     57  C   ASN F   6      -0.742   0.854  -1.028
+TER
+ATOM     55  HA  ASN G   7       0.806  -0.564  -0.493
+ATOM     56  CB  ASN G   7      -0.942  -1.022   0.606
+ATOM     57 HB2  ASN G   7      -1.694  -0.463   1.178
+ATOM     58 HB3  ASN G   7      -1.476  -1.574  -0.179
+ATOM     59  CG  ASN G   7      -0.223  -2.040   1.476
+ATOM     60 OD1  ASN G   7      -0.490  -2.125   2.637
+ATOM     61 ND2  ASN G   7       0.703  -2.810   0.920
+ATOM     62 HD21 ASN G   7       1.218  -3.495   1.450
+ATOM     63 HD22 ASN G   7       0.889  -2.708  -0.031
+ATOM     64  CA  ASN G   7       0.000   0.000   0.000
+ATOM     65  N   ASN G   7       0.605   0.856   1.016
+ATOM     66  C   ASN G   7      -0.742   0.854  -1.028
+TER
+END

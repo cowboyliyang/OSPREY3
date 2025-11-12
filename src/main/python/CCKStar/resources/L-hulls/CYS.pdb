@@ -1,0 +1,31 @@
+ATOM      1  HA  CYS A   1       0.806  -0.564  -0.493
+ATOM      2  CB  CYS A   1      -0.968  -1.002   0.622
+ATOM      3 HB2  CYS A   1      -1.359  -1.683  -0.153
+ATOM      4 HB3  CYS A   1      -0.409  -1.637   1.332
+ATOM      5  SG  CYS A   1      -2.362  -0.216   1.455
+ATOM      6  HG  CYS A   1      -3.120  -1.151   1.945
+ATOM      7  CA  CYS A   1       0.000   0.000   0.000
+ATOM      8  N   CYS A   1       0.605   0.856   1.016
+ATOM      9  C   CYS A   1      -0.742   0.854  -1.028
+TER
+ATOM      7  HA  CYS B   2       0.806  -0.564  -0.493
+ATOM      8  CB  CYS B   2      -0.968  -1.002   0.622
+ATOM      9 HB2  CYS B   2      -0.428  -1.578   1.391
+ATOM     10 HB3  CYS B   2      -1.766  -0.427   1.114
+ATOM     11  SG  CYS B   2      -1.723  -2.184  -0.530
+ATOM     12  HG  CYS B   2      -2.522  -2.987   0.096
+ATOM     13  CA  CYS B   2       0.000   0.000   0.000
+ATOM     14  N   CYS B   2       0.605   0.856   1.016
+ATOM     15  C   CYS B   2      -0.742   0.854  -1.028
+TER
+ATOM     13  HA  CYS C   3       0.806  -0.564  -0.493
+ATOM     14  CB  CYS C   3      -0.968  -1.002   0.622
+ATOM     15 HB2  CYS C   3      -1.723  -0.428   1.178
+ATOM     16 HB3  CYS C   3      -1.503  -1.550  -0.170
+ATOM     17  SG  CYS C   3      -0.180  -2.225   1.710
+ATOM     18  HG  CYS C   3      -1.085  -3.022   2.185
+ATOM     19  CA  CYS C   3       0.000   0.000   0.000
+ATOM     20  N   CYS C   3       0.605   0.856   1.016
+ATOM     21  C   CYS C   3      -0.742   0.854  -1.028
+TER
+END
