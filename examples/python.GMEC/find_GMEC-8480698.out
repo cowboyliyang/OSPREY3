@@ -1,0 +1,47 @@
+no change     /home/users/lz280/miniconda3/condabin/conda
+no change     /home/users/lz280/miniconda3/bin/conda
+no change     /home/users/lz280/miniconda3/bin/conda-env
+no change     /home/users/lz280/miniconda3/bin/activate
+no change     /home/users/lz280/miniconda3/bin/deactivate
+no change     /home/users/lz280/miniconda3/etc/profile.d/conda.sh
+no change     /home/users/lz280/miniconda3/etc/fish/conf.d/conda.fish
+no change     /home/users/lz280/miniconda3/shell/condabin/Conda.psm1
+no change     /home/users/lz280/miniconda3/shell/condabin/conda-hook.ps1
+no change     /home/users/lz280/miniconda3/lib/python3.12/site-packages/xontrib/conda.xsh
+no change     /home/users/lz280/miniconda3/etc/profile.d/conda.csh
+no change     /home/users/lz280/.bashrc
+No action taken.
+OSPREY 3.3-dev, Python 3.10.13, Java 17.0.14, Linux-5.15.0-134-generic-x86_64-with-glibc2.35
+Using up to 1024 MiB heap memory: 128 MiB for garbage, 896 MiB for storage
+read PDB file from file: 3btd.df.min_strip_reduce_prep_rc_add_rc_steps100_rc.pdb
+Calculating energy matrix with 1303 entries
+Progress:  100.0%   ETA: 1000.0 us
+Finished in 643.7 ms
+Searching for min score conformation...
+	(among 86640 possibilities)
+A* g:  -67.3619, h:    0.0000, f:  -67.3619, level:   4/   4/   4, expanded:         5, queued:        53, scored/sec:18534, time:3.16 ms, heapMem:1.8% of 1.0 GiB, 412 MiB alloc, extMem:0 B
+Found min score conformation in 58.3 ms
+Computing energy of min score conf...
+	Residue numbers      A227  A228  A230  A233  A247 
+	Residue types        ASP   SER   GLN   SER   VAL  
+	Rotamer numbers      W0    L3    W0    L17   W0   
+	Residue Conf Ids     5     3     9     17    3    
+	Energy               -66.626491
+	Score                -67.361887 (gap: 0.735397)
+Enumerating other low-scoring conformations...
+	Found 35 more in 2.6 ms
+
+Computing energies for 35 conformations...
+Progress:  100.0%   ETA: 0 ns
+Finished in 527.6 ms
+checked 36 conformations
+
+Found GMEC!
+	Residue numbers      A227  A228  A230  A233  A247 
+	Residue types        ASP   SER   GLN   SER   VAL  
+	Rotamer numbers      W0    L3    W0    L17   W0   
+	Residue Conf Ids     5     3     9     17    3    
+	Energy               -66.626491
+	Score                -67.361887 (gap: 0.735397)
+Found 1 total conformations in energy window
+write PDB file to file: gmec_df.pdb

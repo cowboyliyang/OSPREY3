@@ -1,0 +1,2 @@
+WARNING: Using incubator modules: jdk.incubator.foreign
+[2026-01-02T10:48:18.651] error: *** JOB 10360763 ON linux5 CANCELLED AT 2026-01-02T10:48:18 DUE to SIGNAL Terminated ***

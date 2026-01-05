@@ -45,7 +45,24 @@ public class UpdatingEnergyMatrix extends ProxyEnergyMatrix {
     private static final boolean debug = false;
     private TupleTrie corrections;
     private int numPos;
-    
+
+    // DP vs Greedy comparison
+    public static boolean USE_DP_ALGORITHM = false; // Set to true to use DP
+    public static boolean USE_DP_OPTIMIZATIONS = true; // Set to true for binary search + parallel
+    public static boolean USE_DP_TRIE = false; // Set to true to use Phase 3 DP-Trie integration
+    public static int DP_NUM_THREADS = 4; // Number of threads for parallel DP
+
+    private long numDPCalls = 0;
+    private long numGreedyCalls = 0;
+    private double totalDPImprovement = 0;
+    private long totalDPCorrectionsConsidered = 0;
+    private long totalDPCorrectionsSelected = 0;
+    private long totalGreedyCorrectionsConsidered = 0;
+    private long totalGreedyCorrectionsSelected = 0;
+
+    // Optimized DP processor
+    private OptimizedDPCorrections optimizedDP;
+
     //debug variable
     public final ConfEnergyCalculator sourceECalc;
 
@@ -55,6 +72,10 @@ public class UpdatingEnergyMatrix extends ProxyEnergyMatrix {
         this.numPos = confSpace.getNumPos();
         this.sourceECalc = confECalc;
 
+        // Initialize optimized DP processor
+        if (USE_DP_OPTIMIZATIONS) {
+            this.optimizedDP = new OptimizedDPCorrections(DP_NUM_THREADS);
+        }
     }
 
     public UpdatingEnergyMatrix(SimpleConfSpace confSpace, EnergyMatrix target) {
@@ -62,6 +83,11 @@ public class UpdatingEnergyMatrix extends ProxyEnergyMatrix {
         this.numPos = confSpace.getNumPos();
         this.sourceECalc = null;
         corrections = new TupleTrie(confSpace.positions);
+
+        // Initialize optimized DP processor
+        if (USE_DP_OPTIMIZATIONS) {
+            this.optimizedDP = new OptimizedDPCorrections(DP_NUM_THREADS);
+        }
     }
 
     /*Hack 1: Don't share residues*/
@@ -153,13 +179,140 @@ public class UpdatingEnergyMatrix extends ProxyEnergyMatrix {
     }
 
     private double processCorrections(List<TupE> confCorrections) {
-        Collections.sort(confCorrections, (a,b)->-Double.compare(a.E,b.E));
+        if (USE_DP_ALGORITHM) {
+            numDPCalls++;
+            double dpResult = processCorrectionsByDP(confCorrections);
+            double greedyResult = processCorrectionsGreedy(confCorrections);
+            totalDPImprovement += Math.abs(dpResult) - Math.abs(greedyResult);
+            return dpResult;
+        } else {
+            numGreedyCalls++;
+            return processCorrectionsGreedy(confCorrections);
+        }
+    }
+
+    /**
+     * DP-based optimal correction selection (Weighted Interval Scheduling)
+     * Now supports optimization modes: binary search and parallel processing
+     */
+    private double processCorrectionsByDP(List<TupE> corrections) {
+        if (corrections == null || corrections.isEmpty()) {
+            return 0.0;
+        }
+
+        double result;
+
+        // Use optimized version if enabled
+        if (USE_DP_OPTIMIZATIONS && optimizedDP != null) {
+            try {
+                // Try parallel DP for large problems
+                result = optimizedDP.selectOptimalCorrectionsParallel(corrections, numPos);
+            } catch (Exception e) {
+                // Fall back to binary search version on error
+                result = optimizedDP.selectOptimalCorrectionsBinarySearch(corrections, numPos);
+            }
+        } else {
+            // Original O(n²) DP implementation
+            result = processCorrectionsByDPOriginal(corrections);
+        }
+
+        // Track statistics
+        totalDPCorrectionsConsidered += corrections.size();
+
+        return result;
+    }
+
+    /**
+     * Original O(n²) DP implementation (kept for comparison and fallback)
+     */
+    private double processCorrectionsByDPOriginal(List<TupE> corrections) {
+        if (corrections == null || corrections.isEmpty()) {
+            return 0.0;
+        }
+
+        // Sort by minimum position index
+        List<TupE> sorted = new ArrayList<>(corrections);
+        sorted.sort((a, b) -> Integer.compare(getMinPosition(a.tup), getMinPosition(b.tup)));
+
+        int n = sorted.size();
+        double[] dp = new double[n + 1];
+        int[] prev = new int[n + 1];  // For backtracking
+        Arrays.fill(prev, -1);
+
+        // DP computation
+        for (int i = 1; i <= n; i++) {
+            TupE current = sorted.get(i - 1);
+
+            // Option 1: Don't select current correction
+            dp[i] = dp[i - 1];
+            prev[i] = i - 1;
+
+            // Option 2: Select current correction
+            int lastCompatible = findLastNonOverlapping(sorted, i - 1);
+            double valueWithCurrent = current.E;
+
+            if (lastCompatible >= 0) {
+                valueWithCurrent += dp[lastCompatible + 1];
+            }
+
+            // Choose better option (for negative energies: more negative = better)
+            if (valueWithCurrent < dp[i]) {
+                dp[i] = valueWithCurrent;
+                prev[i] = -(i - 1);  // Negative indicates this correction was selected
+            }
+        }
+
+        // Track statistics
+        List<TupE> selected = getSelectedCorrectionsFromDP(sorted, prev, n);
+        totalDPCorrectionsSelected += selected.size();
+
+        // Optional: Print selected corrections for debugging
+        if (debug && corrections.size() > 0) {
+            System.out.println("DP selected " + selected.size() + " out of " + corrections.size() + " corrections");
+        }
+
+        return dp[n];
+    }
+
+    /**
+     * Backtrack to get the actual selected corrections from DP solution
+     * (for debugging and analysis)
+     */
+    private List<TupE> getSelectedCorrectionsFromDP(List<TupE> sorted, int[] prev, int n) {
+        List<TupE> selected = new ArrayList<>();
+        int i = n;
+        while (i > 0) {
+            if (prev[i] < 0) {
+                // This correction was selected
+                int corrIdx = -prev[i];
+                selected.add(sorted.get(corrIdx));
+
+                // Jump to last compatible
+                int lastCompatible = findLastNonOverlapping(sorted, corrIdx);
+                i = lastCompatible + 1;
+            } else {
+                i = prev[i];
+            }
+        }
+        Collections.reverse(selected);
+        return selected;
+    }
+
+    /**
+     * Original greedy algorithm
+     */
+    private double processCorrectionsGreedy(List<TupE> confCorrections) {
+        Collections.sort(confCorrections, (a,b)->-Double.compare(Math.abs(a.E), Math.abs(b.E)));
         double sum = 0;
         // Attempt 1: be greedy and start from the largest correction you
         // can get instead of trying to solve the NP-Complete problem.
         Set<Integer> usedPositions = new HashSet<>();
         List<TupE> usedCorrections = new ArrayList<>();
         int numApplied = 0;
+
+        // Track statistics
+        totalGreedyCorrectionsConsidered += confCorrections.size();
+
         for(TupE correction: confCorrections) {
             if (usedPositions.size() >= numPos) {
                 break;
@@ -180,6 +333,9 @@ public class UpdatingEnergyMatrix extends ProxyEnergyMatrix {
                 sum += correction.E;
             }
         }
+
+        // Track how many were actually selected
+        totalGreedyCorrectionsSelected += numApplied;
         if(debug)
         {
             Set<Integer> positionCheck = new HashSet<>();
@@ -191,6 +347,82 @@ public class UpdatingEnergyMatrix extends ProxyEnergyMatrix {
             }
         }
         return sum;
+    }
+
+    /**
+     * Find last correction that doesn't overlap with current
+     */
+    private int findLastNonOverlapping(List<TupE> corrections, int index) {
+        TupE current = corrections.get(index);
+        Set<Integer> currentPositions = new HashSet<>(current.tup.pos);
+
+        for (int i = index - 1; i >= 0; i--) {
+            TupE candidate = corrections.get(i);
+            boolean hasOverlap = false;
+            for (int pos : candidate.tup.pos) {
+                if (currentPositions.contains(pos)) {
+                    hasOverlap = true;
+                    break;
+                }
+            }
+            if (!hasOverlap) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Get minimum position from tuple
+     */
+    private int getMinPosition(RCTuple tup) {
+        if (tup.pos.isEmpty()) {
+            return Integer.MAX_VALUE;
+        }
+        return Collections.min(tup.pos);
+    }
+
+    /**
+     * Print DP statistics (enhanced with more details)
+     */
+    public void printDPStats() {
+        System.out.println("\n=== DP-Enhanced Energy Matrix Statistics ===");
+        System.out.println("Algorithm: " + (USE_DP_ALGORITHM ? "DP (Optimal)" : "Greedy (Original)"));
+        System.out.println();
+
+        if (USE_DP_ALGORITHM && numDPCalls > 0) {
+            System.out.println("DP Statistics:");
+            System.out.println("  Total DP calls: " + numDPCalls);
+            System.out.println("  Corrections considered: " + totalDPCorrectionsConsidered);
+            System.out.println("  Corrections selected: " + totalDPCorrectionsSelected);
+            if (totalDPCorrectionsConsidered > 0) {
+                double selectRate = 100.0 * totalDPCorrectionsSelected / totalDPCorrectionsConsidered;
+                System.out.println("  Selection rate: " + String.format("%.2f%%", selectRate));
+            }
+            System.out.println();
+
+            System.out.println("Comparison with Greedy:");
+            System.out.println("  Total energy improvement: " + String.format("%.6f", totalDPImprovement));
+            System.out.println("  Average improvement per call: " +
+                String.format("%.6f", totalDPImprovement / numDPCalls));
+            if (totalGreedyCorrectionsConsidered > 0) {
+                System.out.println("  Greedy would have considered: " + totalGreedyCorrectionsConsidered);
+                System.out.println("  Greedy would have selected: " + totalGreedyCorrectionsSelected);
+                double greedySelectRate = 100.0 * totalGreedyCorrectionsSelected / totalGreedyCorrectionsConsidered;
+                System.out.println("  Greedy selection rate: " + String.format("%.2f%%", greedySelectRate));
+            }
+        } else if (numGreedyCalls > 0) {
+            System.out.println("Greedy Statistics:");
+            System.out.println("  Total calls: " + numGreedyCalls);
+            System.out.println("  Corrections considered: " + totalGreedyCorrectionsConsidered);
+            System.out.println("  Corrections selected: " + totalGreedyCorrectionsSelected);
+            if (totalGreedyCorrectionsConsidered > 0) {
+                double selectRate = 100.0 * totalGreedyCorrectionsSelected / totalGreedyCorrectionsConsidered;
+                System.out.println("  Selection rate: " + String.format("%.2f%%", selectRate));
+            }
+        }
+
+        System.out.println("============================================\n");
     }
 
     @Override

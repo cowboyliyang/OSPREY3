@@ -217,6 +217,9 @@ public class TestMSKStar {
 
 			for (MSKStar.State state : states) {
 
+				// Set context label for reference energies
+				SimplerEnergyMatrixCalculator.setContextLabel(state.name + " - Reference Energies");
+
 				// how should we define energies of conformations?
 				state.confEcalc = new ConfEnergyCalculator.Builder(state.confSpace, ecalc)
 					.setReferenceEnergies(new SimplerEnergyMatrixCalculator.Builder(state.confSpace, ecalc)
@@ -225,17 +228,34 @@ public class TestMSKStar {
 					)
 					.build();
 
-				// calc energy matrix
+				// calc energy matrix (minimizing)
+				SimplerEnergyMatrixCalculator.setContextLabel(state.name + " - Minimizing Energy Matrix");
 				EnergyMatrix emat = new SimplerEnergyMatrixCalculator.Builder(state.confEcalc)
 					.build()
 					.calcEnergyMatrix();
 				state.fragmentEnergies = emat;
+
+				SimplerEnergyMatrixCalculator.clearContextLabel();
 
 				// how should confs be ordered and searched?
 				state.confTreeFactory = (rcs) -> new ConfAStarTree.Builder(emat, rcs)
 					.setMaxNumNodes(boundedMemory ? 100000L : null)
 					.setTraditional()
 					.build();
+
+				// how should partition functions be calculated?
+				state.pfuncFactory = (rcs) -> new GradientDescentPfunc(
+					state.confEcalc,
+					new ConfAStarTree.Builder(emat, rcs)
+						.setMaxNumNodes(boundedMemory ? 100000L : null)
+						.setTraditional()
+						.build(),
+					new ConfAStarTree.Builder(emat, rcs)
+						.setMaxNumNodes(boundedMemory ? 100000L : null)
+						.setTraditional()
+						.build(),
+					rcs.getNumConformations()
+				);
 			}
 		}
 	}
@@ -311,40 +331,30 @@ public class TestMSKStar {
 		});
 	}
 
-	// MSK* has been short-circuited until it can be fixed,
-	// so all these tests are supposed to fail
+	// MSK* has been fixed to work with the new ConfDB API
 
 	@Test
-
 	public void test2RL0() {
-		Assertions.assertThrows(UnsupportedOperationException.class, () -> {
-			Problem problem = make2RL0PPI(false);
-			prepStates(problem, () -> check2RL0PPI(problem.mskstar));
-		});
+		Problem problem = make2RL0PPI(false);
+		prepStates(problem, () -> check2RL0PPI(problem.mskstar));
 	}
 
 	@Test
 	public void test2RL0BoundedMemory() {
-		Assertions.assertThrows(UnsupportedOperationException.class, () -> {
-			Problem problem = make2RL0PPI(true);
-			prepStates(problem, () -> check2RL0PPI(problem.mskstar));
-		});
+		Problem problem = make2RL0PPI(true);
+		prepStates(problem, () -> check2RL0PPI(problem.mskstar));
 	}
 
 	@Test
 	public void test2RL0OnlyOneMutant() {
-		Assertions.assertThrows(UnsupportedOperationException.class, () -> {
-			Problem problem = make2RL0OnlyOneMutant();
-			prepStates(problem, () -> check2RL0OnlyOneMutant(problem.mskstar));
-		});
+		Problem problem = make2RL0OnlyOneMutant();
+		prepStates(problem, () -> check2RL0OnlyOneMutant(problem.mskstar));
 	}
 
 	@Test
 	public void test2RL0SpaceWithoutWildType() {
-		Assertions.assertThrows(UnsupportedOperationException.class, () -> {
-			Problem problem = make2RL0SpaceWithoutWildType();
-			prepStates(problem, () -> check2RL0WithoutWildType(problem.mskstar));
-		});
+		Problem problem = make2RL0SpaceWithoutWildType();
+		prepStates(problem, () -> check2RL0WithoutWildType(problem.mskstar));
 	}
 
 	private static void assertSequence(List<MSKStar.SequenceInfo> sequences, String seqStr, double objectiveLower, double objectiveUpper) {

@@ -303,7 +303,8 @@ public class ConfEnergyCalculator {
 			approximator = amat.get(frag, inters, approximationErrorBudget);
 		}
 
-		return ecalc.calcEnergy(pmol, inters, approximator);
+		// Phase 2: Pass frag (RCTuple) to enable SubtreeDOFCache
+		return ecalc.calcEnergy(pmol, inters, approximator, frag);
 	}
 
 	/**

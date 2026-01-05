@@ -1,0 +1,49 @@
+==========================================
+Testing MARK* vs K* Partition Function
+Start time: Tue Nov 11 10:42:33 PM EST 2025
+==========================================
+
+Initialized native services in: /home/users/lz280/.gradle/native
+Initialized jansi services in: /home/users/lz280/.gradle/native
+Found daemon DaemonInfo{pid=1736637, address=[6b962307-82b3-4838-939a-33f2af2c4633 port:34413, addresses:[/127.0.0.1]], state=Idle, lastBusy=1762916870329, context=DefaultDaemonContext[uid=19ee361a-4854-43eb-b698-2a3d335137f7,javaHome=/home/users/lz280/.vscode-server/extensions/redhat.java-1.47.0-linux-x64/jre/21.0.8-linux-x86_64,daemonRegistryDir=/home/users/lz280/.gradle/daemon,pid=1736637,idleTimeout=10800000,priority=NORMAL,daemonOpts=--add-opens,java.base/java.util=ALL-UNNAMED,--add-opens,java.base/java.lang=ALL-UNNAMED,--add-opens,java.base/java.lang.invoke=ALL-UNNAMED,--add-opens,java.base/java.util=ALL-UNNAMED,--add-opens,java.prefs/java.util.prefs=ALL-UNNAMED,--add-opens,java.prefs/java.util.prefs=ALL-UNNAMED,--add-opens,java.base/java.nio.charset=ALL-UNNAMED,--add-opens,java.base/java.net=ALL-UNNAMED,--add-opens,java.base/java.util.concurrent.atomic=ALL-UNNAMED,-XX:MaxMetaspaceSize=256m,-XX:+HeapDumpOnOutOfMemoryError,-Xms256m,-Xmx512m,-Dfile.encoding=UTF-8,-Duser.country=US,-Duser.language=en,-Duser.variant]} however its context does not match the desired criteria.
+Java home is different.
+Wanted: DefaultDaemonContext[uid=null,javaHome=/home/users/lz280/java/jdk-17.0.2+8,daemonRegistryDir=/home/users/lz280/.gradle/daemon,pid=3079877,idleTimeout=null,priority=NORMAL,daemonOpts=--add-opens,java.base/java.util=ALL-UNNAMED,--add-opens,java.base/java.lang=ALL-UNNAMED,--add-opens,java.base/java.lang.invoke=ALL-UNNAMED,--add-opens,java.base/java.util=ALL-UNNAMED,--add-opens,java.prefs/java.util.prefs=ALL-UNNAMED,--add-opens,java.prefs/java.util.prefs=ALL-UNNAMED,--add-opens,java.base/java.nio.charset=ALL-UNNAMED,--add-opens,java.base/java.net=ALL-UNNAMED,--add-opens,java.base/java.util.concurrent.atomic=ALL-UNNAMED,-XX:MaxMetaspaceSize=256m,-XX:+HeapDumpOnOutOfMemoryError,-Xms256m,-Xmx512m,-Dfile.encoding=UTF-8,-Duser.country=US,-Duser.language=en,-Duser.variant]
+Actual: DefaultDaemonContext[uid=19ee361a-4854-43eb-b698-2a3d335137f7,javaHome=/home/users/lz280/.vscode-server/extensions/redhat.java-1.47.0-linux-x64/jre/21.0.8-linux-x86_64,daemonRegistryDir=/home/users/lz280/.gradle/daemon,pid=1736637,idleTimeout=10800000,priority=NORMAL,daemonOpts=--add-opens,java.base/java.util=ALL-UNNAMED,--add-opens,java.base/java.lang=ALL-UNNAMED,--add-opens,java.base/java.lang.invoke=ALL-UNNAMED,--add-opens,java.base/java.util=ALL-UNNAMED,--add-opens,java.prefs/java.util.prefs=ALL-UNNAMED,--add-opens,java.prefs/java.util.prefs=ALL-UNNAMED,--add-opens,java.base/java.nio.charset=ALL-UNNAMED,--add-opens,java.base/java.net=ALL-UNNAMED,--add-opens,java.base/java.util.concurrent.atomic=ALL-UNNAMED,-XX:MaxMetaspaceSize=256m,-XX:+HeapDumpOnOutOfMemoryError,-Xms256m,-Xmx512m,-Dfile.encoding=UTF-8,-Duser.country=US,-Duser.language=en,-Duser.variant]
+
+  Looking for a different daemon...
+Found daemon DaemonInfo{pid=1736856, address=[e60bcdcb-1a07-4bbe-9802-15545cec20b4 port:44609, addresses:[/127.0.0.1]], state=Idle, lastBusy=1762916878520, context=DefaultDaemonContext[uid=7e1d8646-605d-4afe-8540-ef3bff3ccf3b,javaHome=/home/users/lz280/.vscode-server/extensions/redhat.java-1.47.0-linux-x64/jre/21.0.8-linux-x86_64,daemonRegistryDir=/home/users/lz280/.gradle/daemon,pid=1736856,idleTimeout=10800000,priority=NORMAL,daemonOpts=--add-opens,java.base/java.util=ALL-UNNAMED,--add-opens,java.base/java.lang=ALL-UNNAMED,--add-opens,java.base/java.lang.invoke=ALL-UNNAMED,--add-opens,java.base/java.util=ALL-UNNAMED,--add-opens,java.prefs/java.util.prefs=ALL-UNNAMED,--add-opens,java.prefs/java.util.prefs=ALL-UNNAMED,--add-opens,java.base/java.nio.charset=ALL-UNNAMED,--add-opens,java.base/java.net=ALL-UNNAMED,--add-opens,java.base/java.util.concurrent.atomic=ALL-UNNAMED,-Dfile.encoding=UTF-8,-Duser.country=US,-Duser.language=en,-Duser.variant]} however its context does not match the desired criteria.
+Java home is different.
+Wanted: DefaultDaemonContext[uid=null,javaHome=/home/users/lz280/java/jdk-17.0.2+8,daemonRegistryDir=/home/users/lz280/.gradle/daemon,pid=3079877,idleTimeout=null,priority=NORMAL,daemonOpts=--add-opens,java.base/java.util=ALL-UNNAMED,--add-opens,java.base/java.lang=ALL-UNNAMED,--add-opens,java.base/java.lang.invoke=ALL-UNNAMED,--add-opens,java.base/java.util=ALL-UNNAMED,--add-opens,java.prefs/java.util.prefs=ALL-UNNAMED,--add-opens,java.prefs/java.util.prefs=ALL-UNNAMED,--add-opens,java.base/java.nio.charset=ALL-UNNAMED,--add-opens,java.base/java.net=ALL-UNNAMED,--add-opens,java.base/java.util.concurrent.atomic=ALL-UNNAMED,-XX:MaxMetaspaceSize=256m,-XX:+HeapDumpOnOutOfMemoryError,-Xms256m,-Xmx512m,-Dfile.encoding=UTF-8,-Duser.country=US,-Duser.language=en,-Duser.variant]
+Actual: DefaultDaemonContext[uid=7e1d8646-605d-4afe-8540-ef3bff3ccf3b,javaHome=/home/users/lz280/.vscode-server/extensions/redhat.java-1.47.0-linux-x64/jre/21.0.8-linux-x86_64,daemonRegistryDir=/home/users/lz280/.gradle/daemon,pid=1736856,idleTimeout=10800000,priority=NORMAL,daemonOpts=--add-opens,java.base/java.util=ALL-UNNAMED,--add-opens,java.base/java.lang=ALL-UNNAMED,--add-opens,java.base/java.lang.invoke=ALL-UNNAMED,--add-opens,java.base/java.util=ALL-UNNAMED,--add-opens,java.prefs/java.util.prefs=ALL-UNNAMED,--add-opens,java.prefs/java.util.prefs=ALL-UNNAMED,--add-opens,java.base/java.nio.charset=ALL-UNNAMED,--add-opens,java.base/java.net=ALL-UNNAMED,--add-opens,java.base/java.util.concurrent.atomic=ALL-UNNAMED,-Dfile.encoding=UTF-8,-Duser.country=US,-Duser.language=en,-Duser.variant]
+
+  Looking for a different daemon...
+Removing 0 daemon stop events from registry
+Previous Daemon (1736088) stopped at Tue Nov 11 22:08:09 EST 2025 other compatible daemons were started and after being idle for 0 minutes and not recently used
+Starting a Gradle Daemon, 2 incompatible and 1 stopped Daemons could not be reused, use --status for details
+Starting process 'Gradle build daemon'. Working directory: /home/users/lz280/.gradle/daemon/7.3 Command: /home/users/lz280/java/jdk-17.0.2+8/bin/java --add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.lang.invoke=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens java.prefs/java.util.prefs=ALL-UNNAMED --add-opens java.prefs/java.util.prefs=ALL-UNNAMED --add-opens java.base/java.nio.charset=ALL-UNNAMED --add-opens java.base/java.net=ALL-UNNAMED --add-opens java.base/java.util.concurrent.atomic=ALL-UNNAMED -XX:MaxMetaspaceSize=256m -XX:+HeapDumpOnOutOfMemoryError -Xms256m -Xmx512m -Dfile.encoding=UTF-8 -Duser.country=US -Duser.language=en -Duser.variant -cp /home/users/lz280/.gradle/wrapper/dists/gradle-7.3-bin/ddwl0k7mt9g6ak16i1m905vyv/gradle-7.3/lib/gradle-launcher-7.3.jar org.gradle.launcher.daemon.bootstrap.GradleDaemon 7.3
+Successfully started process 'Gradle build daemon'
+An attempt to start the daemon took 1.304 secs.
+The client will now receive all logging from the daemon (pid: 3079924). The daemon log file: /home/users/lz280/.gradle/daemon/7.3/daemon-3079924.out.log
+Starting build in new daemon [memory: 512 MiB]
+Closing daemon's stdin at end of input.
+The daemon will no longer process any standard input.
+Using 8 worker leases.
+
+==========================================
+End time: Tue Nov 11 10:43:37 PM EST 2025
+==========================================
+
+==========================================
+Test Run Summary
+==========================================
+Exit code:     0
+End time:      Tue Nov 11 10:43:37 PM EST 2025
+Node:          linux35
+
+Job statistics will be available via: seff 10151502
+
+Final memory usage:
+               total        used        free      shared  buff/cache   available
+Mem:           251Gi        12Gi       228Gi       5.0Mi        10Gi       237Gi
+Swap:          8.0Gi        84Mi       7.9Gi
+==========================================

@@ -1,0 +1,46 @@
+Starting a Gradle Daemon, 3 incompatible and 2 stopped Daemons could not be reused, use --status for details
+
+> Task :buildSrc:compileKotlin
+'compileJava' task (current target is 17) and 'compileKotlin' task (current target is 1.8) jvm target compatibility should be set to the same Java version.
+w: Runtime JAR files in the classpath should have the same version. These files were found in the classpath:
+    /home/users/lz280/.gradle/wrapper/dists/gradle-7.3-bin/ddwl0k7mt9g6ak16i1m905vyv/gradle-7.3/lib/kotlin-stdlib-1.5.31.jar (version 1.5)
+    /home/users/lz280/.gradle/wrapper/dists/gradle-7.3-bin/ddwl0k7mt9g6ak16i1m905vyv/gradle-7.3/lib/kotlin-stdlib-common-1.5.31.jar (version 1.5)
+    /home/users/lz280/.gradle/wrapper/dists/gradle-7.3-bin/ddwl0k7mt9g6ak16i1m905vyv/gradle-7.3/lib/kotlin-stdlib-jdk7-1.5.31.jar (version 1.5)
+    /home/users/lz280/.gradle/wrapper/dists/gradle-7.3-bin/ddwl0k7mt9g6ak16i1m905vyv/gradle-7.3/lib/kotlin-stdlib-jdk8-1.5.31.jar (version 1.5)
+    /home/users/lz280/.gradle/wrapper/dists/gradle-7.3-bin/ddwl0k7mt9g6ak16i1m905vyv/gradle-7.3/lib/kotlin-reflect-1.5.31.jar (version 1.5)
+    /home/users/lz280/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-stdlib-jdk8/1.6.10/e80fe6ac3c3573a80305f5ec43f86b829e8ab53d/kotlin-stdlib-jdk8-1.6.10.jar (version 1.6)
+    /home/users/lz280/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-reflect/1.5.31/1523fcd842a47da0820cea772b19c51056fec8a9/kotlin-reflect-1.5.31.jar (version 1.5)
+    /home/users/lz280/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-stdlib-jdk7/1.6.10/e1c380673654a089c4f0c9f83d0ddfdc1efdb498/kotlin-stdlib-jdk7-1.6.10.jar (version 1.6)
+    /home/users/lz280/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-stdlib/1.6.10/b8af3fe6f1ca88526914929add63cf5e7c5049af/kotlin-stdlib-1.6.10.jar (version 1.6)
+    /home/users/lz280/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-stdlib-common/1.6.10/c118700e3a33c8a0d9adc920e9dec0831171925/kotlin-stdlib-common-1.6.10.jar (version 1.6)
+w: Consider providing an explicit dependency on kotlin-reflect 1.6 to prevent strange errors
+w: Some runtime JAR files in the classpath have an incompatible version. Consider removing them from the classpath
+w: Some JAR files in the classpath have the Kotlin Runtime library bundled into them. This may cause difficult to debug problems if there's a different version of the Kotlin Runtime library in the classpath. Consider removing these libraries from the classpath
+w: /home/users/lz280/.gradle/caches/modules-2/files-2.1/org.jetbrains.dokka/kotlin-analysis-compiler/1.6.10/e08b1c2b4c60ec5fc8b14a148bf1e39058e1d681/kotlin-analysis-compiler-1.6.10.jar: Library has Kotlin runtime bundled into it
+w: /home/users/lz280/.gradle/caches/modules-2/files-2.1/org.jetbrains.dokka/kotlin-analysis-intellij/1.6.10/44adb96d6c20f276642a5f7236796c4477a9b4ed/kotlin-analysis-intellij-1.6.10.jar: Library has Kotlin runtime bundled into it
+w: /home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/kotlin/osprey/build/desktop.kt: (142, 6): Variable 'desktopRelease' is never used
+w: /home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/kotlin/osprey/docs.kt: (526, 8): Name shadowed: webDir
+w: /home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/kotlin/osprey/python.kt: (19, 70): Elvis operator (?:) always returns the left operand of non-nullable type Boolean
+
+> Task :buildSrc:compileJava
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:pluginDescriptors
+> Task :buildSrc:processResources
+> Task :buildSrc:classes
+> Task :buildSrc:inspectClassesForKotlinIC
+
+> Task :buildSrc:jar
+:jar: No valid plugin descriptors were found in META-INF/gradle-plugins
+
+> Task :buildSrc:assemble
+> Task :buildSrc:compileTestKotlin
+> Task :buildSrc:pluginUnderTestMetadata
+> Task :buildSrc:compileTestJava
+> Task :buildSrc:compileTestGroovy NO-SOURCE
+> Task :buildSrc:processTestResources NO-SOURCE
+> Task :buildSrc:testClasses
+> Task :buildSrc:test
+> Task :buildSrc:validatePlugins
+> Task :buildSrc:check
+> Task :buildSrc:build
+> Task :compileKotlin

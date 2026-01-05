@@ -1,0 +1,4 @@
+stty: 'standard input': Inappropriate ioctl for device
+ERROR: Unable to locate a modulefile for 'Java/17'
+WARNING: Using incubator modules: jdk.incubator.foreign
+slurmstepd: error: *** JOB 10153447 ON linux13 CANCELLED AT 2025-11-12T15:47:12 ***

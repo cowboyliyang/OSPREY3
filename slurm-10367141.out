@@ -1,0 +1,81 @@
+=========================================
+Phase 2 Test: 1 Mutable + 3 Flexible
+Total: 4 positions (G648 mutable + 3 wild-type)
+Original vs Phase 1 vs Phase 1+2
+Date: Sat Jan  3 01:14:14 AM EST 2026
+Job ID: 10367141
+Node: compsci-cluster-fitz-35
+=========================================
+ERROR: Unable to locate a modulefile for 'java/17'
+
+Running comprehensive comparison on 3 flexible residues...
+Configuration: buildConfSpace(3) → 1 mutable (G648) + 3 flexible
+This will test:
+  1. Original Greedy (baseline)
+  2. Phase 1+2 (DP + TRUE Subtree Caching)
+  (Phase 1 skipped)
+
+Starting a Gradle Daemon, 12 busy and 4 incompatible and 1 stopped Daemons could not be reused, use --status for details
+> Task :buildSrc:compileKotlin UP-TO-DATE
+> Task :buildSrc:compileJava UP-TO-DATE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:pluginDescriptors UP-TO-DATE
+> Task :buildSrc:processResources UP-TO-DATE
+> Task :buildSrc:classes UP-TO-DATE
+> Task :buildSrc:inspectClassesForKotlinIC UP-TO-DATE
+> Task :buildSrc:jar UP-TO-DATE
+> Task :buildSrc:assemble UP-TO-DATE
+> Task :buildSrc:compileTestKotlin UP-TO-DATE
+> Task :buildSrc:pluginUnderTestMetadata UP-TO-DATE
+> Task :buildSrc:compileTestJava UP-TO-DATE
+> Task :buildSrc:compileTestGroovy NO-SOURCE
+> Task :buildSrc:processTestResources NO-SOURCE
+> Task :buildSrc:testClasses UP-TO-DATE
+> Task :buildSrc:test UP-TO-DATE
+> Task :buildSrc:validatePlugins UP-TO-DATE
+> Task :buildSrc:check UP-TO-DATE
+> Task :buildSrc:build UP-TO-DATE
+> Task :compileKotlin UP-TO-DATE
+> Task :compileJava UP-TO-DATE
+> Task :processResources
+> Task :classes
+
+> Task :compileTestKotlin
+w: ATTENTION!
+This build uses unsafe internal compiler arguments:
+
+-XXLanguage:+InlineClasses
+
+This mode is not recommended for production use,
+as no stability/compatibility guarantees are given on
+compiler or generated code. Use it at your own risk!
+
+w: '-Xuse-experimental' is deprecated and will be removed in a future release, please use -opt-in instead
+
+> Task :compileTestJava
+warning: using incubating module(s): jdk.incubator.foreign
+Note: /home/users/lz280/IdeaProjects/OSPREY3/src/test/java/edu/duke/cs/osprey/markstar/TestDPvsOriginal.java uses or overrides a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+1 warning
+
+> Task :processTestResources UP-TO-DATE
+> Task :testClasses
+
+> Task :test
+WARNING: Using incubator modules: jdk.incubator.foreign
+
+TestDPvsOriginal > testComprehensiveComparison() PASSED
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 8.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+See https://docs.gradle.org/7.3/userguide/command_line_interface.html#sec:command_line_warnings
+
+BUILD SUCCESSFUL in 18s
+18 actionable tasks: 4 executed, 14 up-to-date
+
+=========================================
+Test completed with exit code: 0
+Date: Sat Jan  3 01:14:32 AM EST 2026
+=========================================

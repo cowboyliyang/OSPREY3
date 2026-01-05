@@ -1,0 +1,63 @@
+/var/lib/slurm/slurmd/job10366585/slurm_script: line 10: =========================================: command not found
+/var/lib/slurm/slurmd/job10366585/slurm_script: line 11: Phase: command not found
+/var/lib/slurm/slurmd/job10366585/slurm_script: line 12: Original: command not found
+/var/lib/slurm/slurmd/job10366585/slurm_script: line 13: Date:: command not found
+/var/lib/slurm/slurmd/job10366585/slurm_script: line 14: Job: command not found
+/var/lib/slurm/slurmd/job10366585/slurm_script: line 15: Node:: command not found
+/var/lib/slurm/slurmd/job10366585/slurm_script: line 16: =========================================: command not found
+ERROR: Unable to locate a modulefile for 'java/17'
+Running comprehensive comparison on 7 and 9 residues (1 mutable + flexible)...
+This will test:
+  1. Original Greedy (baseline)
+  2. Phase 1 (DP optimizations)
+  3. Phase 1+2 (DP + TRUE Subtree Caching)
+
+Starting a Gradle Daemon, 10 busy and 4 incompatible and 1 stopped Daemons could not be reused, use --status for details
+> Task :buildSrc:compileKotlin UP-TO-DATE
+> Task :buildSrc:compileJava UP-TO-DATE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:pluginDescriptors UP-TO-DATE
+> Task :buildSrc:processResources UP-TO-DATE
+> Task :buildSrc:classes UP-TO-DATE
+> Task :buildSrc:inspectClassesForKotlinIC UP-TO-DATE
+> Task :buildSrc:jar UP-TO-DATE
+> Task :buildSrc:assemble UP-TO-DATE
+> Task :buildSrc:compileTestKotlin UP-TO-DATE
+> Task :buildSrc:pluginUnderTestMetadata UP-TO-DATE
+> Task :buildSrc:compileTestJava UP-TO-DATE
+> Task :buildSrc:compileTestGroovy NO-SOURCE
+> Task :buildSrc:processTestResources NO-SOURCE
+> Task :buildSrc:testClasses UP-TO-DATE
+> Task :buildSrc:test UP-TO-DATE
+> Task :buildSrc:validatePlugins UP-TO-DATE
+> Task :buildSrc:check UP-TO-DATE
+> Task :buildSrc:build UP-TO-DATE
+> Task :compileKotlin UP-TO-DATE
+> Task :compileJava UP-TO-DATE
+> Task :processResources
+> Task :classes
+
+> Task :compileTestKotlin
+w: ATTENTION!
+This build uses unsafe internal compiler arguments:
+
+-XXLanguage:+InlineClasses
+
+This mode is not recommended for production use,
+as no stability/compatibility guarantees are given on
+compiler or generated code. Use it at your own risk!
+
+w: '-Xuse-experimental' is deprecated and will be removed in a future release, please use -opt-in instead
+
+> Task :compileTestJava
+warning: using incubating module(s): jdk.incubator.foreign
+Note: /home/users/lz280/IdeaProjects/OSPREY3/src/test/java/edu/duke/cs/osprey/markstar/TestDPvsOriginal.java uses or overrides a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+1 warning
+
+> Task :processTestResources UP-TO-DATE
+> Task :testClasses
+
+> Task :test
+WARNING: Using incubator modules: jdk.incubator.foreign
+[2026-01-02T21:43:39.260] error: *** JOB 10366585 ON compsci-cluster-fitz-35 CANCELLED AT 2026-01-02T21:43:39 DUE to SIGNAL Terminated ***

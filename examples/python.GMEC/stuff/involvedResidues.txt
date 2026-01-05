@@ -1,0 +1,2 @@
+All residues involved in any conformation space, mutable or flexible:
+resi 777+782+735

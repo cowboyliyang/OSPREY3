@@ -1,0 +1,208 @@
+no change     /home/users/lz280/miniconda3/condabin/conda
+no change     /home/users/lz280/miniconda3/bin/conda
+no change     /home/users/lz280/miniconda3/bin/conda-env
+no change     /home/users/lz280/miniconda3/bin/activate
+no change     /home/users/lz280/miniconda3/bin/deactivate
+no change     /home/users/lz280/miniconda3/etc/profile.d/conda.sh
+no change     /home/users/lz280/miniconda3/etc/fish/conf.d/conda.fish
+no change     /home/users/lz280/miniconda3/shell/condabin/Conda.psm1
+no change     /home/users/lz280/miniconda3/shell/condabin/conda-hook.ps1
+no change     /home/users/lz280/miniconda3/lib/python3.12/site-packages/xontrib/conda.xsh
+no change     /home/users/lz280/miniconda3/etc/profile.d/conda.csh
+no change     /home/users/lz280/.bashrc
+No action taken.
+OSPREY 3.3-dev, Python 3.10.13, Java 17.0.14, Linux-5.15.0-131-generic-x86_64-with-glibc2.35
+Using up to 1024 MiB heap memory: 128 MiB for garbage, 896 MiB for storage
+read PDB file from file: 3btd.df.min_strip_reduce_prep_rc_add_rc_steps100_rc.pdb
+read PDB file from file: 3bte.df.min_strip_reduce_prep_rc_add_rc_steps100_rc.pdb
+sequence space has 3.200000e+06 sequences
+Residue Types:
+	0:A227  [ 0:asp 1:ALA 2:ARG 3:ASN 4:CYS 5:GLN 6:GLU 7:GLY 8:HIS 9:ILE 10:LEU 11:LYS 12:MET 13:PHE 14:PRO 15:SER 16:THR 17:TRP 18:TYR 19:VAL ]
+	1:A228  [ 0:ser 1:ALA 2:ARG 3:ASN 4:ASP 5:CYS 6:GLN 7:GLU 8:GLY 9:HIS 10:ILE 11:LEU 12:LYS 13:MET 14:PHE 15:PRO 16:THR 17:TRP 18:TYR 19:VAL ]
+	2:A230  [ 0:gln 1:ALA 2:ARG 3:ASN 4:ASP 5:CYS 6:GLU 7:GLY 8:HIS 9:ILE 10:LEU 11:LYS 12:MET 13:PHE 14:PRO 15:SER 16:THR 17:TRP 18:TYR 19:VAL ]
+	3:A233  [ 0:ser 1:ALA 2:ARG 3:ASN 4:ASP 5:CYS 6:GLN 7:GLU 8:GLY 9:HIS 10:ILE 11:LEU 12:LYS 13:MET 14:PHE 15:PRO 16:THR 17:TRP 18:TYR 19:VAL ]
+	4:A247  [ 0:val 1:ALA 2:ARG 3:ASN 4:ASP 5:CYS 6:GLN 7:GLU 8:GLY 9:HIS 10:ILE 11:LEU 12:LYS 13:MET 14:PHE 15:PRO 16:SER 17:THR 18:TRP 19:TYR ]
+Calculating reference energies for 955 residue confs...
+Progress:  100.0%   ETA: 0 ns
+Finished in 363.2 ms
+read energy matrix from file: /home/users/lz280/IdeaProjects/OSPREY3/examples/python.GMEC/emat_Bound.dat
+WARNING: energy matrix from file is invalid, will create new one
+Calculating energy matrix with 367639 entries
+Progress:    5.9%   ETA: 1.4 m
+Progress:   12.0%   ETA: 1.3 m
+Progress:   20.4%   ETA: 1.1 m
+Progress:   30.3%   ETA: 48.8 s
+Progress:   37.7%   ETA: 39.5 s
+Progress:   47.0%   ETA: 33.9 s
+Progress:   56.4%   ETA: 28.0 s
+Progress:   62.5%   ETA: 22.1 s
+Progress:   65.9%   ETA: 18.6 s
+Progress:   72.8%   ETA: 15.1 s
+Progress:   78.9%   ETA: 11.5 s
+Progress:   82.8%   ETA: 7.6 s
+Progress:   90.5%   ETA: 4.0 s
+Progress:   97.2%   ETA: 65.0 ms
+Progress:  100.0%   ETA: 0 ns
+Finished in 1.2 m
+wrote energy matrix to file: /home/users/lz280/IdeaProjects/OSPREY3/examples/python.GMEC/emat_Bound.dat
+Calculating reference energies for 958 residue confs...
+Progress:  100.0%   ETA: 0 ns
+Finished in 123.2 ms
+read energy matrix from file: /home/users/lz280/IdeaProjects/OSPREY3/examples/python.GMEC/emat_Bound.dat
+WARNING: energy matrix from file is invalid, will create new one
+Calculating energy matrix with 370489 entries
+Progress:    6.8%   ETA: 1.2 m
+Progress:   13.4%   ETA: 1.2 m
+Progress:   22.2%   ETA: 55.3 s
+Progress:   32.5%   ETA: 44.1 s
+Progress:   38.3%   ETA: 37.8 s
+Progress:   47.5%   ETA: 33.0 s
+Progress:   56.6%   ETA: 27.6 s
+Progress:   62.2%   ETA: 22.6 s
+Progress:   65.7%   ETA: 18.8 s
+Progress:   72.4%   ETA: 15.8 s
+Progress:   78.3%   ETA: 11.8 s
+Progress:   81.9%   ETA: 8.5 s
+Progress:   88.5%   ETA: 5.0 s
+Progress:   95.6%   ETA: 1.2 s
+Progress:  100.0%   ETA: 0 ns
+Finished in 1.2 m
+wrote energy matrix to file: /home/users/lz280/IdeaProjects/OSPREY3/examples/python.GMEC/emat_Bound.dat
+Calculating reference energies for 945 residue confs...
+Progress:  100.0%   ETA: 0 ns
+Finished in 81.1 ms
+read energy matrix from file: /home/users/lz280/IdeaProjects/OSPREY3/examples/python.GMEC/emat_Unbound.dat
+WARNING: energy matrix from file is invalid, will create new one
+Calculating energy matrix with 358155 entries
+Progress:    7.4%   ETA: 1.1 m
+Progress:   15.2%   ETA: 59.9 s
+Progress:   25.3%   ETA: 46.9 s
+Progress:   36.7%   ETA: 34.7 s
+Progress:   44.6%   ETA: 29.5 s
+Progress:   52.1%   ETA: 25.4 s
+Progress:   60.5%   ETA: 21.3 s
+Progress:   64.6%   ETA: 17.8 s
+Progress:   67.8%   ETA: 14.8 s
+Progress:   74.4%   ETA: 12.3 s
+Progress:   80.7%   ETA: 8.8 s
+Progress:   85.1%   ETA: 5.6 s
+Progress:   93.7%   ETA: 2.2 s
+Progress:  100.0%   ETA: 0 ns
+Finished in 1.2 m
+wrote energy matrix to file: /home/users/lz280/IdeaProjects/OSPREY3/examples/python.GMEC/emat_Unbound.dat
+Calculating reference energies for 58 residue confs...
+Progress:  100.0%   ETA: 0 ns
+Finished in 9.7 ms
+read energy matrix from file: /home/users/lz280/IdeaProjects/OSPREY3/examples/python.GMEC/emat_Unbound.dat
+WARNING: energy matrix from file is invalid, will create new one
+Calculating energy matrix with 1303 entries
+Progress:  100.0%   ETA: 0 ns
+Finished in 125.1 ms
+wrote energy matrix to file: /home/users/lz280/IdeaProjects/OSPREY3/examples/python.GMEC/emat_Unbound.dat
+
+COMETS searching for the 5 best sequences among 3.200000e+06 with up to 1 simultaneous mutations ...
+(up to objective function value 0.000000 kcal/mol, or +10.000000 kcal/mol relative to the best sequence)
+
+Discovered promising sequence: A227=asp A228=ARG A230=gln A233=ser A247=val   objective lower bound:  -156.266182
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=ser A247=ARG   objective lower bound:  -154.530838
+Discovered promising sequence: A227=asp A228=LYS A230=gln A233=ser A247=val   objective lower bound:  -150.391229
+Discovered promising sequence: A227=asp A228=HIS A230=gln A233=ser A247=val   objective lower bound:  -147.644622
+Discovered promising sequence: A227=ARG A228=ser A230=gln A233=ser A247=val   objective lower bound:  -146.044078
+Discovered promising sequence: A227=asp A228=TRP A230=gln A233=ser A247=val   objective lower bound:  -145.409231
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=ser A247=HIS   objective lower bound:  -140.388953
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=ser A247=LYS   objective lower bound:  -139.683511
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=ARG A247=val   objective lower bound:  -139.394414
+Discovered promising sequence: A227=LYS A228=ser A230=gln A233=ser A247=val   objective lower bound:  -139.362747
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=LYS A247=val   objective lower bound:  -138.044400
+Discovered promising sequence: A227=HIS A228=ser A230=gln A233=ser A247=val   objective lower bound:  -137.624936
+Discovered promising sequence: A227=asp A228=MET A230=gln A233=ser A247=val   objective lower bound:  -137.360924
+Discovered promising sequence: A227=asp A228=PHE A230=gln A233=ser A247=val   objective lower bound:  -136.539618
+Discovered promising sequence: A227=asp A228=TYR A230=gln A233=ser A247=val   objective lower bound:  -136.289392
+Discovered promising sequence: A227=TRP A228=ser A230=gln A233=ser A247=val   objective lower bound:  -135.671421
+Discovered promising sequence: A227=asp A228=GLN A230=gln A233=ser A247=val   objective lower bound:  -134.205163
+Discovered promising sequence: A227=TYR A228=ser A230=gln A233=ser A247=val   objective lower bound:  -133.672198
+Discovered promising sequence: A227=asp A228=ser A230=LYS A233=ser A247=val   objective lower bound:  -132.460098
+Discovered promising sequence: A227=asp A228=ser A230=HIS A233=ser A247=val   objective lower bound:  -132.059046
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=HIS A247=val   objective lower bound:  -132.044162
+Discovered promising sequence: A227=asp A228=ser A230=ARG A233=ser A247=val   objective lower bound:  -131.114169
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=MET A247=val   objective lower bound:  -130.366853
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=TRP A247=val   objective lower bound:  -129.436521
+Discovered promising sequence: A227=PHE A228=ser A230=gln A233=ser A247=val   objective lower bound:  -129.375332
+Discovered promising sequence: A227=MET A228=ser A230=gln A233=ser A247=val   objective lower bound:  -129.236396
+Discovered promising sequence: A227=asp A228=ASN A230=gln A233=ser A247=val   objective lower bound:  -128.557335
+Discovered promising sequence: A227=GLN A228=ser A230=gln A233=ser A247=val   objective lower bound:  -127.572693
+Discovered promising sequence: A227=asp A228=THR A230=gln A233=ser A247=val   objective lower bound:  -127.120826
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=ser A247=MET   objective lower bound:  -126.734473
+Discovered promising sequence: A227=ILE A228=ser A230=gln A233=ser A247=val   objective lower bound:  -126.433397
+Discovered promising sequence: A227=asp A228=ILE A230=gln A233=ser A247=val   objective lower bound:  -126.283001
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=ser A247=GLN   objective lower bound:  -126.200088
+Discovered promising sequence: A227=asp A228=VAL A230=gln A233=ser A247=val   objective lower bound:  -125.388904
+Discovered promising sequence: A227=LEU A228=ser A230=gln A233=ser A247=val   objective lower bound:  -125.320615
+Discovered promising sequence: A227=ASN A228=ser A230=gln A233=ser A247=val   objective lower bound:  -125.298735
+Discovered promising sequence: A227=SER A228=ser A230=gln A233=ser A247=val   objective lower bound:  -125.294165
+Discovered promising sequence: A227=THR A228=ser A230=gln A233=ser A247=val   objective lower bound:  -124.852019
+Discovered promising sequence: A227=CYS A228=ser A230=gln A233=ser A247=val   objective lower bound:  -123.851125
+Discovered promising sequence: A227=asp A228=CYS A230=gln A233=ser A247=val   objective lower bound:  -123.822354
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=GLN A247=val   objective lower bound:  -123.611668
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=ASN A247=val   objective lower bound:  -123.350870
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=ser A247=PHE   objective lower bound:  -123.321804
+Discovered promising sequence: A227=VAL A228=ser A230=gln A233=ser A247=val   objective lower bound:  -122.875553
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=ser A247=val   objective lower bound:  -122.584819
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=ser A247=ASN   objective lower bound:  -122.411349
+Discovered promising sequence: A227=asp A228=ser A230=TRP A233=ser A247=val   objective lower bound:  -122.408740
+Discovered promising sequence: A227=ALA A228=ser A230=gln A233=ser A247=val   objective lower bound:  -122.293973
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=PHE A247=val   objective lower bound:  -122.275981
+Discovered promising sequence: A227=GLY A228=ser A230=gln A233=ser A247=val   objective lower bound:  -122.046576
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=CYS A247=val   objective lower bound:  -121.540615
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=ser A247=GLU   objective lower bound:  -120.972121
+Discovered promising sequence: A227=GLU A228=ser A230=gln A233=ser A247=val   objective lower bound:  -120.906422
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=ser A247=TYR   objective lower bound:  -120.698629
+Discovered promising sequence: A227=asp A228=ser A230=TYR A233=ser A247=val   objective lower bound:  -120.544353
+Discovered promising sequence: A227=asp A228=ser A230=MET A233=ser A247=val   objective lower bound:  -120.434572
+Discovered promising sequence: A227=asp A228=ALA A230=gln A233=ser A247=val   objective lower bound:  -120.224107
+Discovered promising sequence: A227=asp A228=ser A230=PHE A233=ser A247=val   objective lower bound:  -119.817248
+Discovered promising sequence: A227=asp A228=ser A230=ASN A233=ser A247=val   objective lower bound:  -119.179141
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=ser A247=THR   objective lower bound:  -119.128394
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=ser A247=TRP   objective lower bound:  -118.955713
+Discovered promising sequence: A227=asp A228=ser A230=LEU A233=ser A247=val   objective lower bound:  -118.181558
+Discovered promising sequence: A227=asp A228=ser A230=THR A233=ser A247=val   objective lower bound:  -117.990389
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=ser A247=CYS   objective lower bound:  -117.725816
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=ALA A247=val   objective lower bound:  -116.816898
+Discovered promising sequence: A227=asp A228=ser A230=SER A233=ser A247=val   objective lower bound:  -116.423746
+Discovered promising sequence: A227=asp A228=GLY A230=gln A233=ser A247=val   objective lower bound:  -116.410954
+Discovered promising sequence: A227=asp A228=GLU A230=gln A233=ser A247=val   objective lower bound:  -116.281107
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=TYR A247=val   objective lower bound:  -116.139020
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=ASP A247=val   objective lower bound:  -116.101194
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=GLU A247=val   objective lower bound:  -116.044564
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=ser A247=SER   objective lower bound:  -115.569859
+Discovered promising sequence: A227=asp A228=ser A230=CYS A233=ser A247=val   objective lower bound:  -115.555859
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=ser A247=ILE   objective lower bound:  -115.429108
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=THR A247=val   objective lower bound:  -115.307139
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=GLY A247=val   objective lower bound:  -115.112673
+Discovered promising sequence: A227=asp A228=ser A230=ILE A233=ser A247=val   objective lower bound:  -114.745760
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=LEU A247=val   objective lower bound:  -114.252733
+Discovered promising sequence: A227=asp A228=ser A230=VAL A233=ser A247=val   objective lower bound:  -114.231223
+Discovered promising sequence: A227=asp A228=ser A230=ALA A233=ser A247=val   objective lower bound:  -114.125945
+Discovered promising sequence: A227=asp A228=ser A230=GLY A233=ser A247=val   objective lower bound:  -112.612695
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=ser A247=ASP   objective lower bound:  -112.183645
+Discovered promising sequence: A227=asp A228=ser A230=GLU A233=ser A247=val   objective lower bound:  -111.867368
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=ser A247=ALA   objective lower bound:  -111.801954
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=VAL A247=val   objective lower bound:  -108.567545
+Discovered promising sequence: A227=asp A228=ASP A230=gln A233=ser A247=val   objective lower bound:  -107.200662
+Discovered promising sequence: A227=asp A228=ser A230=ASP A233=ser A247=val   objective lower bound:  -107.155446
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=ser A247=GLY   objective lower bound:  -105.779448
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=ser A247=LEU   objective lower bound:  -105.262568
+Discovered promising sequence: A227=asp A228=ser A230=gln A233=ILE A247=val   objective lower bound:   -96.570763
+Discovered promising sequence: A227=asp A228=LEU A230=gln A233=ser A247=val   objective lower bound:   -88.336797
+
+Sequence calculation complete: A227 A228 A230 A233 A247    objective:   -37.302375   
+                               asp  ser  gln  ser  TRP 
+	State: Bound                   GMEC Energy:     6.348668
+	State: Bound                   GMEC Energy:     5.877291
+	State: Unbound                 GMEC Energy:    17.557507
+	State: Unbound                 GMEC Energy:   -20.216245
+
+COMETS exiting early: exhausted all conformations in energy window
+
+COMETS found the best 1 within the window that satisfy all the constraints
+COMETS design completed successfully!

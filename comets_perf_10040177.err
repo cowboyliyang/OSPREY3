@@ -1,0 +1,48 @@
+stty: 'standard input': Inappropriate ioctl for device
+ERROR: Unable to locate a modulefile for 'Java/17'
+warning: using incubating module(s): jdk.incubator.foreign
+warning: using incubating module(s): jdk.incubator.foreign
+warning: using incubating module(s): jdk.incubator.foreign
+warning: using incubating module(s): jdk.incubator.foreign
+/home/users/lz280/IdeaProjects/OSPREY3/src/main/java/edu/duke/cs/osprey/energy/forcefield/EEF1.java:110: warning: [removal] Double(String) in Double has been deprecated and marked for removal
+				atEEF1Vol[tmpInt] = (new Double(StringParsing.getToken(curLine,3))).doubleValue();
+				                     ^
+/home/users/lz280/IdeaProjects/OSPREY3/src/main/java/edu/duke/cs/osprey/energy/forcefield/EEF1.java:111: warning: [removal] Double(String) in Double has been deprecated and marked for removal
+				dGiRef[tmpInt] = (new Double(StringParsing.getToken(curLine,4))).doubleValue();
+				                  ^
+/home/users/lz280/IdeaProjects/OSPREY3/src/main/java/edu/duke/cs/osprey/energy/forcefield/EEF1.java:112: warning: [removal] Double(String) in Double has been deprecated and marked for removal
+				dGiFree[tmpInt] = (new Double(StringParsing.getToken(curLine,5))).doubleValue();
+				                   ^
+/home/users/lz280/IdeaProjects/OSPREY3/src/main/java/edu/duke/cs/osprey/energy/forcefield/EEF1.java:113: warning: [removal] Double(String) in Double has been deprecated and marked for removal
+				dHiRef[tmpInt] = (new Double(StringParsing.getToken(curLine,6))).doubleValue();
+				                  ^
+/home/users/lz280/IdeaProjects/OSPREY3/src/main/java/edu/duke/cs/osprey/energy/forcefield/EEF1.java:114: warning: [removal] Double(String) in Double has been deprecated and marked for removal
+				dCpiRef[tmpInt] = (new Double(StringParsing.getToken(curLine,7))).doubleValue();
+				                   ^
+/home/users/lz280/IdeaProjects/OSPREY3/src/main/java/edu/duke/cs/osprey/energy/forcefield/EEF1.java:115: warning: [removal] Double(String) in Double has been deprecated and marked for removal
+				lambdai[tmpInt] = (new Double(StringParsing.getToken(curLine,8))).doubleValue();
+				                   ^
+/home/users/lz280/IdeaProjects/OSPREY3/src/main/java/edu/duke/cs/osprey/energy/forcefield/EEF1.java:116: warning: [removal] Double(String) in Double has been deprecated and marked for removal
+				vdWri[tmpInt] = (new Double(StringParsing.getToken(curLine,9))).doubleValue();
+				                 ^
+/home/users/lz280/IdeaProjects/OSPREY3/src/main/java/edu/duke/cs/osprey/ematrix/EnergyMatrixCalculator.java:239: warning: [removal] Integer(int) in Integer has been deprecated and marked for removal
+				Integer[] pos = new Integer[res.length]; for(int i = 0; i < pos.length; ++i) pos[i] = new Integer(res[i]);
+				                                                                                      ^
+/home/users/lz280/IdeaProjects/OSPREY3/src/main/java/edu/duke/cs/osprey/ematrix/TermECalculator.java:240: warning: [removal] Integer(int) in Integer has been deprecated and marked for removal
+			resElements[depth] = new Integer(res[depth]);
+			                     ^
+/home/users/lz280/IdeaProjects/OSPREY3/src/main/java/edu/duke/cs/osprey/restypes/TemplateCoordsParser.java:157: warning: [removal] Double(String) in Double has been deprecated and marked for removal
+				coords[dim] = new Double(StringParsing.getToken(line,dim+2));
+				              ^
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+Note: Some input files use unchecked or unsafe operations.
+Note: Recompile with -Xlint:unchecked for details.
+14 warnings
+warning: using incubating module(s): jdk.incubator.foreign
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+Note: Some input files use unchecked or unsafe operations.
+Note: Recompile with -Xlint:unchecked for details.
+1 warning
+WARNING: Using incubator modules: jdk.incubator.foreign

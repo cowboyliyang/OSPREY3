@@ -1,0 +1,17 @@
+stty: 'standard input': Inappropriate ioctl for device
+ERROR: Unable to locate a modulefile for 'Java/17'
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':compileShaders'.
+> A problem occurred starting process 'command 'glslc''
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --debug option to get more log output.
+> Run with --scan to get full insights.
+
+* Get more help at https://help.gradle.org
+
+BUILD FAILED in 2m 36s

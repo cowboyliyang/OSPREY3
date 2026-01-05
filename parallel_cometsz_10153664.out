@@ -1,0 +1,1281 @@
+==========================================
+Parallel COMETS-Z Tests Configuration
+==========================================
+Job ID:        10153664
+Job name:      parallel-cometsz
+Node:          linux13
+CPUs:          32
+Memory:        102400 MB (100 GB)
+Start time:    Wed Nov 12 03:47:26 PM EST 2025
+Working dir:   /home/users/lz280/IdeaProjects/OSPREY3
+==========================================
+
+Java version:
+openjdk version "17.0.2" 2022-01-18
+OpenJDK Runtime Environment Temurin-17.0.2+8 (build 17.0.2+8)
+OpenJDK 64-Bit Server VM Temurin-17.0.2+8 (build 17.0.2+8, mixed mode, sharing)
+
+JAVA_HOME: /home/users/lz280/java/jdk-17.0.2+8
+
+JVM Options: -Xmx40g -Xms40g -XX:+UseG1GC -XX:MaxGCPauseMillis=200
+
+==========================================
+Building project (one-time build)...
+==========================================
+==========================================
+Resource Usage Monitor
+==========================================
+[15:47:26] Memory: 2.9Gi/251Gi | CPU Load:  4.81, 5.55, 4.71
+Downloading https://services.gradle.org/distributions/gradle-7.3-bin.zip
+...........10%...........20%...........30%...........40%...........50%...........60%...........70%...........80%...........90%...........100%
+Initialized native services in: /tmp/10153664/native
+Initialized jansi services in: /tmp/10153664/native
+
+Welcome to Gradle 7.3!
+
+Here are the highlights of this release:
+ - Easily declare new test suites in Java projects
+ - Support for Java 17
+ - Support for Scala 3
+
+For more details see https://docs.gradle.org/7.3/release-notes.html
+
+Removing 0 daemon stop events from registry
+Starting a Gradle Daemon (subsequent builds will be faster)
+Starting process 'Gradle build daemon'. Working directory: /tmp/10153664/daemon/7.3 Command: /home/users/lz280/java/jdk-17.0.2+8/bin/java --add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.lang.invoke=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens java.prefs/java.util.prefs=ALL-UNNAMED --add-opens java.prefs/java.util.prefs=ALL-UNNAMED --add-opens java.base/java.nio.charset=ALL-UNNAMED --add-opens java.base/java.net=ALL-UNNAMED --add-opens java.base/java.util.concurrent.atomic=ALL-UNNAMED -XX:MaxMetaspaceSize=256m -XX:+HeapDumpOnOutOfMemoryError -Xms256m -Xmx512m -Dfile.encoding=UTF-8 -Duser.country=US -Duser.language=en -Duser.variant -cp /tmp/10153664/wrapper/dists/gradle-7.3-bin/ddwl0k7mt9g6ak16i1m905vyv/gradle-7.3/lib/gradle-launcher-7.3.jar org.gradle.launcher.daemon.bootstrap.GradleDaemon 7.3
+Successfully started process 'Gradle build daemon'
+An attempt to start the daemon took 1.058 secs.
+The client will now receive all logging from the daemon (pid: 1084774). The daemon log file: /tmp/10153664/daemon/7.3/daemon-1084774.out.log
+Starting build in new daemon [memory: 512 MiB]
+Closing daemon's stdin at end of input.
+The daemon will no longer process any standard input.
+Using 32 worker leases.
+Watching the file system is configured to be enabled if available
+Not watching /home/users/lz280/IdeaProjects/OSPREY3 since the file system is not supported
+Not watching /home/users/lz280/IdeaProjects/OSPREY3/buildSrc since the file system is not supported
+File system watching is active
+Starting Build
+Compiling settings file '/home/users/lz280/IdeaProjects/OSPREY3/settings.gradle' using SubsetScriptTransformer.
+Compiling settings file '/home/users/lz280/IdeaProjects/OSPREY3/settings.gradle' using BuildScriptTransformer.
+Settings evaluated using settings file '/home/users/lz280/IdeaProjects/OSPREY3/settings.gradle'.
+Projects loaded. Root project using build file '/home/users/lz280/IdeaProjects/OSPREY3/build.gradle.kts'.
+Included projects: [root project 'osprey']
+
+> Configure project :buildSrc
+Evaluating project ':buildSrc' using build file '/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/build.gradle.kts'.
+Caching disabled for Kotlin DSL plugin accessors for classpath 'e92c198a8488615b02887da4d2f59404' because:
+  Build cache is disabled
+Kotlin DSL plugin accessors for classpath 'e92c198a8488615b02887da4d2f59404' is not up-to-date because:
+  No history is available.
+Generating /tmp/10153664/caches/7.3/generated-gradle-jars/gradle-api-7.3.jar
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/7.3/generated-gradle-jars/gradle-api-7.3.jar: class org/gradle/configurationcache/extensions/AutoCloseableExtensionsKt: inline fun useToRun(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/wrapper/dists/gradle-7.3-bin/ddwl0k7mt9g6ak16i1m905vyv/gradle-7.3/lib/kotlin-stdlib-1.5.31.jar: class kotlin/ArrayIntrinsicsKt: inline fun emptyArray(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/wrapper/dists/gradle-7.3-bin/ddwl0k7mt9g6ak16i1m905vyv/gradle-7.3/lib/kotlin-reflect-1.5.31.jar: class kotlin/reflect/full/KAnnotatedElements: inline fun findAnnotation(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/7.3/generated-gradle-jars/gradle-kotlin-dsl-extensions-7.3.jar: class org/gradle/kotlin/dsl/GradleApiKotlinDslExtensions0Kt: inline fun environment(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/wrapper/dists/gradle-7.3-bin/ddwl0k7mt9g6ak16i1m905vyv/gradle-7.3/lib/gradle-kotlin-dsl-7.3.jar: class org/gradle/kotlin/dsl/ArtifactHandlerScope: inline fun invoke(): compile avoidance is not supported with public inline functions
+Caching disabled for Kotlin DSL script compilation (Project/TopLevel/stage1) because:
+  Build cache is disabled
+Kotlin DSL script compilation (Project/TopLevel/stage1) is not up-to-date because:
+  No history is available.
+Downloading https://plugins.gradle.org/m2/org/gradle/kotlin/kotlin-dsl/org.gradle.kotlin.kotlin-dsl.gradle.plugin/2.1.7/org.gradle.kotlin.kotlin-dsl.gradle.plugin-2.1.7.pom to /tmp/10153664/.tmp/gradle_download10107496587054878122bin
+Resource missing. [HTTP HEAD: https://plugins.gradle.org/m2/org/gradle/kotlin/kotlin-dsl/org.gradle.kotlin.kotlin-dsl.gradle.plugin/2.1.7/org.gradle.kotlin.kotlin-dsl.gradle.plugin-2.1.7.jar]
+Downloading https://plugins.gradle.org/m2/org/gradle/kotlin/gradle-kotlin-dsl-plugins/2.1.7/gradle-kotlin-dsl-plugins-2.1.7.pom to /tmp/10153664/.tmp/gradle_download14971938517354179547bin
+Downloading https://plugins.gradle.org/m2/org/gradle/kotlin/gradle-kotlin-dsl-plugins/2.1.7/gradle-kotlin-dsl-plugins-2.1.7.module to /tmp/10153664/.tmp/gradle_download12888326823025975590bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-gradle-plugin/1.5.31/kotlin-gradle-plugin-1.5.31.pom to /tmp/10153664/.tmp/gradle_download7702558590057910971bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-sam-with-receiver/1.5.31/kotlin-sam-with-receiver-1.5.31.pom to /tmp/10153664/.tmp/gradle_download3501602823520951528bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-stdlib-jdk8/1.5.31/kotlin-stdlib-jdk8-1.5.31.pom to /tmp/10153664/.tmp/gradle_download5955351601013232663bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-scripting-compiler-embeddable/1.5.31/kotlin-scripting-compiler-embeddable-1.5.31.pom to /tmp/10153664/.tmp/gradle_download416568183251952973bin
+Downloading https://plugins.gradle.org/m2/de/undercouch/gradle-download-task/4.1.1/gradle-download-task-4.1.1.pom to /tmp/10153664/.tmp/gradle_download18316015864035443885bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-scripting-compiler-impl-embeddable/1.5.31/kotlin-scripting-compiler-impl-embeddable-1.5.31.pom to /tmp/10153664/.tmp/gradle_download15490673790061742786bin
+Downloading https://plugins.gradle.org/m2/com/google/guava/guava/29.0-jre/guava-29.0-jre.pom to /tmp/10153664/.tmp/gradle_download16539298792088674234bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-project-model/1.5.31/kotlin-project-model-1.5.31.pom to /tmp/10153664/.tmp/gradle_download7076976871936346458bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-gradle-plugin-api/1.5.31/kotlin-gradle-plugin-api-1.5.31.pom to /tmp/10153664/.tmp/gradle_download13399420040796176669bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-compiler-runner/1.5.31/kotlin-compiler-runner-1.5.31.pom to /tmp/10153664/.tmp/gradle_download26281510218850670bin
+Downloading https://plugins.gradle.org/m2/com/google/code/gson/gson/2.8.6/gson-2.8.6.pom to /tmp/10153664/.tmp/gradle_download13959966707834156691bin
+Downloading https://plugins.gradle.org/m2/com/github/gundy/semver4j/0.16.4/semver4j-0.16.4.pom to /tmp/10153664/.tmp/gradle_download1894642110402104418bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-klib-commonizer-api/1.5.31/kotlin-klib-commonizer-api-1.5.31.pom to /tmp/10153664/.tmp/gradle_download12068682334576333518bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-util-klib/1.5.31/kotlin-util-klib-1.5.31.pom to /tmp/10153664/.tmp/gradle_download17463264362119987102bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-android-extensions/1.5.31/kotlin-android-extensions-1.5.31.pom to /tmp/10153664/.tmp/gradle_download14387502251990003953bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-annotation-processing-gradle/1.5.31/kotlin-annotation-processing-gradle-1.5.31.pom to /tmp/10153664/.tmp/gradle_download8129397923162245133bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-tooling-metadata/1.5.31/kotlin-tooling-metadata-1.5.31.pom to /tmp/10153664/.tmp/gradle_download12530580292653980899bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-gradle-plugin-model/1.5.31/kotlin-gradle-plugin-model-1.5.31.pom to /tmp/10153664/.tmp/gradle_download16957201619540746690bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-compiler-embeddable/1.5.31/kotlin-compiler-embeddable-1.5.31.pom to /tmp/10153664/.tmp/gradle_download6741816502189138925bin
+Downloading https://plugins.gradle.org/m2/com/google/guava/guava-parent/29.0-jre/guava-parent-29.0-jre.pom to /tmp/10153664/.tmp/gradle_download3941549425572520008bin
+Downloading https://plugins.gradle.org/m2/com/google/code/gson/gson-parent/2.8.6/gson-parent-2.8.6.pom to /tmp/10153664/.tmp/gradle_download1452297353822752935bin
+Downloading https://plugins.gradle.org/m2/org/sonatype/oss/oss-parent/7/oss-parent-7.pom to /tmp/10153664/.tmp/gradle_download16617688774090686340bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-stdlib/1.5.31/kotlin-stdlib-1.5.31.pom to /tmp/10153664/.tmp/gradle_download17360056405037810001bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-stdlib-jdk7/1.5.31/kotlin-stdlib-jdk7-1.5.31.pom to /tmp/10153664/.tmp/gradle_download5600322282168873045bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-native-utils/1.5.31/kotlin-native-utils-1.5.31.pom to /tmp/10153664/.tmp/gradle_download1938192346866490194bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-util-io/1.5.31/kotlin-util-io-1.5.31.pom to /tmp/10153664/.tmp/gradle_download5923418553216192514bin
+Downloading https://plugins.gradle.org/m2/com/google/guava/failureaccess/1.0.1/failureaccess-1.0.1.pom to /tmp/10153664/.tmp/gradle_download9600878472251544190bin
+Downloading https://plugins.gradle.org/m2/org/checkerframework/checker-qual/2.11.1/checker-qual-2.11.1.pom to /tmp/10153664/.tmp/gradle_download2510140787393249084bin
+Downloading https://plugins.gradle.org/m2/com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2.pom to /tmp/10153664/.tmp/gradle_download11489333142962071562bin
+Downloading https://plugins.gradle.org/m2/com/google/j2objc/j2objc-annotations/1.3/j2objc-annotations-1.3.pom to /tmp/10153664/.tmp/gradle_download10459152331917220287bin
+Downloading https://plugins.gradle.org/m2/com/google/guava/listenablefuture/9999.0-empty-to-avoid-conflict-with-guava/listenablefuture-9999.0-empty-to-avoid-conflict-with-guava.pom to /tmp/10153664/.tmp/gradle_download8952955563065754416bin
+Downloading https://plugins.gradle.org/m2/com/google/errorprone/error_prone_annotations/2.3.4/error_prone_annotations-2.3.4.pom to /tmp/10153664/.tmp/gradle_download9882440321905809663bin
+Downloading https://plugins.gradle.org/m2/com/google/guava/guava-parent/26.0-android/guava-parent-26.0-android.pom to /tmp/10153664/.tmp/gradle_download9093702350772555863bin
+Downloading https://plugins.gradle.org/m2/com/google/errorprone/error_prone_parent/2.3.4/error_prone_parent-2.3.4.pom to /tmp/10153664/.tmp/gradle_download528051307770366070bin
+Downloading https://plugins.gradle.org/m2/org/sonatype/oss/oss-parent/9/oss-parent-9.pom to /tmp/10153664/.tmp/gradle_download6089133108019771972bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-daemon-embeddable/1.5.31/kotlin-daemon-embeddable-1.5.31.pom to /tmp/10153664/.tmp/gradle_download1300298139900022722bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/intellij/deps/trove4j/1.0.20181211/trove4j-1.0.20181211.pom to /tmp/10153664/.tmp/gradle_download8249304272675376053bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-daemon-client/1.5.31/kotlin-daemon-client-1.5.31.pom to /tmp/10153664/.tmp/gradle_download3379590710107953509bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.5.0/kotlinx-coroutines-core-jvm-1.5.0.pom to /tmp/10153664/.tmp/gradle_download9709794161364651185bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-build-common/1.5.31/kotlin-build-common-1.5.31.pom to /tmp/10153664/.tmp/gradle_download1502258824216147428bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.5.0/kotlinx-coroutines-core-jvm-1.5.0.module to /tmp/10153664/.tmp/gradle_download17460401792411458145bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-scripting-common/1.5.31/kotlin-scripting-common-1.5.31.pom to /tmp/10153664/.tmp/gradle_download12950369539252668237bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-scripting-jvm/1.5.31/kotlin-scripting-jvm-1.5.31.pom to /tmp/10153664/.tmp/gradle_download11444999433085408011bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlinx/kotlinx-coroutines-core/1.5.0/kotlinx-coroutines-core-1.5.0.pom to /tmp/10153664/.tmp/gradle_download636053869149795528bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlinx/kotlinx-coroutines-core/1.5.0/kotlinx-coroutines-core-1.5.0.module to /tmp/10153664/.tmp/gradle_download56750589460316169bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-stdlib-common/1.5.31/kotlin-stdlib-common-1.5.31.pom to /tmp/10153664/.tmp/gradle_download3742447862825439999bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/annotations/13.0/annotations-13.0.pom to /tmp/10153664/.tmp/gradle_download17482590896661095281bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-gradle-plugin/1.5.31/kotlin-gradle-plugin-1.5.31.jar to /tmp/10153664/.tmp/gradle_download15917304534755045926bin
+Downloading https://plugins.gradle.org/m2/com/google/j2objc/j2objc-annotations/1.3/j2objc-annotations-1.3.jar to /tmp/10153664/.tmp/gradle_download15027168875297608829bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-project-model/1.5.31/kotlin-project-model-1.5.31.jar to /tmp/10153664/.tmp/gradle_download12128059041221485454bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-stdlib-jdk7/1.5.31/kotlin-stdlib-jdk7-1.5.31.jar to /tmp/10153664/.tmp/gradle_download17105967731732888921bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-klib-commonizer-api/1.5.31/kotlin-klib-commonizer-api-1.5.31.jar to /tmp/10153664/.tmp/gradle_download17557786201521067737bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-scripting-jvm/1.5.31/kotlin-scripting-jvm-1.5.31.jar to /tmp/10153664/.tmp/gradle_download16642857493046283502bin
+Downloading https://plugins.gradle.org/m2/com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2.jar to /tmp/10153664/.tmp/gradle_download12681159285898158660bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-util-klib/1.5.31/kotlin-util-klib-1.5.31.jar to /tmp/10153664/.tmp/gradle_download4562294919578863195bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-scripting-common/1.5.31/kotlin-scripting-common-1.5.31.jar to /tmp/10153664/.tmp/gradle_download8903542472919498491bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/annotations/13.0/annotations-13.0.jar to /tmp/10153664/.tmp/gradle_download5351788576060499985bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-stdlib-common/1.5.31/kotlin-stdlib-common-1.5.31.jar to /tmp/10153664/.tmp/gradle_download8435164785447933698bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-stdlib-jdk8/1.5.31/kotlin-stdlib-jdk8-1.5.31.jar to /tmp/10153664/.tmp/gradle_download11255571023283459170bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-gradle-plugin-api/1.5.31/kotlin-gradle-plugin-api-1.5.31.jar to /tmp/10153664/.tmp/gradle_download5081046191212162992bin
+Downloading https://plugins.gradle.org/m2/com/google/code/gson/gson/2.8.6/gson-2.8.6.jar to /tmp/10153664/.tmp/gradle_download10017653108661119764bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-sam-with-receiver/1.5.31/kotlin-sam-with-receiver-1.5.31.jar to /tmp/10153664/.tmp/gradle_download10453614862419066341bin
+Downloading https://plugins.gradle.org/m2/com/google/errorprone/error_prone_annotations/2.3.4/error_prone_annotations-2.3.4.jar to /tmp/10153664/.tmp/gradle_download8919520768172780230bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-tooling-metadata/1.5.31/kotlin-tooling-metadata-1.5.31.jar to /tmp/10153664/.tmp/gradle_download8724631371697984613bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-gradle-plugin-model/1.5.31/kotlin-gradle-plugin-model-1.5.31.jar to /tmp/10153664/.tmp/gradle_download4004410497195183931bin
+Downloading https://plugins.gradle.org/m2/org/checkerframework/checker-qual/2.11.1/checker-qual-2.11.1.jar to /tmp/10153664/.tmp/gradle_download11718367525992427982bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-annotation-processing-gradle/1.5.31/kotlin-annotation-processing-gradle-1.5.31.jar to /tmp/10153664/.tmp/gradle_download17286535342801356573bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-build-common/1.5.31/kotlin-build-common-1.5.31.jar to /tmp/10153664/.tmp/gradle_download18287975230812055852bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-daemon-client/1.5.31/kotlin-daemon-client-1.5.31.jar to /tmp/10153664/.tmp/gradle_download15663321478922295213bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.5.0/kotlinx-coroutines-core-jvm-1.5.0.jar to /tmp/10153664/.tmp/gradle_download17533089242739558933bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-stdlib/1.5.31/kotlin-stdlib-1.5.31.jar to /tmp/10153664/.tmp/gradle_download6149622500478173522bin
+Downloading https://plugins.gradle.org/m2/com/google/guava/guava/29.0-jre/guava-29.0-jre.jar to /tmp/10153664/.tmp/gradle_download15561455467032990483bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-android-extensions/1.5.31/kotlin-android-extensions-1.5.31.jar to /tmp/10153664/.tmp/gradle_download8191884353060142506bin
+Downloading https://plugins.gradle.org/m2/de/undercouch/gradle-download-task/4.1.1/gradle-download-task-4.1.1.jar to /tmp/10153664/.tmp/gradle_download17877189056587213382bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-daemon-embeddable/1.5.31/kotlin-daemon-embeddable-1.5.31.jar to /tmp/10153664/.tmp/gradle_download17435233681431580122bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/intellij/deps/trove4j/1.0.20181211/trove4j-1.0.20181211.jar to /tmp/10153664/.tmp/gradle_download10703077314116561551bin
+Downloading https://plugins.gradle.org/m2/com/github/gundy/semver4j/0.16.4/semver4j-0.16.4-nodeps.jar to /tmp/10153664/.tmp/gradle_download8376989154499839739bin
+Downloading https://plugins.gradle.org/m2/org/gradle/kotlin/gradle-kotlin-dsl-plugins/2.1.7/gradle-kotlin-dsl-plugins-2.1.7.jar to /tmp/10153664/.tmp/gradle_download529065809545159462bin
+Downloading https://plugins.gradle.org/m2/com/google/guava/failureaccess/1.0.1/failureaccess-1.0.1.jar to /tmp/10153664/.tmp/gradle_download16923086948442970960bin
+Downloading https://plugins.gradle.org/m2/com/google/guava/listenablefuture/9999.0-empty-to-avoid-conflict-with-guava/listenablefuture-9999.0-empty-to-avoid-conflict-with-guava.jar to /tmp/10153664/.tmp/gradle_download15675520740235393698bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-compiler-embeddable/1.5.31/kotlin-compiler-embeddable-1.5.31.jar to /tmp/10153664/.tmp/gradle_download16834325179264353990bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-native-utils/1.5.31/kotlin-native-utils-1.5.31.jar to /tmp/10153664/.tmp/gradle_download2864627369963773883bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-compiler-runner/1.5.31/kotlin-compiler-runner-1.5.31.jar to /tmp/10153664/.tmp/gradle_download14722561557220155577bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-scripting-compiler-impl-embeddable/1.5.31/kotlin-scripting-compiler-impl-embeddable-1.5.31.jar to /tmp/10153664/.tmp/gradle_download2756874041059547753bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-scripting-compiler-embeddable/1.5.31/kotlin-scripting-compiler-embeddable-1.5.31.jar to /tmp/10153664/.tmp/gradle_download14039113899720618965bin
+Downloading https://plugins.gradle.org/m2/org/jetbrains/kotlin/kotlin-util-io/1.5.31/kotlin-util-io-1.5.31.jar to /tmp/10153664/.tmp/gradle_download10869712859336978787bin
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+file or directory '/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/groovy', not found
+Caching disabled for Kotlin DSL accessors for project ':buildSrc' because:
+  Build cache is disabled
+Kotlin DSL accessors for project ':buildSrc' is not up-to-date because:
+  No history is available.
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/c46ea843f4b4d3bec1be42a7580dfc68/kotlin-stdlib-1.5.31.jar: class kotlin/ArrayIntrinsicsKt: inline fun emptyArray(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/402b41f57f4158b15ca93dcc9106b797/kotlin-gradle-plugin-1.5.31.jar: class org/jetbrains/kotlin/gradle/internal/KaptWithAndroid: inline fun androidVariantData(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/ce0513520948afbe965b4ce7616fc847/kotlin-klib-commonizer-api-1.5.31.jar: class org/jetbrains/kotlin/commonizer/util/TransitiveClosureKt: inline fun transitiveClosure(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/6b61c50ca1115af2d48757caaa28639c/kotlin-annotation-processing-gradle-1.5.31.jar: class org/jetbrains/kotlin/kapt3/base/JavacListUtilsKt: inline fun mapJList(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/917288088db5a397e0c407805bb008b3/kotlin-android-extensions-1.5.31.jar: class org/jetbrains/kotlin/android/parcel/ir/IrUtilsKt: inline fun forUntil(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/4d133c3910572b242c89859d2e21f348/kotlin-compiler-embeddable-1.5.31.jar: class org/jetbrains/kotlin/asJava/ImpreciseResolveResult: inline fun ifSure(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/c41d8ffd8ecddef911528e23a51daf32/kotlin-scripting-compiler-embeddable-1.5.31.jar: class org/jetbrains/kotlin/scripting/compiler/plugin/impl/JvmCompilationUtilKt: inline fun withMessageCollector(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/9ebd18359a461d1ab866895136a1a0e0/kotlin-scripting-compiler-impl-embeddable-1.5.31.jar: class org/jetbrains/kotlin/scripting/definitions/DefinitionsKt: inline fun runReadAction(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/b844b68977500cbf18a1e334e02324e1/kotlin-util-io-1.5.31.jar: class org/jetbrains/kotlin/konan/file/FileKt: inline fun use(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/bef7237dc34b23f3878e3ac630cf0d3a/kotlin-daemon-embeddable-1.5.31.jar: class org/jetbrains/kotlin/daemon/CompileServiceImplBase: inline fun checkedCompile(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/61fcc591da44d7fc0a98f22accc5cc6b/kotlin-build-common-1.5.31.jar: class org/jetbrains/kotlin/build/SerializationUtilsKt: inline fun deserializeFromPlainText(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/d8f8d941ff2436ec5bfce63e7384202b/kotlin-daemon-client-1.5.31.jar: class org/jetbrains/kotlin/daemon/common/DaemonParamsKt: inline fun findWithTransform(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/65fcf6ebb8890ba80991132de192ed27/kotlin-scripting-jvm-1.5.31.jar: class kotlin/script/experimental/jvm/util/JvmClasspathUtilKt: inline fun classpathFromClass(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/cda0d5f89ba0fd6f165f48162eeeddbb/kotlin-scripting-common-1.5.31.jar: class kotlin/script/experimental/api/ErrorHandlingKt: inline fun flatMapSuccess(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/c32175d8dfef870b48458d7629004ee5/kotlinx-coroutines-core-jvm-1.5.0.jar: class kotlinx/coroutines/CoroutineScopeKt: inline fun currentCoroutineContext(): compile avoidance is not supported with public inline functions
+Caching disabled for Kotlin DSL script compilation (Project/TopLevel/stage2) because:
+  Build cache is disabled
+Kotlin DSL script compilation (Project/TopLevel/stage2) is not up-to-date because:
+  No history is available.
+Selected primary task 'build' from project :
+:buildSrc:compileKotlin (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) started.
+
+> Task :buildSrc:compileKotlin
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-compiler-embeddable/1.5.31/kotlin-scripting-compiler-embeddable-1.5.31.pom, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-scripting-compiler-embeddable/1.5.31/34d7929ba2ee1e977a55b70bb34554884843dba2/kotlin-scripting-compiler-embeddable-1.5.31.pom]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-sam-with-receiver/1.5.31/kotlin-sam-with-receiver-1.5.31.pom, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-sam-with-receiver/1.5.31/9ea80b5c053b16c54498029e09ba5e8961515b73/kotlin-sam-with-receiver-1.5.31.pom]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-compiler-impl-embeddable/1.5.31/kotlin-scripting-compiler-impl-embeddable-1.5.31.pom, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-scripting-compiler-impl-embeddable/1.5.31/94e5884c314de458f61d2d28663945bd0c124c7a/kotlin-scripting-compiler-impl-embeddable-1.5.31.pom]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/1.5.31/kotlin-stdlib-1.5.31.pom, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-stdlib/1.5.31/f0765608cf114ef9fd254be913fcc39797b40cc4/kotlin-stdlib-1.5.31.pom]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-api/1.5.31/kotlin-gradle-plugin-api-1.5.31.pom, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-gradle-plugin-api/1.5.31/6e64b1c1fe6a7bf905d8acf1a1971c105ef0bf4d/kotlin-gradle-plugin-api-1.5.31.pom]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-model/1.5.31/kotlin-gradle-plugin-model-1.5.31.pom, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-gradle-plugin-model/1.5.31/b07b8707fef8f2be1f7622575f236ab2acc5c8a2/kotlin-gradle-plugin-model-1.5.31.pom]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-common/1.5.31/kotlin-scripting-common-1.5.31.pom, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-scripting-common/1.5.31/58c4b9d49c0f7ed26745749c8723761aae63af2b/kotlin-scripting-common-1.5.31.pom]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-jvm/1.5.31/kotlin-scripting-jvm-1.5.31.pom, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-scripting-jvm/1.5.31/ba641e8d2a42e8f285e8ea49544873022fbc7691/kotlin-scripting-jvm-1.5.31.pom]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core/1.5.0/kotlinx-coroutines-core-1.5.0.pom, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlinx/kotlinx-coroutines-core/1.5.0/fe3a01dd48e48a82259a6154e34cf0b33c371464/kotlinx-coroutines-core-1.5.0.pom]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core/1.5.0/kotlinx-coroutines-core-1.5.0.module, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlinx/kotlinx-coroutines-core/1.5.0/5b26bd335435dd8f42f5201201d0445aa0d355a2/kotlinx-coroutines-core-1.5.0.module]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-common/1.5.31/kotlin-stdlib-common-1.5.31.pom, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-stdlib-common/1.5.31/6f778763702ed6371c2cab78b3424ff2188a7283/kotlin-stdlib-common-1.5.31.pom]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/annotations/13.0/annotations-13.0.pom, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains/annotations/13.0/fa7d3d07cc80547e2d15bf4839d3267c637c642f/annotations-13.0.pom]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-project-model/1.5.31/kotlin-project-model-1.5.31.pom, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-project-model/1.5.31/3c3416c7462ea1e718353103818990861c6f7619/kotlin-project-model-1.5.31.pom]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-native-utils/1.5.31/kotlin-native-utils-1.5.31.pom, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-native-utils/1.5.31/536fca1b4e3e97ebcdaa9435e66ad3e573732cb2/kotlin-native-utils-1.5.31.pom]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.5.0/kotlinx-coroutines-core-jvm-1.5.0.pom, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlinx/kotlinx-coroutines-core-jvm/1.5.0/8b1169a630a788212949fe4c74043cc18be763fe/kotlinx-coroutines-core-jvm-1.5.0.pom]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.5.0/kotlinx-coroutines-core-jvm-1.5.0.module, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlinx/kotlinx-coroutines-core-jvm/1.5.0/49d762d8bf90e3eb7d5593eb554aa7e582a5af3f/kotlinx-coroutines-core-jvm-1.5.0.module]
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-script-runtime/1.5.31/kotlin-script-runtime-1.5.31.pom to /tmp/10153664/.tmp/gradle_download2539677861074742048bin
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-util-io/1.5.31/kotlin-util-io-1.5.31.pom, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-util-io/1.5.31/727343d2db850df6d09a219b47da58a93be4770a/kotlin-util-io-1.5.31.pom]
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk8/1.5.0/kotlin-stdlib-jdk8-1.5.0.pom to /tmp/10153664/.tmp/gradle_download7923431691703802570bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk7/1.5.0/kotlin-stdlib-jdk7-1.5.0.pom to /tmp/10153664/.tmp/gradle_download12367779595278367944bin
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-sam-with-receiver/1.5.31/kotlin-sam-with-receiver-1.5.31.jar, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-sam-with-receiver/1.5.31/7e18bba2cc51f31a5771e7f3f3e223950adf1d71/kotlin-sam-with-receiver-1.5.31.jar]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-model/1.5.31/kotlin-gradle-plugin-model-1.5.31.jar, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-gradle-plugin-model/1.5.31/fa84cbab82c2d4a4e2d0c77520a07c2f146b773f/kotlin-gradle-plugin-model-1.5.31.jar]
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk7/1.5.0/kotlin-stdlib-jdk7-1.5.0.jar to /tmp/10153664/.tmp/gradle_download10436702241093382883bin
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-compiler-impl-embeddable/1.5.31/kotlin-scripting-compiler-impl-embeddable-1.5.31.jar, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-scripting-compiler-impl-embeddable/1.5.31/ffa44d8b76b8820605e6b23e02ed1e12e45eaccb/kotlin-scripting-compiler-impl-embeddable-1.5.31.jar]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-jvm/1.5.31/kotlin-scripting-jvm-1.5.31.jar, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-scripting-jvm/1.5.31/d854edda951feb05387ada385f8f3462ec01a885/kotlin-scripting-jvm-1.5.31.jar]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-common/1.5.31/kotlin-stdlib-common-1.5.31.jar, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-stdlib-common/1.5.31/43331609c7de811fed085e0dfd150874b157c32/kotlin-stdlib-common-1.5.31.jar]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/1.5.31/kotlin-stdlib-1.5.31.jar, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-stdlib/1.5.31/6628d61d0f5603568e72d2d5915d2c034b4f1c55/kotlin-stdlib-1.5.31.jar]
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-script-runtime/1.5.31/kotlin-script-runtime-1.5.31.jar to /tmp/10153664/.tmp/gradle_download7676865105906190346bin
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-project-model/1.5.31/kotlin-project-model-1.5.31.jar, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-project-model/1.5.31/3a6adaf7f626af7ce62a3734975eb2154ae12e58/kotlin-project-model-1.5.31.jar]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.5.0/kotlinx-coroutines-core-jvm-1.5.0.jar, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlinx/kotlinx-coroutines-core-jvm/1.5.0/d8cebccdcddd029022aa8646a5a953ff88b13ac8/kotlinx-coroutines-core-jvm-1.5.0.jar]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-api/1.5.31/kotlin-gradle-plugin-api-1.5.31.jar, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-gradle-plugin-api/1.5.31/a06ef07ca3822b0d9c11c69296cd27765f4ed5bb/kotlin-gradle-plugin-api-1.5.31.jar]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-common/1.5.31/kotlin-scripting-common-1.5.31.jar, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-scripting-common/1.5.31/512a5997987cd210dcd5442da6aef00a5c12de90/kotlin-scripting-common-1.5.31.jar]
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk8/1.5.0/kotlin-stdlib-jdk8-1.5.0.jar to /tmp/10153664/.tmp/gradle_download17853707022384886376bin
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-util-io/1.5.31/kotlin-util-io-1.5.31.jar, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-util-io/1.5.31/61c784021068d1ddd347eeba86384dbf92c725ca/kotlin-util-io-1.5.31.jar]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-native-utils/1.5.31/kotlin-native-utils-1.5.31.jar, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-native-utils/1.5.31/3f56bbbc08afd14fbb94bcd558b861be66a3cba9/kotlin-native-utils-1.5.31.jar]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/annotations/13.0/annotations-13.0.jar, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains/annotations/13.0/919f0dfe192fb4e063e7dacadee7f8bb9a2672a9/annotations-13.0.jar]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-compiler-embeddable/1.5.31/kotlin-scripting-compiler-embeddable-1.5.31.jar, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-scripting-compiler-embeddable/1.5.31/c6fcd3b2fc5229a2544f4324061574d96b734d9f/kotlin-scripting-compiler-embeddable-1.5.31.jar]
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/dokka/dokka-gradle-plugin/1.6.10/dokka-gradle-plugin-1.6.10.pom to /tmp/10153664/.tmp/gradle_download12184416856211452317bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/dokka/dokka-base/1.6.10/dokka-base-1.6.10.pom to /tmp/10153664/.tmp/gradle_download4388310581416284998bin
+Downloading https://repo.maven.apache.org/maven2/org/json/json/20210307/json-20210307.pom to /tmp/10153664/.tmp/gradle_download8428813848550040711bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin/1.6.10/kotlin-gradle-plugin-1.6.10.pom to /tmp/10153664/.tmp/gradle_download15275782949166423451bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-reflect/1.5.31/kotlin-reflect-1.5.31.pom to /tmp/10153664/.tmp/gradle_download524832470917826631bin
+Downloading https://repo.maven.apache.org/maven2/com/github/mwiede/jsch/0.1.66/jsch-0.1.66.pom to /tmp/10153664/.tmp/gradle_download5475077000544117607bin
+Resource missing. [HTTP GET: https://repo.maven.apache.org/maven2/org/beryx/badass-runtime-plugin/1.12.5/badass-runtime-plugin-1.12.5.pom]
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-serialization/1.6.10/kotlin-serialization-1.6.10.pom to /tmp/10153664/.tmp/gradle_download4419574229208649853bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/dokka/dokka-core/1.6.10/dokka-core-1.6.10.pom to /tmp/10153664/.tmp/gradle_download4709095399274994033bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/dokka/dokka-base/1.6.10/dokka-base-1.6.10.module to /tmp/10153664/.tmp/gradle_download18411840113203901853bin
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/sonatype/oss/oss-parent/9/oss-parent-9.pom, /tmp/10153664/caches/modules-2/files-2.1/org.sonatype.oss/oss-parent/9/e5cdc4d23b86d79c436f16fed20853284e868f65/oss-parent-9.pom]
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/dokka/dokka-gradle-plugin/1.6.10/dokka-gradle-plugin-1.6.10.module to /tmp/10153664/.tmp/gradle_download18253427213239404117bin
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk8/1.5.31/kotlin-stdlib-jdk8-1.5.31.pom, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-stdlib-jdk8/1.5.31/6b1353e3e341eeddeea8e67db3d89bed51ceb920/kotlin-stdlib-jdk8-1.5.31.pom]
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/dokka/dokka-core/1.6.10/dokka-core-1.6.10.module to /tmp/10153664/.tmp/gradle_download14903759939182888648bin
+Downloading https://plugins.gradle.org/m2/org/beryx/badass-runtime-plugin/1.12.5/badass-runtime-plugin-1.12.5.pom to /tmp/10153664/.tmp/gradle_download9847285599423925663bin
+Resource missing. [HTTP GET: https://repo.maven.apache.org/maven2/org/beryx/badass-runtime-plugin/1.12.5/badass-runtime-plugin-1.12.5.module]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk7/1.5.31/kotlin-stdlib-jdk7-1.5.31.pom, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-stdlib-jdk7/1.5.31/b3f53ded7aa6f0f85abfeca4b1a721849587de2d/kotlin-stdlib-jdk7-1.5.31.pom]
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-api/1.6.10/kotlin-gradle-plugin-api-1.6.10.pom to /tmp/10153664/.tmp/gradle_download13096181072903692351bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-model/1.6.10/kotlin-gradle-plugin-model-1.6.10.pom to /tmp/10153664/.tmp/gradle_download11872135180310588741bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk8/1.6.10/kotlin-stdlib-jdk8-1.6.10.pom to /tmp/10153664/.tmp/gradle_download14010476240309797793bin
+Downloading https://repo.maven.apache.org/maven2/org/ow2/asm/asm-util/9.1/asm-util-9.1.pom to /tmp/10153664/.tmp/gradle_download17497092790561164049bin
+Downloading https://repo.maven.apache.org/maven2/org/ow2/asm/asm-tree/9.1/asm-tree-9.1.pom to /tmp/10153664/.tmp/gradle_download12224871717062701651bin
+Downloading https://repo.maven.apache.org/maven2/org/ow2/asm/asm/9.1/asm-9.1.pom to /tmp/10153664/.tmp/gradle_download7037181541867782215bin
+Downloading https://repo.maven.apache.org/maven2/org/slf4j/slf4j-api/1.7.25/slf4j-api-1.7.25.pom to /tmp/10153664/.tmp/gradle_download7150098478649089249bin
+Downloading https://repo.maven.apache.org/maven2/org/ow2/asm/asm-analysis/9.1/asm-analysis-9.1.pom to /tmp/10153664/.tmp/gradle_download5974090879254467749bin
+Downloading https://repo.maven.apache.org/maven2/org/ow2/asm/asm-commons/9.1/asm-commons-9.1.pom to /tmp/10153664/.tmp/gradle_download16046734255590371383bin
+Downloading https://repo.maven.apache.org/maven2/org/ow2/ow2/1.5/ow2-1.5.pom to /tmp/10153664/.tmp/gradle_download3042775435056069927bin
+Downloading https://repo.maven.apache.org/maven2/org/slf4j/slf4j-parent/1.7.25/slf4j-parent-1.7.25.pom to /tmp/10153664/.tmp/gradle_download9662437619550019979bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/dokka/dokka-analysis/1.6.10/dokka-analysis-1.6.10.pom to /tmp/10153664/.tmp/gradle_download15263876713086098124bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/dokka/dokka-analysis/1.6.10/dokka-analysis-1.6.10.module to /tmp/10153664/.tmp/gradle_download8134732015001489272bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/markdown/0.2.4/markdown-0.2.4.pom to /tmp/10153664/.tmp/gradle_download17952217187379369380bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/markdown/0.2.4/markdown-0.2.4.module to /tmp/10153664/.tmp/gradle_download6541916632899287934bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-project-model/1.6.10/kotlin-project-model-1.6.10.pom to /tmp/10153664/.tmp/gradle_download4003209154691075649bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-native-utils/1.6.10/kotlin-native-utils-1.6.10.pom to /tmp/10153664/.tmp/gradle_download15696039467595194755bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/1.6.10/kotlin-stdlib-1.6.10.pom to /tmp/10153664/.tmp/gradle_download5520508794572439093bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk7/1.6.10/kotlin-stdlib-jdk7-1.6.10.pom to /tmp/10153664/.tmp/gradle_download13705115248904069664bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/dokka/kotlin-analysis-intellij/1.6.10/kotlin-analysis-intellij-1.6.10.pom to /tmp/10153664/.tmp/gradle_download3722842091336064957bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/dokka/kotlin-analysis-compiler/1.6.10/kotlin-analysis-compiler-1.6.10.pom to /tmp/10153664/.tmp/gradle_download5700167261335412256bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/markdown-jvm/0.2.4/markdown-jvm-0.2.4.pom to /tmp/10153664/.tmp/gradle_download12551266261699893296bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/markdown-jvm/0.2.4/markdown-jvm-0.2.4.module to /tmp/10153664/.tmp/gradle_download16013824351748009925bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-util-io/1.6.10/kotlin-util-io-1.6.10.pom to /tmp/10153664/.tmp/gradle_download16082776894950248896bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-common/1.6.10/kotlin-stdlib-common-1.6.10.pom to /tmp/10153664/.tmp/gradle_download13237164561104933655bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin/1.6.10/kotlin-gradle-plugin-1.6.10.jar to /tmp/10153664/.tmp/gradle_download13386316250248906848bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/dokka/dokka-core/1.6.10/dokka-core-1.6.10.jar to /tmp/10153664/.tmp/gradle_download2756636004026159257bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/dokka/dokka-base/1.6.10/dokka-base-1.6.10.jar to /tmp/10153664/.tmp/gradle_download14387804144005650669bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-reflect/1.5.31/kotlin-reflect-1.5.31.jar to /tmp/10153664/.tmp/gradle_download6821032730749912851bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/dokka/dokka-analysis/1.6.10/dokka-analysis-1.6.10.jar to /tmp/10153664/.tmp/gradle_download16727426577959598969bin
+Downloading https://repo.maven.apache.org/maven2/com/github/mwiede/jsch/0.1.66/jsch-0.1.66.jar to /tmp/10153664/.tmp/gradle_download1500437689712341235bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk7/1.6.10/kotlin-stdlib-jdk7-1.6.10.jar to /tmp/10153664/.tmp/gradle_download1685731189870214144bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/1.6.10/kotlin-stdlib-1.6.10.jar to /tmp/10153664/.tmp/gradle_download14292788280758842842bin
+Downloading https://repo.maven.apache.org/maven2/org/json/json/20210307/json-20210307.jar to /tmp/10153664/.tmp/gradle_download4961572588695518387bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-serialization/1.6.10/kotlin-serialization-1.6.10.jar to /tmp/10153664/.tmp/gradle_download16610174628909525235bin
+Downloading https://plugins.gradle.org/m2/org/beryx/badass-runtime-plugin/1.12.5/badass-runtime-plugin-1.12.5.jar to /tmp/10153664/.tmp/gradle_download18203961434189469368bin
+Downloading https://repo.maven.apache.org/maven2/org/ow2/asm/asm-util/9.1/asm-util-9.1.jar to /tmp/10153664/.tmp/gradle_download18115395629092398131bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-common/1.6.10/kotlin-stdlib-common-1.6.10.jar to /tmp/10153664/.tmp/gradle_download2355133861544002457bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk8/1.6.10/kotlin-stdlib-jdk8-1.6.10.jar to /tmp/10153664/.tmp/gradle_download8684905310238737181bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/markdown-jvm/0.2.4/markdown-jvm-0.2.4.jar to /tmp/10153664/.tmp/gradle_download4945517121997038947bin
+Downloading https://repo.maven.apache.org/maven2/org/ow2/asm/asm-tree/9.1/asm-tree-9.1.jar to /tmp/10153664/.tmp/gradle_download8717486911159303903bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-project-model/1.6.10/kotlin-project-model-1.6.10.jar to /tmp/10153664/.tmp/gradle_download5514866172675385012bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-model/1.6.10/kotlin-gradle-plugin-model-1.6.10.jar to /tmp/10153664/.tmp/gradle_download109498744491960041bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/dokka/dokka-gradle-plugin/1.6.10/dokka-gradle-plugin-1.6.10.jar to /tmp/10153664/.tmp/gradle_download11111016550560399242bin
+Downloading https://repo.maven.apache.org/maven2/org/ow2/asm/asm-commons/9.1/asm-commons-9.1.jar to /tmp/10153664/.tmp/gradle_download14636181455770880426bin
+Downloading https://repo.maven.apache.org/maven2/org/ow2/asm/asm/9.1/asm-9.1.jar to /tmp/10153664/.tmp/gradle_download12711425386900311709bin
+Downloading https://repo.maven.apache.org/maven2/org/ow2/asm/asm-analysis/9.1/asm-analysis-9.1.jar to /tmp/10153664/.tmp/gradle_download5894348347569090125bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-native-utils/1.6.10/kotlin-native-utils-1.6.10.jar to /tmp/10153664/.tmp/gradle_download6988243594694763182bin
+Downloading https://repo.maven.apache.org/maven2/org/slf4j/slf4j-api/1.7.25/slf4j-api-1.7.25.jar to /tmp/10153664/.tmp/gradle_download1429671265247711166bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-api/1.6.10/kotlin-gradle-plugin-api-1.6.10.jar to /tmp/10153664/.tmp/gradle_download3991210570589077624bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-util-io/1.6.10/kotlin-util-io-1.6.10.jar to /tmp/10153664/.tmp/gradle_download3909708100849369272bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/dokka/kotlin-analysis-compiler/1.6.10/kotlin-analysis-compiler-1.6.10.jar to /tmp/10153664/.tmp/gradle_download7753598645659207470bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/dokka/kotlin-analysis-intellij/1.6.10/kotlin-analysis-intellij-1.6.10.jar to /tmp/10153664/.tmp/gradle_download6317978679517649500bin
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-compiler-embeddable/1.5.31/kotlin-compiler-embeddable-1.5.31.pom, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-compiler-embeddable/1.5.31/a72df39a64eaec506d341a6d48c81befa77e0e11/kotlin-compiler-embeddable-1.5.31.pom]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-daemon-embeddable/1.5.31/kotlin-daemon-embeddable-1.5.31.pom, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-daemon-embeddable/1.5.31/54421f83173941cf6d13323d12aa7e8ecb8066d2/kotlin-daemon-embeddable-1.5.31.pom]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/intellij/deps/trove4j/1.0.20181211/trove4j-1.0.20181211.pom, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.intellij.deps/trove4j/1.0.20181211/ad9cb821b804f05ed013ce89e3ec4d32d101bd79/trove4j-1.0.20181211.pom]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/intellij/deps/trove4j/1.0.20181211/trove4j-1.0.20181211.jar, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.intellij.deps/trove4j/1.0.20181211/216c2e14b070f334479d800987affe4054cd563f/trove4j-1.0.20181211.jar]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-daemon-embeddable/1.5.31/kotlin-daemon-embeddable-1.5.31.jar, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-daemon-embeddable/1.5.31/d19b549661e28c62781683dc7c7e34bf416974f1/kotlin-daemon-embeddable-1.5.31.jar]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-compiler-embeddable/1.5.31/kotlin-compiler-embeddable-1.5.31.jar, /tmp/10153664/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-compiler-embeddable/1.5.31/cc18c29253541dc57c25c3ef514d63c7953ae1a6/kotlin-compiler-embeddable-1.5.31.jar]
+Caching disabled for task ':buildSrc:compileKotlin' because:
+  Build cache is disabled
+Skipping task ':buildSrc:compileKotlin' as it is up-to-date.
+
+> Task :buildSrc:compileKotlin UP-TO-DATE
+:buildSrc:compileKotlin (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) completed. Took 18.83 secs.
+:buildSrc:compileJava (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) started.
+
+> Task :buildSrc:compileJava
+Caching disabled for task ':buildSrc:compileJava' because:
+  Build cache is disabled
+Skipping task ':buildSrc:compileJava' as it is up-to-date.
+
+> Task :buildSrc:compileJava UP-TO-DATE
+:buildSrc:compileJava (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) completed. Took 9.672 secs.
+:buildSrc:compileGroovy (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) started.
+
+> Task :buildSrc:compileGroovy NO-SOURCE
+file or directory '/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/groovy', not found
+Skipping task ':buildSrc:compileGroovy' as it has no source files and no previous output files.
+:buildSrc:compileGroovy (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) completed. Took 0.004 secs.
+:buildSrc:pluginDescriptors (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) started.
+
+> Task :buildSrc:pluginDescriptors UP-TO-DATE
+Caching disabled for task ':buildSrc:pluginDescriptors' because:
+  Build cache is disabled
+Skipping task ':buildSrc:pluginDescriptors' as it is up-to-date.
+:buildSrc:pluginDescriptors (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) completed. Took 0.002 secs.
+:buildSrc:processResources (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) started.
+
+> Task :buildSrc:processResources UP-TO-DATE
+Caching disabled for task ':buildSrc:processResources' because:
+  Build cache is disabled
+Skipping task ':buildSrc:processResources' as it is up-to-date.
+:buildSrc:processResources (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) completed. Took 0.012 secs.
+:buildSrc:classes (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) started.
+
+> Task :buildSrc:classes UP-TO-DATE
+Skipping task ':buildSrc:classes' as it has no actions.
+:buildSrc:classes (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) completed. Took 0.0 secs.
+:buildSrc:inspectClassesForKotlinIC (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) started.
+
+> Task :buildSrc:inspectClassesForKotlinIC UP-TO-DATE
+Caching disabled for task ':buildSrc:inspectClassesForKotlinIC' because:
+  Build cache is disabled
+Skipping task ':buildSrc:inspectClassesForKotlinIC' as it is up-to-date.
+:buildSrc:inspectClassesForKotlinIC (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) completed. Took 0.014 secs.
+:buildSrc:jar (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) started.
+
+> Task :buildSrc:jar UP-TO-DATE
+Caching disabled for task ':buildSrc:jar' because:
+  Build cache is disabled
+Skipping task ':buildSrc:jar' as it is up-to-date.
+:buildSrc:jar (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) completed. Took 0.012 secs.
+:buildSrc:assemble (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) started.
+
+> Task :buildSrc:assemble UP-TO-DATE
+Skipping task ':buildSrc:assemble' as it has no actions.
+:buildSrc:assemble (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) completed. Took 0.0 secs.
+:buildSrc:compileTestKotlin (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) started.
+
+> Task :buildSrc:compileTestKotlin UP-TO-DATE
+file or directory '/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/test/kotlin', not found
+Downloading https://repo.maven.apache.org/maven2/junit/junit/4.12/junit-4.12.pom to /tmp/10153664/.tmp/gradle_download8841174041412635690bin
+Downloading https://repo.maven.apache.org/maven2/org/hamcrest/hamcrest-all/1.3/hamcrest-all-1.3.pom to /tmp/10153664/.tmp/gradle_download12783866694230132748bin
+Downloading https://repo.maven.apache.org/maven2/org/hamcrest/hamcrest-parent/1.3/hamcrest-parent-1.3.pom to /tmp/10153664/.tmp/gradle_download10043982625401043896bin
+Downloading https://repo.maven.apache.org/maven2/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.pom to /tmp/10153664/.tmp/gradle_download376615857580599896bin
+Generating /tmp/10153664/caches/7.3/generated-gradle-jars/gradle-test-kit-7.3.jar
+Downloading https://repo.maven.apache.org/maven2/junit/junit/4.12/junit-4.12.jar to /tmp/10153664/.tmp/gradle_download14632615618235739bin
+Downloading https://repo.maven.apache.org/maven2/org/hamcrest/hamcrest-all/1.3/hamcrest-all-1.3.jar to /tmp/10153664/.tmp/gradle_download9261107350606603196bin
+Downloading https://repo.maven.apache.org/maven2/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar to /tmp/10153664/.tmp/gradle_download5237785308826781847bin
+Caching disabled for task ':buildSrc:compileTestKotlin' because:
+  Build cache is disabled
+Skipping task ':buildSrc:compileTestKotlin' as it is up-to-date.
+:buildSrc:compileTestKotlin (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) completed. Took 0.485 secs.
+:buildSrc:pluginUnderTestMetadata (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) started.
+
+> Task :buildSrc:pluginUnderTestMetadata
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/com/github/gundy/semver4j/0.16.4/semver4j-0.16.4.pom, /tmp/10153664/caches/modules-2/files-2.1/com.github.gundy/semver4j/0.16.4/ca8df209029884f283afdcd7b104fb88576a18b1/semver4j-0.16.4.pom]
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-compiler-embeddable/1.6.10/kotlin-compiler-embeddable-1.6.10.pom to /tmp/10153664/.tmp/gradle_download10803001543484934461bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-compiler-runner/1.6.10/kotlin-compiler-runner-1.6.10.pom to /tmp/10153664/.tmp/gradle_download13350425649034440979bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-klib-commonizer-api/1.6.10/kotlin-klib-commonizer-api-1.6.10.pom to /tmp/10153664/.tmp/gradle_download9500825316538573669bin
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/com/google/guava/guava/29.0-jre/guava-29.0-jre.pom, /tmp/10153664/caches/modules-2/files-2.1/com.google.guava/guava/29.0-jre/e40cdee0d70244df1e963daac53a16241aea4585/guava-29.0-jre.pom]
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-android-extensions/1.6.10/kotlin-android-extensions-1.6.10.pom to /tmp/10153664/.tmp/gradle_download11095159508906988864bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-util-klib/1.6.10/kotlin-util-klib-1.6.10.pom to /tmp/10153664/.tmp/gradle_download17548941904824159347bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-compiler-embeddable/1.6.10/kotlin-scripting-compiler-embeddable-1.6.10.pom to /tmp/10153664/.tmp/gradle_download9951605975491918860bin
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/com/google/code/gson/gson/2.8.6/gson-2.8.6.pom, /tmp/10153664/caches/modules-2/files-2.1/com.google.code.gson/gson/2.8.6/b9d7e274612598f1e8835d8bbe30baa5b970ca32/gson-2.8.6.pom]
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-compiler-impl-embeddable/1.6.10/kotlin-scripting-compiler-impl-embeddable-1.6.10.pom to /tmp/10153664/.tmp/gradle_download607972343440778209bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-tooling-metadata/1.6.10/kotlin-tooling-metadata-1.6.10.pom to /tmp/10153664/.tmp/gradle_download5767379632563550960bin
+Downloading https://repo.maven.apache.org/maven2/de/undercouch/gradle-download-task/4.1.1/gradle-download-task-4.1.1.pom to /tmp/10153664/.tmp/gradle_download7644921593161137105bin
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/com/google/guava/guava-parent/29.0-jre/guava-parent-29.0-jre.pom, /tmp/10153664/caches/modules-2/files-2.1/com.google.guava/guava-parent/29.0-jre/bd26677407fe1a325335f7c0b96ed42417198250/guava-parent-29.0-jre.pom]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/com/google/code/gson/gson-parent/2.8.6/gson-parent-2.8.6.pom, /tmp/10153664/caches/modules-2/files-2.1/com.google.code.gson/gson-parent/2.8.6/88d12a7aeaeaa9bbc773bc5f32690edf4d3ff9e6/gson-parent-2.8.6.pom]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/sonatype/oss/oss-parent/7/oss-parent-7.pom, /tmp/10153664/caches/modules-2/files-2.1/org.sonatype.oss/oss-parent/7/46b8a785b60a2767095b8611613b58577e96d4c9/oss-parent-7.pom]
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-annotation-processing-gradle/1.6.10/kotlin-annotation-processing-gradle-1.6.10.pom to /tmp/10153664/.tmp/gradle_download4686120834930978046bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-reflect/1.6.10/kotlin-reflect-1.6.10.pom to /tmp/10153664/.tmp/gradle_download7796691320427101790bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/module/jackson-module-kotlin/2.12.4/jackson-module-kotlin-2.12.4.pom to /tmp/10153664/.tmp/gradle_download12149329474532171382bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core/1.5.1/kotlinx-coroutines-core-1.5.1.pom to /tmp/10153664/.tmp/gradle_download7612294703895923637bin
+Downloading https://repo.maven.apache.org/maven2/org/jsoup/jsoup/1.13.1/jsoup-1.13.1.pom to /tmp/10153664/.tmp/gradle_download2234018319682586364bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-html-jvm/0.7.3/kotlinx-html-jvm-0.7.3.pom to /tmp/10153664/.tmp/gradle_download3926646424209700804bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core/1.5.1/kotlinx-coroutines-core-1.5.1.module to /tmp/10153664/.tmp/gradle_download4533418074571910172bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/jackson-base/2.12.4/jackson-base-2.12.4.pom to /tmp/10153664/.tmp/gradle_download18179637907929267282bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-html-jvm/0.7.3/kotlinx-html-jvm-0.7.3.module to /tmp/10153664/.tmp/gradle_download4712516327783889001bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/jackson-bom/2.12.4/jackson-bom-2.12.4.pom to /tmp/10153664/.tmp/gradle_download6967097025840672169bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/jackson-parent/2.12/jackson-parent-2.12.pom to /tmp/10153664/.tmp/gradle_download3212225066191498699bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/oss-parent/41/oss-parent-41.pom to /tmp/10153664/.tmp/gradle_download16589941322968399436bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/module/jackson-module-kotlin/2.12.4/jackson-module-kotlin-2.12.4.module to /tmp/10153664/.tmp/gradle_download11870378475214226895bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/dataformat/jackson-dataformat-xml/2.12.4/jackson-dataformat-xml-2.12.4.pom to /tmp/10153664/.tmp/gradle_download3616039124896711252bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/dataformat/jackson-dataformat-xml/2.12.4/jackson-dataformat-xml-2.12.4.module to /tmp/10153664/.tmp/gradle_download9280603754711302862bin
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/com/google/guava/failureaccess/1.0.1/failureaccess-1.0.1.pom, /tmp/10153664/caches/modules-2/files-2.1/com.google.guava/failureaccess/1.0.1/e8160e78fdaaf7088621dc1649d9dd2dfcf8d0e8/failureaccess-1.0.1.pom]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/checkerframework/checker-qual/2.11.1/checker-qual-2.11.1.pom, /tmp/10153664/caches/modules-2/files-2.1/org.checkerframework/checker-qual/2.11.1/ebc1b44da8503640e2ed42627b299272c8c72824/checker-qual-2.11.1.pom]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/com/google/errorprone/error_prone_annotations/2.3.4/error_prone_annotations-2.3.4.pom, /tmp/10153664/caches/modules-2/files-2.1/com.google.errorprone/error_prone_annotations/2.3.4/9a23fcb83bc8ed502506a8e6c648bf763dc5bcf9/error_prone_annotations-2.3.4.pom]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/com/google/j2objc/j2objc-annotations/1.3/j2objc-annotations-1.3.pom, /tmp/10153664/caches/modules-2/files-2.1/com.google.j2objc/j2objc-annotations/1.3/47e0dd93285dcc6b33181713bc7e8aed66742964/j2objc-annotations-1.3.pom]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/com/google/guava/listenablefuture/9999.0-empty-to-avoid-conflict-with-guava/listenablefuture-9999.0-empty-to-avoid-conflict-with-guava.pom, /tmp/10153664/caches/modules-2/files-2.1/com.google.guava/listenablefuture/9999.0-empty-to-avoid-conflict-with-guava/1b77ba79f9b2b7dfd4e15ea7bb0d568d5eb9cb8d/listenablefuture-9999.0-empty-to-avoid-conflict-with-guava.pom]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2.pom, /tmp/10153664/caches/modules-2/files-2.1/com.google.code.findbugs/jsr305/3.0.2/8d93cdf4d84d7e1de736df607945c6df0730a10f/jsr305-3.0.2.pom]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/com/google/guava/guava-parent/26.0-android/guava-parent-26.0-android.pom, /tmp/10153664/caches/modules-2/files-2.1/com.google.guava/guava-parent/26.0-android/a2c0df489614352b7e8e503e274bd1dee5c42a64/guava-parent-26.0-android.pom]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/com/google/errorprone/error_prone_parent/2.3.4/error_prone_parent-2.3.4.pom, /tmp/10153664/caches/modules-2/files-2.1/com.google.errorprone/error_prone_parent/2.3.4/a9b9dd42d174a5f96d6c195525877fc6d0b2028a/error_prone_parent-2.3.4.pom]
+Downloading https://repo.maven.apache.org/maven2/net/java/dev/jna/jna/5.6.0/jna-5.6.0.pom to /tmp/10153664/.tmp/gradle_download3927318748517772196bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-daemon-embeddable/1.6.10/kotlin-daemon-embeddable-1.6.10.pom to /tmp/10153664/.tmp/gradle_download8035286358167647036bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-daemon-client/1.6.10/kotlin-daemon-client-1.6.10.pom to /tmp/10153664/.tmp/gradle_download2828142008097395944bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-build-common/1.6.10/kotlin-build-common-1.6.10.pom to /tmp/10153664/.tmp/gradle_download15104676755189637450bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-common/1.6.10/kotlin-scripting-common-1.6.10.pom to /tmp/10153664/.tmp/gradle_download1624612614608642861bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-jvm/1.6.10/kotlin-scripting-jvm-1.6.10.pom to /tmp/10153664/.tmp/gradle_download16637518450681674782bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.5.1/kotlinx-coroutines-core-jvm-1.5.1.pom to /tmp/10153664/.tmp/gradle_download590779230561232027bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.5.1/kotlinx-coroutines-core-jvm-1.5.1.module to /tmp/10153664/.tmp/gradle_download3796935185067463912bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-annotations/2.12.4/jackson-annotations-2.12.4.pom to /tmp/10153664/.tmp/gradle_download9515849725353049240bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.12.4/jackson-databind-2.12.4.pom to /tmp/10153664/.tmp/gradle_download17293008643438984211bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-annotations/2.12.4/jackson-annotations-2.12.4.module to /tmp/10153664/.tmp/gradle_download18258767715205947236bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.12.4/jackson-databind-2.12.4.module to /tmp/10153664/.tmp/gradle_download10253299144440571227bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-core/2.12.4/jackson-core-2.12.4.pom to /tmp/10153664/.tmp/gradle_download207948692065798458bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/module/jackson-module-jaxb-annotations/2.12.4/jackson-module-jaxb-annotations-2.12.4.pom to /tmp/10153664/.tmp/gradle_download1244764141228351928bin
+Downloading https://repo.maven.apache.org/maven2/org/codehaus/woodstox/stax2-api/4.2.1/stax2-api-4.2.1.pom to /tmp/10153664/.tmp/gradle_download16346522250851465796bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/woodstox/woodstox-core/6.2.4/woodstox-core-6.2.4.pom to /tmp/10153664/.tmp/gradle_download11737026025485459516bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/oss-parent/38/oss-parent-38.pom to /tmp/10153664/.tmp/gradle_download7738270535927907443bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-core/2.12.4/jackson-core-2.12.4.module to /tmp/10153664/.tmp/gradle_download3334924257539879514bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/module/jackson-modules-base/2.12.4/jackson-modules-base-2.12.4.pom to /tmp/10153664/.tmp/gradle_download13560388100862405042bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/module/jackson-module-jaxb-annotations/2.12.4/jackson-module-jaxb-annotations-2.12.4.module to /tmp/10153664/.tmp/gradle_download1133393886679531655bin
+Downloading https://repo.maven.apache.org/maven2/jakarta/activation/jakarta.activation-api/1.2.1/jakarta.activation-api-1.2.1.pom to /tmp/10153664/.tmp/gradle_download10407024871045188685bin
+Downloading https://repo.maven.apache.org/maven2/com/sun/activation/all/1.2.1/all-1.2.1.pom to /tmp/10153664/.tmp/gradle_download7149200549059151106bin
+Downloading https://repo.maven.apache.org/maven2/jakarta/xml/bind/jakarta.xml.bind-api/2.3.2/jakarta.xml.bind-api-2.3.2.pom to /tmp/10153664/.tmp/gradle_download8818031471087717081bin
+Downloading https://repo.maven.apache.org/maven2/org/eclipse/ee4j/project/1.0.2/project-1.0.2.pom to /tmp/10153664/.tmp/gradle_download1788218518100450149bin
+Downloading https://repo.maven.apache.org/maven2/jakarta/xml/bind/jakarta.xml.bind-api-parent/2.3.2/jakarta.xml.bind-api-parent-2.3.2.pom to /tmp/10153664/.tmp/gradle_download2074694610668875982bin
+Downloading https://repo.maven.apache.org/maven2/org/eclipse/ee4j/project/1.0.5/project-1.0.5.pom to /tmp/10153664/.tmp/gradle_download13775655855833947189bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-compiler-impl-embeddable/1.6.10/kotlin-scripting-compiler-impl-embeddable-1.6.10.jar to /tmp/10153664/.tmp/gradle_download194599428370738288bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-tooling-metadata/1.6.10/kotlin-tooling-metadata-1.6.10.jar to /tmp/10153664/.tmp/gradle_download13453242648030599643bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-daemon-client/1.6.10/kotlin-daemon-client-1.6.10.jar to /tmp/10153664/.tmp/gradle_download1148475123193961191bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-compiler-embeddable/1.6.10/kotlin-compiler-embeddable-1.6.10.jar to /tmp/10153664/.tmp/gradle_download1838387304019613252bin
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/com/github/gundy/semver4j/0.16.4/semver4j-0.16.4-nodeps.jar, /tmp/10153664/caches/modules-2/files-2.1/com.github.gundy/semver4j/0.16.4/273cc1869ddf7ebbac8176402e29f41b1c83d7df/semver4j-0.16.4-nodeps.jar]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/com/google/code/gson/gson/2.8.6/gson-2.8.6.jar, /tmp/10153664/caches/modules-2/files-2.1/com.google.code.gson/gson/2.8.6/9180733b7df8542621dc12e21e87557e8c99b8cb/gson-2.8.6.jar]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/de/undercouch/gradle-download-task/4.1.1/gradle-download-task-4.1.1.jar, /tmp/10153664/caches/modules-2/files-2.1/de.undercouch/gradle-download-task/4.1.1/7a57e30e285bd972cd73e91c0ad16155e29b18ee/gradle-download-task-4.1.1.jar]
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-klib-commonizer-api/1.6.10/kotlin-klib-commonizer-api-1.6.10.jar to /tmp/10153664/.tmp/gradle_download3058515325430869039bin
+Cache entries evicted. In-memory cache of /home/users/lz280/IdeaProjects/OSPREY3/.gradle/7.3/checksums/sha1-checksums.bin: Size{350} MaxSize{400}, CacheStats{hitCount=124, missCount=350, loadSuccessCount=351, loadExceptionCount=0, totalLoadTime=534189949, evictionCount=1} 
+Performance may suffer from in-memory cache misses. Increase max heap size of Gradle build process to reduce cache misses.
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-compiler-embeddable/1.6.10/kotlin-scripting-compiler-embeddable-1.6.10.jar to /tmp/10153664/.tmp/gradle_download10761499773891412236bin
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/com/google/guava/guava/29.0-jre/guava-29.0-jre.jar, /tmp/10153664/caches/modules-2/files-2.1/com.google.guava/guava/29.0-jre/801142b4c3d0f0770dd29abea50906cacfddd447/guava-29.0-jre.jar]
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-compiler-runner/1.6.10/kotlin-compiler-runner-1.6.10.jar to /tmp/10153664/.tmp/gradle_download9237294548414411092bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.12.4/jackson-databind-2.12.4.jar to /tmp/10153664/.tmp/gradle_download1604232772273634047bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-html-jvm/0.7.3/kotlinx-html-jvm-0.7.3.jar to /tmp/10153664/.tmp/gradle_download8027811548198191621bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.5.1/kotlinx-coroutines-core-jvm-1.5.1.jar to /tmp/10153664/.tmp/gradle_download685721710269623314bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/module/jackson-module-kotlin/2.12.4/jackson-module-kotlin-2.12.4.jar to /tmp/10153664/.tmp/gradle_download4485412396746757103bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-reflect/1.6.10/kotlin-reflect-1.6.10.jar to /tmp/10153664/.tmp/gradle_download13420561658558539946bin
+Downloading https://repo.maven.apache.org/maven2/org/jsoup/jsoup/1.13.1/jsoup-1.13.1.jar to /tmp/10153664/.tmp/gradle_download2261190125032064656bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-annotation-processing-gradle/1.6.10/kotlin-annotation-processing-gradle-1.6.10.jar to /tmp/10153664/.tmp/gradle_download7841721502695832297bin
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/com/google/guava/failureaccess/1.0.1/failureaccess-1.0.1.jar, /tmp/10153664/caches/modules-2/files-2.1/com.google.guava/failureaccess/1.0.1/1dcf1de382a0bf95a3d8b0849546c88bac1292c9/failureaccess-1.0.1.jar]
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/dataformat/jackson-dataformat-xml/2.12.4/jackson-dataformat-xml-2.12.4.jar to /tmp/10153664/.tmp/gradle_download9185162049956508081bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-annotations/2.12.4/jackson-annotations-2.12.4.jar to /tmp/10153664/.tmp/gradle_download6101029524036974676bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/module/jackson-module-jaxb-annotations/2.12.4/jackson-module-jaxb-annotations-2.12.4.jar to /tmp/10153664/.tmp/gradle_download14278095899676534651bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-core/2.12.4/jackson-core-2.12.4.jar to /tmp/10153664/.tmp/gradle_download841273211669924625bin
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/com/google/j2objc/j2objc-annotations/1.3/j2objc-annotations-1.3.jar, /tmp/10153664/caches/modules-2/files-2.1/com.google.j2objc/j2objc-annotations/1.3/ba035118bc8bac37d7eff77700720999acd9986d/j2objc-annotations-1.3.jar]
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-util-klib/1.6.10/kotlin-util-klib-1.6.10.jar to /tmp/10153664/.tmp/gradle_download4134995291862437581bin
+Downloading https://repo.maven.apache.org/maven2/net/java/dev/jna/jna/5.6.0/jna-5.6.0.jar to /tmp/10153664/.tmp/gradle_download2704254141199822149bin
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/com/google/errorprone/error_prone_annotations/2.3.4/error_prone_annotations-2.3.4.jar, /tmp/10153664/caches/modules-2/files-2.1/com.google.errorprone/error_prone_annotations/2.3.4/dac170e4594de319655ffb62f41cbd6dbb5e601e/error_prone_annotations-2.3.4.jar]
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-android-extensions/1.6.10/kotlin-android-extensions-1.6.10.jar to /tmp/10153664/.tmp/gradle_download8777464794226281017bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-daemon-embeddable/1.6.10/kotlin-daemon-embeddable-1.6.10.jar to /tmp/10153664/.tmp/gradle_download17768874901102220542bin
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/com/google/guava/listenablefuture/9999.0-empty-to-avoid-conflict-with-guava/listenablefuture-9999.0-empty-to-avoid-conflict-with-guava.jar, /tmp/10153664/caches/modules-2/files-2.1/com.google.guava/listenablefuture/9999.0-empty-to-avoid-conflict-with-guava/b421526c5f297295adef1c886e5246c39d4ac629/listenablefuture-9999.0-empty-to-avoid-conflict-with-guava.jar]
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2.jar, /tmp/10153664/caches/modules-2/files-2.1/com.google.code.findbugs/jsr305/3.0.2/25ea2e8b0c338a877313bd4672d3fe056ea78f0d/jsr305-3.0.2.jar]
+Downloading https://repo.maven.apache.org/maven2/org/codehaus/woodstox/stax2-api/4.2.1/stax2-api-4.2.1.jar to /tmp/10153664/.tmp/gradle_download13707141912697048218bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-build-common/1.6.10/kotlin-build-common-1.6.10.jar to /tmp/10153664/.tmp/gradle_download13795490606728639387bin
+Downloading https://repo.maven.apache.org/maven2/jakarta/activation/jakarta.activation-api/1.2.1/jakarta.activation-api-1.2.1.jar to /tmp/10153664/.tmp/gradle_download6398528180493526475bin
+Downloading https://repo.maven.apache.org/maven2/jakarta/xml/bind/jakarta.xml.bind-api/2.3.2/jakarta.xml.bind-api-2.3.2.jar to /tmp/10153664/.tmp/gradle_download14605728655667857833bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-jvm/1.6.10/kotlin-scripting-jvm-1.6.10.jar to /tmp/10153664/.tmp/gradle_download11851693702202916443bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/woodstox/woodstox-core/6.2.4/woodstox-core-6.2.4.jar to /tmp/10153664/.tmp/gradle_download13997500826628787470bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-common/1.6.10/kotlin-scripting-common-1.6.10.jar to /tmp/10153664/.tmp/gradle_download1468309070704592482bin
+Found locally available resource with matching checksum: [https://repo.maven.apache.org/maven2/org/checkerframework/checker-qual/2.11.1/checker-qual-2.11.1.jar, /tmp/10153664/caches/modules-2/files-2.1/org.checkerframework/checker-qual/2.11.1/8c43bf8f99b841d23aadda6044329dad9b63c185/checker-qual-2.11.1.jar]
+Caching disabled for task ':buildSrc:pluginUnderTestMetadata' because:
+  Build cache is disabled
+Task ':buildSrc:pluginUnderTestMetadata' is not up-to-date because:
+  Value of input property 'paths' has changed for task ':buildSrc:pluginUnderTestMetadata'
+:buildSrc:pluginUnderTestMetadata (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) completed. Took 6.569 secs.
+:buildSrc:compileTestJava (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) started.
+
+> Task :buildSrc:compileTestJava UP-TO-DATE
+Caching disabled for task ':buildSrc:compileTestJava' because:
+  Build cache is disabled
+Skipping task ':buildSrc:compileTestJava' as it is up-to-date.
+:buildSrc:compileTestJava (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) completed. Took 0.059 secs.
+:buildSrc:compileTestGroovy (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) started.
+
+> Task :buildSrc:compileTestGroovy NO-SOURCE
+file or directory '/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/test/groovy', not found
+Skipping task ':buildSrc:compileTestGroovy' as it has no source files and no previous output files.
+:buildSrc:compileTestGroovy (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) completed. Took 0.001 secs.
+:buildSrc:processTestResources (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) started.
+
+> Task :buildSrc:processTestResources NO-SOURCE
+file or directory '/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/test/resources', not found
+Skipping task ':buildSrc:processTestResources' as it has no source files and no previous output files.
+:buildSrc:processTestResources (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) completed. Took 0.0 secs.
+:buildSrc:testClasses (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) started.
+
+> Task :buildSrc:testClasses UP-TO-DATE
+Skipping task ':buildSrc:testClasses' as it has no actions.
+:buildSrc:testClasses (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) completed. Took 0.0 secs.
+:buildSrc:test (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) started.
+
+> Task :buildSrc:test UP-TO-DATE
+Downloading https://repo.maven.apache.org/maven2/junit/junit/4.13.1/junit-4.13.1.pom to /tmp/10153664/.tmp/gradle_download13732418485338166014bin
+Downloading https://repo.maven.apache.org/maven2/junit/junit/4.13.1/junit-4.13.1.jar to /tmp/10153664/.tmp/gradle_download14931691094946690405bin
+Caching disabled for task ':buildSrc:test' because:
+  Build cache is disabled
+Skipping task ':buildSrc:test' as it is up-to-date.
+:buildSrc:test (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) completed. Took 0.323 secs.
+:buildSrc:validatePlugins (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) started.
+
+> Task :buildSrc:validatePlugins UP-TO-DATE
+Caching disabled for task ':buildSrc:validatePlugins' because:
+  Build cache is disabled
+Skipping task ':buildSrc:validatePlugins' as it is up-to-date.
+:buildSrc:validatePlugins (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) completed. Took 0.012 secs.
+:buildSrc:check (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) started.
+
+> Task :buildSrc:check UP-TO-DATE
+Skipping task ':buildSrc:check' as it has no actions.
+:buildSrc:check (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) completed. Took 0.0 secs.
+:buildSrc:build (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) started.
+
+> Task :buildSrc:build UP-TO-DATE
+Skipping task ':buildSrc:build' as it has no actions.
+:buildSrc:build (Thread[Execution worker for ':buildSrc' Thread 2,5,main]) completed. Took 0.0 secs.
+
+> Configure project :
+Evaluating root project 'osprey' using build file '/home/users/lz280/IdeaProjects/OSPREY3/build.gradle.kts'.
+Caching disabled for Kotlin DSL plugin accessors for classpath '6a4ccf5d73db8d696d4fe9a6208c49b7' because:
+  Build cache is disabled
+Kotlin DSL plugin accessors for classpath '6a4ccf5d73db8d696d4fe9a6208c49b7' is not up-to-date because:
+  No history is available.
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/9ceac8e5c9f891669b453b410b46be16/kotlin-gradle-plugin-1.6.10.jar: class org/jetbrains/kotlin/gradle/internal/KaptWithAndroid: inline fun androidVariantData(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/7d48bde5781eae3fe1f980c5e6e924eb/kotlin-serialization-1.6.10.jar: class org/jetbrains/kotlinx/serialization/compiler/resolve/SearchUtilsKt: inline fun findAnnotationConstantValue(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/63712d6c03662ede7d3e4b76eafbad0e/dokka-gradle-plugin-1.6.10.jar: class org/jetbrains/dokka/gradle/AbstractDokkaTask: inline fun pluginConfiguration(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/173458a979078b9c3381df994b5726e3/dokka-base-1.6.10.jar: class org/jetbrains/dokka/base/templating/JsonMapperForPluginsKt: inline fun parseJson(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/c4cf78b7d68e958153366d74aab10d06/dokka-core-1.6.10.jar: class org/jetbrains/dokka/pages/RenderingStrategy$Companion: inline fun invoke(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/aee336c9298467d4bd6acab50799263a/kotlin-klib-commonizer-api-1.6.10.jar: class org/jetbrains/kotlin/commonizer/util/TransitiveClosureKt: inline fun transitiveClosure(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/fafcc25beeb3055ef1182ced7aba5158/kotlin-annotation-processing-gradle-1.6.10.jar: class org/jetbrains/kotlin/kapt3/base/JavacListUtilsKt: inline fun mapJList(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/d66c8de669e2563697c526c98e1616ea/kotlin-android-extensions-1.6.10.jar: class org/jetbrains/kotlin/android/parcel/ir/IrUtilsKt: inline fun forUntil(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/cf1c08c25cedd8bcdb0926adea72a164/kotlin-compiler-embeddable-1.6.10.jar: class org/jetbrains/kotlin/asJava/ImpreciseResolveResult: inline fun ifSure(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/1862f14816061e4ffb656ef7f339758f/kotlin-scripting-compiler-embeddable-1.6.10.jar: class org/jetbrains/kotlin/scripting/compiler/plugin/impl/JvmCompilationUtilKt: inline fun withMessageCollector(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/9c1b8faf32a7075e12a82c66ea5b9182/kotlin-scripting-compiler-impl-embeddable-1.6.10.jar: class org/jetbrains/kotlin/scripting/definitions/DefinitionsKt: inline fun runReadAction(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/b741e1eb58465c52ea753b32f204788e/kotlinx-html-jvm-0.7.3.jar: class kotlinx/html/Gen_tags_hKt: inline fun body(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/fe3ab80ef45df84026751954aad4d1b6/kotlin-daemon-client-1.6.10.jar: class org/jetbrains/kotlin/daemon/common/DaemonParamsKt: inline fun findWithTransform(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/37fc492e38cfb977bd8a578a76bc06db/kotlinx-coroutines-core-jvm-1.5.1.jar: class kotlinx/coroutines/CoroutineExceptionHandlerKt: inline fun CoroutineExceptionHandler(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/9b41ab1ed79d232ff59d6508ef5114aa/jackson-module-kotlin-2.12.4.jar: class com/fasterxml/jackson/module/kotlin/ExtensionsKt: inline fun addDeserializer(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/c317974cf73128f08e31562307010947/kotlin-reflect-1.6.10.jar: class kotlin/reflect/full/KAnnotatedElements: inline fun findAnnotation(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/2813b5349bd083f4b5a2b0712c97abfa/markdown-jvm-0.2.4.jar: class org/intellij/markdown/lexer/Compat: inline fun assert(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/e10a6ee46f2d68baeb6c5e5ad0210377/kotlin-stdlib-1.6.10.jar: class kotlin/ArrayIntrinsicsKt: inline fun emptyArray(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/675b24c8c3e4f6ee41fd0e1508fd0ad4/kotlin-util-io-1.6.10.jar: class org/jetbrains/kotlin/konan/file/FileKt: inline fun use(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/068727224185dbaf6de1ff10e29983d2/kotlin-daemon-embeddable-1.6.10.jar: class org/jetbrains/kotlin/daemon/CompileServiceImplBase: inline fun checkedCompile(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/a48d923bb14c3e6eff1077f51f7321d6/kotlin-build-common-1.6.10.jar: class org/jetbrains/kotlin/build/SerializationUtilsKt: inline fun deserializeFromPlainText(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/24db87434f85e4b13ddb0f9d58af4586/kotlin-scripting-jvm-1.6.10.jar: class kotlin/script/experimental/jvm/util/JvmClasspathUtilKt: inline fun classpathFromClass(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/28c84b281c664df870baf8d887e38db8/kotlin-scripting-common-1.6.10.jar: class kotlin/script/experimental/api/ErrorHandlingKt: inline fun flatMapSuccess(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/6c9a4397f9c18c05707f714b6b0308f9/kotlin-analysis-intellij-1.6.10.jar: class com/intellij/codeWithMe/ClientId$Companion: inline fun withClientId(): compile avoidance is not supported with public inline functions
+Cannot use Kotlin build script compile avoidance with /tmp/10153664/caches/jars-9/547365b3ffec0c8571b6a90a000b6286/kotlin-analysis-compiler-1.6.10.jar: class org/jetbrains/kotlin/asJava/ImpreciseResolveResult: inline fun ifSure(): compile avoidance is not supported with public inline functions
+Caching disabled for Kotlin DSL script compilation (Project/TopLevel/stage1) because:
+  Build cache is disabled
+Kotlin DSL script compilation (Project/TopLevel/stage1) is not up-to-date because:
+  No history is available.
+w: Runtime JAR files in the classpath should have the same version. These files were found in the classpath:
+    /tmp/10153664/wrapper/dists/gradle-7.3-bin/ddwl0k7mt9g6ak16i1m905vyv/gradle-7.3/lib/kotlin-stdlib-1.5.31.jar (version 1.5)
+    /tmp/10153664/wrapper/dists/gradle-7.3-bin/ddwl0k7mt9g6ak16i1m905vyv/gradle-7.3/lib/kotlin-stdlib-common-1.5.31.jar (version 1.5)
+    /tmp/10153664/wrapper/dists/gradle-7.3-bin/ddwl0k7mt9g6ak16i1m905vyv/gradle-7.3/lib/kotlin-stdlib-jdk7-1.5.31.jar (version 1.5)
+    /tmp/10153664/wrapper/dists/gradle-7.3-bin/ddwl0k7mt9g6ak16i1m905vyv/gradle-7.3/lib/kotlin-stdlib-jdk8-1.5.31.jar (version 1.5)
+    /tmp/10153664/wrapper/dists/gradle-7.3-bin/ddwl0k7mt9g6ak16i1m905vyv/gradle-7.3/lib/kotlin-reflect-1.5.31.jar (version 1.5)
+    /tmp/10153664/caches/jars-9/70c7fb304be68f86f67bf97df5d9444b/kotlin-stdlib-jdk8-1.6.10.jar (version 1.6)
+    /tmp/10153664/caches/jars-9/c317974cf73128f08e31562307010947/kotlin-reflect-1.6.10.jar (version 1.6)
+    /tmp/10153664/caches/jars-9/f0beb0fe10b567b0dc1e4177089a185d/kotlin-stdlib-jdk7-1.6.10.jar (version 1.6)
+    /tmp/10153664/caches/jars-9/e10a6ee46f2d68baeb6c5e5ad0210377/kotlin-stdlib-1.6.10.jar (version 1.6)
+    /tmp/10153664/caches/jars-9/f5bb9acaa3ce19bd85c135d58b841f96/kotlin-stdlib-common-1.6.10.jar (version 1.6)
+w: Consider providing an explicit dependency on kotlin-reflect 1.6 to prevent strange errors
+w: Some runtime JAR files in the classpath have an incompatible version. Consider removing them from the classpath
+w: Some JAR files in the classpath have the Kotlin Runtime library bundled into them. This may cause difficult to debug problems if there's a different version of the Kotlin Runtime library in the classpath. Consider removing these libraries from the classpath
+w: /tmp/10153664/caches/jars-9/6c9a4397f9c18c05707f714b6b0308f9/kotlin-analysis-intellij-1.6.10.jar: Library has Kotlin runtime bundled into it
+w: /tmp/10153664/caches/jars-9/547365b3ffec0c8571b6a90a000b6286/kotlin-analysis-compiler-1.6.10.jar: Library has Kotlin runtime bundled into it
+Downloading https://plugins.gradle.org/m2/org/openjfx/javafxplugin/org.openjfx.javafxplugin.gradle.plugin/0.0.7/org.openjfx.javafxplugin.gradle.plugin-0.0.7.pom to /tmp/10153664/.tmp/gradle_download15415132766772054561bin
+Resource missing. [HTTP HEAD: https://plugins.gradle.org/m2/org/openjfx/javafxplugin/org.openjfx.javafxplugin.gradle.plugin/0.0.7/org.openjfx.javafxplugin.gradle.plugin-0.0.7.jar]
+Downloading https://plugins.gradle.org/m2/org/openjfx/javafx-plugin/0.0.7/javafx-plugin-0.0.7.pom to /tmp/10153664/.tmp/gradle_download1008486291366795332bin
+Downloading https://plugins.gradle.org/m2/org/javamodularity/moduleplugin/1.4.0/moduleplugin-1.4.0.pom to /tmp/10153664/.tmp/gradle_download9210061503532251800bin
+Downloading https://plugins.gradle.org/m2/com/google/gradle/osdetector-gradle-plugin/1.6.1/osdetector-gradle-plugin-1.6.1.pom to /tmp/10153664/.tmp/gradle_download6423792594598870001bin
+Downloading https://plugins.gradle.org/m2/kr/motd/maven/os-maven-plugin/1.6.0/os-maven-plugin-1.6.0.pom to /tmp/10153664/.tmp/gradle_download15224197496460596092bin
+Downloading https://plugins.gradle.org/m2/com/github/javaparser/javaparser-symbol-solver-core/3.6.23/javaparser-symbol-solver-core-3.6.23.pom to /tmp/10153664/.tmp/gradle_download2921896641473824145bin
+Downloading https://plugins.gradle.org/m2/com/github/javaparser/javaparser-parent/3.6.23/javaparser-parent-3.6.23.pom to /tmp/10153664/.tmp/gradle_download8443132136730362614bin
+Downloading https://plugins.gradle.org/m2/com/github/javaparser/javaparser-symbol-solver-logic/3.6.23/javaparser-symbol-solver-logic-3.6.23.pom to /tmp/10153664/.tmp/gradle_download813301218460966488bin
+Downloading https://plugins.gradle.org/m2/com/github/javaparser/javaparser-symbol-solver-model/3.6.23/javaparser-symbol-solver-model-3.6.23.pom to /tmp/10153664/.tmp/gradle_download2399334147154306585bin
+Downloading https://plugins.gradle.org/m2/com/google/guava/guava/23.4-jre/guava-23.4-jre.pom to /tmp/10153664/.tmp/gradle_download8409343990255685792bin
+Downloading https://plugins.gradle.org/m2/org/javassist/javassist/3.23.1-GA/javassist-3.23.1-GA.pom to /tmp/10153664/.tmp/gradle_download4063055313034910800bin
+Downloading https://plugins.gradle.org/m2/com/google/guava/guava-parent/23.4-jre/guava-parent-23.4-jre.pom to /tmp/10153664/.tmp/gradle_download16756077425879784147bin
+Downloading https://plugins.gradle.org/m2/com/github/javaparser/javaparser-core/3.6.23/javaparser-core-3.6.23.pom to /tmp/10153664/.tmp/gradle_download4422054491724535917bin
+Downloading https://plugins.gradle.org/m2/org/codehaus/mojo/animal-sniffer-annotations/1.14/animal-sniffer-annotations-1.14.pom to /tmp/10153664/.tmp/gradle_download6029259035366663029bin
+Downloading https://plugins.gradle.org/m2/com/google/errorprone/error_prone_annotations/2.0.18/error_prone_annotations-2.0.18.pom to /tmp/10153664/.tmp/gradle_download8625680645411720436bin
+Downloading https://plugins.gradle.org/m2/com/google/j2objc/j2objc-annotations/1.1/j2objc-annotations-1.1.pom to /tmp/10153664/.tmp/gradle_download8367699646290151428bin
+Downloading https://plugins.gradle.org/m2/org/codehaus/mojo/animal-sniffer-parent/1.14/animal-sniffer-parent-1.14.pom to /tmp/10153664/.tmp/gradle_download2109246772726019348bin
+Downloading https://plugins.gradle.org/m2/com/google/errorprone/error_prone_parent/2.0.18/error_prone_parent-2.0.18.pom to /tmp/10153664/.tmp/gradle_download10095147006196532949bin
+Downloading https://plugins.gradle.org/m2/org/codehaus/mojo/mojo-parent/34/mojo-parent-34.pom to /tmp/10153664/.tmp/gradle_download11629390092212376589bin
+Downloading https://plugins.gradle.org/m2/org/codehaus/codehaus-parent/4/codehaus-parent-4.pom to /tmp/10153664/.tmp/gradle_download11196452215712220692bin
+Downloading https://plugins.gradle.org/m2/org/openjfx/javafx-plugin/0.0.7/javafx-plugin-0.0.7.jar to /tmp/10153664/.tmp/gradle_download15214570001835308770bin
+Downloading https://plugins.gradle.org/m2/kr/motd/maven/os-maven-plugin/1.6.0/os-maven-plugin-1.6.0.jar to /tmp/10153664/.tmp/gradle_download2320784815919363243bin
+Downloading https://plugins.gradle.org/m2/com/google/gradle/osdetector-gradle-plugin/1.6.1/osdetector-gradle-plugin-1.6.1.jar to /tmp/10153664/.tmp/gradle_download4426569013420148346bin
+Downloading https://plugins.gradle.org/m2/org/javassist/javassist/3.23.1-GA/javassist-3.23.1-GA.jar to /tmp/10153664/.tmp/gradle_download10306031513907310082bin
+Downloading https://plugins.gradle.org/m2/com/github/javaparser/javaparser-symbol-solver-core/3.6.23/javaparser-symbol-solver-core-3.6.23.jar to /tmp/10153664/.tmp/gradle_download17979509973215506195bin
+Downloading https://plugins.gradle.org/m2/org/javamodularity/moduleplugin/1.4.0/moduleplugin-1.4.0.jar to /tmp/10153664/.tmp/gradle_download3685007392970121935bin
+Downloading https://plugins.gradle.org/m2/com/google/j2objc/j2objc-annotations/1.1/j2objc-annotations-1.1.jar to /tmp/10153664/.tmp/gradle_download15479373668249360814bin
+Downloading https://plugins.gradle.org/m2/com/google/errorprone/error_prone_annotations/2.0.18/error_prone_annotations-2.0.18.jar to /tmp/10153664/.tmp/gradle_download5545968079034942435bin
+Downloading https://plugins.gradle.org/m2/com/github/javaparser/javaparser-symbol-solver-logic/3.6.23/javaparser-symbol-solver-logic-3.6.23.jar to /tmp/10153664/.tmp/gradle_download11613251394546788475bin
+Downloading https://plugins.gradle.org/m2/com/google/guava/guava/23.4-jre/guava-23.4-jre.jar to /tmp/10153664/.tmp/gradle_download10631136536303080748bin
+Cache entries evicted. In-memory cache of /home/users/lz280/IdeaProjects/OSPREY3/.gradle/7.3/checksums/sha1-checksums.bin: Size{392} MaxSize{400}, CacheStats{hitCount=145, missCount=432, loadSuccessCount=433, loadExceptionCount=0, totalLoadTime=1565904257, evictionCount=41} 
+Performance may suffer from in-memory cache misses. Increase max heap size of Gradle build process to reduce cache misses.
+Downloading https://plugins.gradle.org/m2/org/codehaus/mojo/animal-sniffer-annotations/1.14/animal-sniffer-annotations-1.14.jar to /tmp/10153664/.tmp/gradle_download12397643855995594622bin
+Downloading https://plugins.gradle.org/m2/com/github/javaparser/javaparser-symbol-solver-model/3.6.23/javaparser-symbol-solver-model-3.6.23.jar to /tmp/10153664/.tmp/gradle_download578474343435080356bin
+Downloading https://plugins.gradle.org/m2/com/github/javaparser/javaparser-core/3.6.23/javaparser-core-3.6.23.jar to /tmp/10153664/.tmp/gradle_download10344392223548878339bin
+kotlin scripting plugin: created the scripting discovery configuration: kotlinScriptDef
+kotlin scripting plugin: created the scripting discovery configuration: testKotlinScriptDef
+------------------------------------------------------------------------
+Detecting the operating system and CPU architecture
+------------------------------------------------------------------------
+os.detected.name=linux
+os.detected.arch=x86_64
+os.detected.version=5.15
+os.detected.version.major=5
+os.detected.version.minor=15
+os.detected.release=ubuntu
+os.detected.release.version=22.04
+os.detected.release.like.ubuntu=true
+os.detected.release.like.debian=true
+os.detected.classifier=linux-x86_64
+Caching disabled for Kotlin DSL accessors for root project 'osprey' because:
+  Build cache is disabled
+Kotlin DSL accessors for root project 'osprey' is not up-to-date because:
+  No history is available.
+Caching disabled for Kotlin DSL script compilation (Project/TopLevel/stage2) because:
+  Build cache is disabled
+Kotlin DSL script compilation (Project/TopLevel/stage2) is not up-to-date because:
+  No history is available.
+w: Runtime JAR files in the classpath should have the same version. These files were found in the classpath:
+    /tmp/10153664/wrapper/dists/gradle-7.3-bin/ddwl0k7mt9g6ak16i1m905vyv/gradle-7.3/lib/kotlin-stdlib-1.5.31.jar (version 1.5)
+    /tmp/10153664/wrapper/dists/gradle-7.3-bin/ddwl0k7mt9g6ak16i1m905vyv/gradle-7.3/lib/kotlin-stdlib-common-1.5.31.jar (version 1.5)
+    /tmp/10153664/wrapper/dists/gradle-7.3-bin/ddwl0k7mt9g6ak16i1m905vyv/gradle-7.3/lib/kotlin-stdlib-jdk7-1.5.31.jar (version 1.5)
+    /tmp/10153664/wrapper/dists/gradle-7.3-bin/ddwl0k7mt9g6ak16i1m905vyv/gradle-7.3/lib/kotlin-stdlib-jdk8-1.5.31.jar (version 1.5)
+    /tmp/10153664/wrapper/dists/gradle-7.3-bin/ddwl0k7mt9g6ak16i1m905vyv/gradle-7.3/lib/kotlin-reflect-1.5.31.jar (version 1.5)
+    /tmp/10153664/caches/jars-9/70c7fb304be68f86f67bf97df5d9444b/kotlin-stdlib-jdk8-1.6.10.jar (version 1.6)
+    /tmp/10153664/caches/jars-9/c317974cf73128f08e31562307010947/kotlin-reflect-1.6.10.jar (version 1.6)
+    /tmp/10153664/caches/jars-9/f0beb0fe10b567b0dc1e4177089a185d/kotlin-stdlib-jdk7-1.6.10.jar (version 1.6)
+    /tmp/10153664/caches/jars-9/e10a6ee46f2d68baeb6c5e5ad0210377/kotlin-stdlib-1.6.10.jar (version 1.6)
+    /tmp/10153664/caches/jars-9/f5bb9acaa3ce19bd85c135d58b841f96/kotlin-stdlib-common-1.6.10.jar (version 1.6)
+w: Consider providing an explicit dependency on kotlin-reflect 1.6 to prevent strange errors
+w: Some runtime JAR files in the classpath have an incompatible version. Consider removing them from the classpath
+w: Some JAR files in the classpath have the Kotlin Runtime library bundled into them. This may cause difficult to debug problems if there's a different version of the Kotlin Runtime library in the classpath. Consider removing these libraries from the classpath
+w: /tmp/10153664/caches/jars-9/6c9a4397f9c18c05707f714b6b0308f9/kotlin-analysis-intellij-1.6.10.jar: Library has Kotlin runtime bundled into it
+w: /tmp/10153664/caches/jars-9/547365b3ffec0c8571b6a90a000b6286/kotlin-analysis-compiler-1.6.10.jar: Library has Kotlin runtime bundled into it
+w: /home/users/lz280/IdeaProjects/OSPREY3/build.gradle.kts:85:2: 'setter for mainClassName: String!' is deprecated. Deprecated in Java
+w: /home/users/lz280/IdeaProjects/OSPREY3/build.gradle.kts:191:39: 'getter for main: String?' is deprecated. Deprecated in Java
+Starting process 'command '/usr/lib/jvm/openjdk-18/bin/java''. Working directory: /tmp/10153664/.tmp/tmp-jvm3941092256780562611probe Command: /usr/lib/jvm/openjdk-18/bin/java -cp . JavaProbe
+Starting process 'command '/usr/lib/jvm/java-18-openjdk-amd64/bin/java''. Working directory: /tmp/10153664/.tmp/tmp-jvm8644125729694600908probe Command: /usr/lib/jvm/java-18-openjdk-amd64/bin/java -cp . JavaProbe
+Successfully started process 'command '/usr/lib/jvm/java-18-openjdk-amd64/bin/java''
+Starting process 'command '/usr/lib/jvm/openjdk-11/bin/java''. Working directory: /tmp/10153664/.tmp/tmp-jvm12547889429535969793probe Command: /usr/lib/jvm/openjdk-11/bin/java -cp . JavaProbe
+Starting process 'command '/usr/lib/jvm/openjdk-19/bin/java''. Working directory: /tmp/10153664/.tmp/tmp-jvm18204381011701728884probe Command: /usr/lib/jvm/openjdk-19/bin/java -cp . JavaProbe
+Starting process 'command '/usr/lib/jvm/java-8-openjdk-amd64/bin/java''. Working directory: /tmp/10153664/.tmp/tmp-jvm14677394649466237267probe Command: /usr/lib/jvm/java-8-openjdk-amd64/bin/java -cp . JavaProbe
+Successfully started process 'command '/usr/lib/jvm/java-8-openjdk-amd64/bin/java''
+Starting process 'command '/usr/lib/jvm/openjdk-17/bin/java''. Working directory: /tmp/10153664/.tmp/tmp-jvm15000545101551105171probe Command: /usr/lib/jvm/openjdk-17/bin/java -cp . JavaProbe
+Starting process 'command '/usr/lib/jvm/java-17-openjdk-amd64/bin/java''. Working directory: /tmp/10153664/.tmp/tmp-jvm7580302341786515134probe Command: /usr/lib/jvm/java-17-openjdk-amd64/bin/java -cp . JavaProbe
+Successfully started process 'command '/usr/lib/jvm/java-17-openjdk-amd64/bin/java''
+Starting process 'command '/usr/lib/jvm/java-19-openjdk-amd64/bin/java''. Working directory: /tmp/10153664/.tmp/tmp-jvm11009002660688069701probe Command: /usr/lib/jvm/java-19-openjdk-amd64/bin/java -cp . JavaProbe
+Successfully started process 'command '/usr/lib/jvm/java-19-openjdk-amd64/bin/java''
+Starting process 'command '/usr/lib/jvm/java-11-openjdk-amd64/bin/java''. Working directory: /tmp/10153664/.tmp/tmp-jvm11535460364482872799probe Command: /usr/lib/jvm/java-11-openjdk-amd64/bin/java -cp . JavaProbe
+Successfully started process 'command '/usr/lib/jvm/java-11-openjdk-amd64/bin/java''
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/bom/2.15.48/bom-2.15.48.pom to /tmp/10153664/.tmp/gradle_download17294401813173918827bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/aws-sdk-java-pom/2.15.48/aws-sdk-java-pom-2.15.48.pom to /tmp/10153664/.tmp/gradle_download1231259220506139132bin
+Downloading https://repo.maven.apache.org/maven2/org/openjfx/javafx-graphics/11/javafx-graphics-11.pom to /tmp/10153664/.tmp/gradle_download13309825121079425997bin
+Downloading https://repo.maven.apache.org/maven2/net/java/dev/jna/jna/5.10.0/jna-5.10.0.pom to /tmp/10153664/.tmp/gradle_download16609430630940505664bin
+Downloading https://repo.maven.apache.org/maven2/colt/colt/1.2.0/colt-1.2.0.pom to /tmp/10153664/.tmp/gradle_download2973695035349351374bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-client-apache/1.5.4/ktor-client-apache-1.5.4.pom to /tmp/10153664/.tmp/gradle_download3571031626355713283bin
+Downloading https://repo.maven.apache.org/maven2/org/tomlj/tomlj/1.0.0/tomlj-1.0.0.pom to /tmp/10153664/.tmp/gradle_download3052845484253627425bin
+Downloading https://repo.maven.apache.org/maven2/org/openjfx/javafx-base/11/javafx-base-11.pom to /tmp/10153664/.tmp/gradle_download11064951020601401047bin
+Downloading https://repo.maven.apache.org/maven2/org/slf4j/jul-to-slf4j/1.7.30/jul-to-slf4j-1.7.30.pom to /tmp/10153664/.tmp/gradle_download16936445178379568421bin
+Downloading https://repo.maven.apache.org/maven2/org/mapdb/mapdb/3.0.5/mapdb-3.0.5.pom to /tmp/10153664/.tmp/gradle_download7854111217669559788bin
+Downloading https://repo.maven.apache.org/maven2/de/lmu/ifi/dbs/elki/elki/0.7.1/elki-0.7.1.pom to /tmp/10153664/.tmp/gradle_download16469109823181112338bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-client-serialization-jvm/1.5.4/ktor-client-serialization-jvm-1.5.4.pom to /tmp/10153664/.tmp/gradle_download4729261953685758534bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-serialization/1.5.4/ktor-serialization-1.5.4.pom to /tmp/10153664/.tmp/gradle_download10057595118704840890bin
+Downloading https://repo.maven.apache.org/maven2/ch/qos/logback/logback-classic/1.2.3/logback-classic-1.2.3.pom to /tmp/10153664/.tmp/gradle_download33442104671637038bin
+Downloading https://repo.maven.apache.org/maven2/org/jogamp/jocl/jocl/2.3.2/jocl-2.3.2.pom to /tmp/10153664/.tmp/gradle_download11328184696447404698bin
+Downloading https://repo.maven.apache.org/maven2/org/openjfx/javafx-controls/11/javafx-controls-11.pom to /tmp/10153664/.tmp/gradle_download4409388354554295827bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/commons/commons-collections4/4.1/commons-collections4-4.1.pom to /tmp/10153664/.tmp/gradle_download10669850588385824689bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/xmlgraphics/batik-svg-dom/1.9.1/batik-svg-dom-1.9.1.pom to /tmp/10153664/.tmp/gradle_download8762388813861475515bin
+Downloading https://repo.maven.apache.org/maven2/org/jogamp/gluegen/gluegen-rt/2.3.2/gluegen-rt-2.3.2.pom to /tmp/10153664/.tmp/gradle_download13185823710187839429bin
+Downloading https://repo.maven.apache.org/maven2/org/joml/joml/1.9.19/joml-1.9.19.pom to /tmp/10153664/.tmp/gradle_download1900921574553497179bin
+Downloading https://repo.maven.apache.org/maven2/com/joptimizer/joptimizer/3.5.1/joptimizer-3.5.1.pom to /tmp/10153664/.tmp/gradle_download8429141139994207060bin
+Downloading https://repo.maven.apache.org/maven2/com/cuchazinteractive/kludge/0.2/kludge-0.2.pom to /tmp/10153664/.tmp/gradle_download6639586665156055818bin
+Downloading https://repo.maven.apache.org/maven2/org/ojalgo/ojalgo/41.0.0/ojalgo-41.0.0.pom to /tmp/10153664/.tmp/gradle_download12770066185549304228bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/commons/commons-math3/3.6.1/commons-math3-3.6.1.pom to /tmp/10153664/.tmp/gradle_download7789218257502481050bin
+Downloading https://repo.maven.apache.org/maven2/com/google/auto/value/auto-value-annotations/1.7/auto-value-annotations-1.7.pom to /tmp/10153664/.tmp/gradle_download16029680701160039260bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-server-netty/1.5.4/ktor-server-netty-1.5.4.pom to /tmp/10153664/.tmp/gradle_download7882982720152121757bin
+Downloading https://repo.maven.apache.org/maven2/com/hazelcast/hazelcast/4.0/hazelcast-4.0.pom to /tmp/10153664/.tmp/gradle_download8623731915066547993bin
+Downloading https://repo.maven.apache.org/maven2/org/jcuda/jcuda-natives/0.8.0/jcuda-natives-0.8.0.pom to /tmp/10153664/.tmp/gradle_download14547581777823673897bin
+Downloading https://repo.maven.apache.org/maven2/com/github/haifengl/smile-core/1.5.1/smile-core-1.5.1.pom to /tmp/10153664/.tmp/gradle_download5084908454570370945bin
+Downloading https://repo.maven.apache.org/maven2/org/openjfx/javafx/11/javafx-11.pom to /tmp/10153664/.tmp/gradle_download10008237115183380428bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-serialization/1.5.4/ktor-serialization-1.5.4.module to /tmp/10153664/.tmp/gradle_download298355543348456515bin
+Downloading https://repo.maven.apache.org/maven2/org/sql2o/sql2o/1.6.0/sql2o-1.6.0.pom to /tmp/10153664/.tmp/gradle_download1150623062480082676bin
+Downloading https://repo.maven.apache.org/maven2/org/jcuda/jcuda/0.8.0/jcuda-0.8.0.pom to /tmp/10153664/.tmp/gradle_download6106508943433545032bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-client-apache/1.5.4/ktor-client-apache-1.5.4.module to /tmp/10153664/.tmp/gradle_download5654393108146006535bin
+Downloading https://repo.maven.apache.org/maven2/de/lmu/ifi/dbs/elki/elki-project/0.7.1/elki-project-0.7.1.pom to /tmp/10153664/.tmp/gradle_download4406897311630637798bin
+Downloading https://repo.maven.apache.org/maven2/one/util/streamex/0.7.3/streamex-0.7.3.pom to /tmp/10153664/.tmp/gradle_download7186057244792144783bin
+Downloading https://repo.maven.apache.org/maven2/ch/qos/logback/logback-parent/1.2.3/logback-parent-1.2.3.pom to /tmp/10153664/.tmp/gradle_download15021326412081814891bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/commons/commons-parent/39/commons-parent-39.pom to /tmp/10153664/.tmp/gradle_download13285106468550167437bin
+Downloading https://repo.maven.apache.org/maven2/com/google/auto/value/auto-value-parent/1.7/auto-value-parent-1.7.pom to /tmp/10153664/.tmp/gradle_download8711808382780093196bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-client-serialization-jvm/1.5.4/ktor-client-serialization-jvm-1.5.4.module to /tmp/10153664/.tmp/gradle_download14019536357308260590bin
+Downloading https://repo.maven.apache.org/maven2/com/beust/jcommander/1.72/jcommander-1.72.pom to /tmp/10153664/.tmp/gradle_download1189323208040911718bin
+Cache entries evicted. In-memory cache of /home/users/lz280/IdeaProjects/OSPREY3/.gradle/7.3/checksums/sha1-checksums.bin: Size{400} MaxSize{400}, CacheStats{hitCount=148, missCount=480, loadSuccessCount=481, loadExceptionCount=0, totalLoadTime=1586563001, evictionCount=81} 
+Performance may suffer from in-memory cache misses. Increase max heap size of Gradle build process to reduce cache misses.
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-server-netty/1.5.4/ktor-server-netty-1.5.4.module to /tmp/10153664/.tmp/gradle_download11124716472903120865bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/xmlgraphics/batik/1.9.1/batik-1.9.1.pom to /tmp/10153664/.tmp/gradle_download3551970435653429318bin
+Downloading https://repo.maven.apache.org/maven2/com/hazelcast/hazelcast-root/4.0/hazelcast-root-4.0.pom to /tmp/10153664/.tmp/gradle_download12393938364635856124bin
+Downloading https://repo.maven.apache.org/maven2/commons-io/commons-io/2.5/commons-io-2.5.pom to /tmp/10153664/.tmp/gradle_download9209602992444031130bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/xmlgraphics/batik-svggen/1.9.1/batik-svggen-1.9.1.pom to /tmp/10153664/.tmp/gradle_download9126801812284758202bin
+Downloading https://repo.maven.apache.org/maven2/org/tukaani/xz/1.8/xz-1.8.pom to /tmp/10153664/.tmp/gradle_download10939791196186667393bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/dataformat/jackson-dataformat-yaml/2.9.9/jackson-dataformat-yaml-2.9.9.pom to /tmp/10153664/.tmp/gradle_download6348691449310361827bin
+Downloading https://repo.maven.apache.org/maven2/org/postgresql/postgresql/42.2.16/postgresql-42.2.16.pom to /tmp/10153664/.tmp/gradle_download4850029419154394381bin
+Downloading https://repo.maven.apache.org/maven2/org/slf4j/slf4j-parent/1.7.30/slf4j-parent-1.7.30.pom to /tmp/10153664/.tmp/gradle_download16006662464899390910bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/commons/commons-lang3/3.4/commons-lang3-3.4.pom to /tmp/10153664/.tmp/gradle_download5587842010658035795bin
+Downloading https://repo.maven.apache.org/maven2/ch/obermuhlner/big-math/2.3.0/big-math-2.3.0.pom to /tmp/10153664/.tmp/gradle_download16513634904411695222bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.9.9/jackson-databind-2.9.9.pom to /tmp/10153664/.tmp/gradle_download13949993406244957169bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/commons/commons-parent/38/commons-parent-38.pom to /tmp/10153664/.tmp/gradle_download9362330169053398627bin
+Downloading https://repo.maven.apache.org/maven2/org/jcuda/jcuda-parent/0.8.0/jcuda-parent-0.8.0.pom to /tmp/10153664/.tmp/gradle_download8345922761274714404bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/apache/16/apache-16.pom to /tmp/10153664/.tmp/gradle_download14130193700052033657bin
+Downloading https://repo.maven.apache.org/maven2/com/cuchazinteractive/kludge/0.2/kludge-0.2.module to /tmp/10153664/.tmp/gradle_download8772790819328136568bin
+Downloading https://repo.maven.apache.org/maven2/com/github/haifengl/smile-netlib/1.5.1/smile-netlib-1.5.1.pom to /tmp/10153664/.tmp/gradle_download18040763584005706235bin
+Downloading https://repo.maven.apache.org/maven2/org/sql2o/sql2o-parent/1.6.0/sql2o-parent-1.6.0.pom to /tmp/10153664/.tmp/gradle_download15051152958045350849bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/dataformat/jackson-dataformats-text/2.9.9/jackson-dataformats-text-2.9.9.pom to /tmp/10153664/.tmp/gradle_download1568447435961038379bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/jackson-base/2.9.9/jackson-base-2.9.9.pom to /tmp/10153664/.tmp/gradle_download9719931283001298207bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/commons/commons-parent/37/commons-parent-37.pom to /tmp/10153664/.tmp/gradle_download5371557295438702221bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/jackson-bom/2.9.9/jackson-bom-2.9.9.pom to /tmp/10153664/.tmp/gradle_download6457395152250851522bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/jackson-parent/2.9.1.2/jackson-parent-2.9.1.2.pom to /tmp/10153664/.tmp/gradle_download3594991095045941755bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/oss-parent/34/oss-parent-34.pom to /tmp/10153664/.tmp/gradle_download4421563496710066448bin
+Cache entries evicted. In-memory cache of /home/users/lz280/IdeaProjects/OSPREY3/.gradle/7.3/checksums/sha1-checksums.bin: Size{400} MaxSize{400}, CacheStats{hitCount=177, missCount=521, loadSuccessCount=521, loadExceptionCount=0, totalLoadTime=1606865867, evictionCount=121} 
+Performance may suffer from in-memory cache misses. Increase max heap size of Gradle build process to reduce cache misses.
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/s3/2.15.48/s3-2.15.48.pom to /tmp/10153664/.tmp/gradle_download13636891247332008962bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/services/2.15.48/services-2.15.48.pom to /tmp/10153664/.tmp/gradle_download4495264075912162450bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/bom-internal/2.15.48/bom-internal-2.15.48.pom to /tmp/10153664/.tmp/gradle_download6281426513884795966bin
+Downloading https://repo.maven.apache.org/maven2/ch/qos/logback/logback-core/1.2.3/logback-core-1.2.3.pom to /tmp/10153664/.tmp/gradle_download6162541757526385146bin
+Downloading https://repo.maven.apache.org/maven2/org/slf4j/slf4j-api/1.7.30/slf4j-api-1.7.30.pom to /tmp/10153664/.tmp/gradle_download8923057069888531793bin
+Downloading https://repo.maven.apache.org/maven2/concurrent/concurrent/1.3.4/concurrent-1.3.4.pom to /tmp/10153664/.tmp/gradle_download5006915826359727073bin
+Downloading https://repo.maven.apache.org/maven2/log4j/log4j/1.2.14/log4j-1.2.14.pom to /tmp/10153664/.tmp/gradle_download14836424474546172405bin
+Downloading https://repo.maven.apache.org/maven2/net/sourceforge/csparsej/csparsej/1.1.1/csparsej-1.1.1.pom to /tmp/10153664/.tmp/gradle_download14957396406248294369bin
+Downloading https://repo.maven.apache.org/maven2/commons-logging/commons-logging/1.2/commons-logging-1.2.pom to /tmp/10153664/.tmp/gradle_download6895987416603433653bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/commons/commons-csv/1.3/commons-csv-1.3.pom to /tmp/10153664/.tmp/gradle_download16759611512353061895bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/commons/commons-parent/34/commons-parent-34.pom to /tmp/10153664/.tmp/gradle_download2504430674129032982bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/commons/commons-parent/40/commons-parent-40.pom to /tmp/10153664/.tmp/gradle_download15289183290835497221bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/apache/13/apache-13.pom to /tmp/10153664/.tmp/gradle_download11304939980839585239bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/apache/17/apache-17.pom to /tmp/10153664/.tmp/gradle_download6361608169136782014bin
+Downloading https://repo.maven.apache.org/maven2/org/eclipse/collections/eclipse-collections-api/maven-metadata.xml to /tmp/10153664/.tmp/gradle_download3686826804178328892bin
+Downloading https://repo.maven.apache.org/maven2/org/eclipse/collections/eclipse-collections-api/7.1.2/eclipse-collections-api-7.1.2.pom to /tmp/10153664/.tmp/gradle_download13191868878107243034bin
+Downloading https://repo.maven.apache.org/maven2/org/eclipse/collections/eclipse-collections-parent/7.1.2/eclipse-collections-parent-7.1.2.pom to /tmp/10153664/.tmp/gradle_download7382392146079810147bin
+Downloading https://repo.maven.apache.org/maven2/org/eclipse/collections/eclipse-collections/maven-metadata.xml to /tmp/10153664/.tmp/gradle_download7277685357931698348bin
+Downloading https://repo.maven.apache.org/maven2/org/eclipse/collections/eclipse-collections/7.1.2/eclipse-collections-7.1.2.pom to /tmp/10153664/.tmp/gradle_download9670866696815984327bin
+Downloading https://repo.maven.apache.org/maven2/org/eclipse/collections/eclipse-collections-forkjoin/maven-metadata.xml to /tmp/10153664/.tmp/gradle_download16811053820880002259bin
+Downloading https://repo.maven.apache.org/maven2/org/eclipse/collections/eclipse-collections-forkjoin/7.1.2/eclipse-collections-forkjoin-7.1.2.pom to /tmp/10153664/.tmp/gradle_download16669376941390030674bin
+Downloading https://repo.maven.apache.org/maven2/com/google/guava/guava/maven-metadata.xml to /tmp/10153664/.tmp/gradle_download5395485287964147243bin
+Downloading https://repo.maven.apache.org/maven2/com/google/guava/guava/19.0/guava-19.0.pom to /tmp/10153664/.tmp/gradle_download12287327375782229983bin
+Downloading https://repo.maven.apache.org/maven2/com/google/guava/guava-parent/19.0/guava-parent-19.0.pom to /tmp/10153664/.tmp/gradle_download6122287692639199439bin
+Downloading https://repo.maven.apache.org/maven2/org/mapdb/elsa/3.0.0-M5/elsa-3.0.0-M5.pom to /tmp/10153664/.tmp/gradle_download1597120094285798776bin
+Downloading https://repo.maven.apache.org/maven2/net/jpountz/lz4/lz4/1.3.0/lz4-1.3.0.pom to /tmp/10153664/.tmp/gradle_download90577243942298192bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/xmlgraphics/batik-awt-util/1.9.1/batik-awt-util-1.9.1.pom to /tmp/10153664/.tmp/gradle_download2159031448469404150bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/xmlgraphics/batik-util/1.9.1/batik-util-1.9.1.pom to /tmp/10153664/.tmp/gradle_download5584181511587700629bin
+Downloading https://repo.maven.apache.org/maven2/xml-apis/xml-apis-ext/1.3.04/xml-apis-ext-1.3.04.pom to /tmp/10153664/.tmp/gradle_download9834864863691608235bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/xmlgraphics/batik-ext/1.9.1/batik-ext-1.9.1.pom to /tmp/10153664/.tmp/gradle_download15207225995263831242bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/xmlgraphics/batik-parser/1.9.1/batik-parser-1.9.1.pom to /tmp/10153664/.tmp/gradle_download14682506887758443081bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/xmlgraphics/batik-css/1.9.1/batik-css-1.9.1.pom to /tmp/10153664/.tmp/gradle_download9812491897649944600bin
+Cache entries evicted. In-memory cache of /home/users/lz280/IdeaProjects/OSPREY3/.gradle/7.3/checksums/sha1-checksums.bin: Size{400} MaxSize{400}, CacheStats{hitCount=200, missCount=561, loadSuccessCount=561, loadExceptionCount=0, totalLoadTime=1612135999, evictionCount=161} 
+Performance may suffer from in-memory cache misses. Increase max heap size of Gradle build process to reduce cache misses.
+Downloading https://repo.maven.apache.org/maven2/org/apache/xmlgraphics/batik-dom/1.9.1/batik-dom-1.9.1.pom to /tmp/10153664/.tmp/gradle_download14494055231556829513bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/apache/3/apache-3.pom to /tmp/10153664/.tmp/gradle_download10200504741364922665bin
+Downloading https://repo.maven.apache.org/maven2/com/github/haifengl/smile-math/1.5.1/smile-math-1.5.1.pom to /tmp/10153664/.tmp/gradle_download9408783263149738450bin
+Downloading https://repo.maven.apache.org/maven2/com/github/haifengl/smile-data/1.5.1/smile-data-1.5.1.pom to /tmp/10153664/.tmp/gradle_download6741957184075165845bin
+Downloading https://repo.maven.apache.org/maven2/com/github/haifengl/smile-graph/1.5.1/smile-graph-1.5.1.pom to /tmp/10153664/.tmp/gradle_download2988474422043601771bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/all/1.1.2/all-1.1.2.pom to /tmp/10153664/.tmp/gradle_download12356372886271807923bin
+Downloading https://repo.maven.apache.org/maven2/net/sourceforge/f2j/arpack_combined_all/0.1/arpack_combined_all-0.1.pom to /tmp/10153664/.tmp/gradle_download15199028905465695258bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/parent/1.1/parent-1.1.pom to /tmp/10153664/.tmp/gradle_download4068124625480637382bin
+Downloading https://repo.maven.apache.org/maven2/net/sf/trove4j/trove4j/maven-metadata.xml to /tmp/10153664/.tmp/gradle_download4813340715488596242bin
+Downloading https://repo.maven.apache.org/maven2/net/sf/trove4j/trove4j/3.0.3/trove4j-3.0.3.pom to /tmp/10153664/.tmp/gradle_download7167214665657285529bin
+Downloading https://repo.maven.apache.org/maven2/org/antlr/antlr4-runtime/4.7.2/antlr4-runtime-4.7.2.pom to /tmp/10153664/.tmp/gradle_download7593320937499935413bin
+Downloading https://repo.maven.apache.org/maven2/org/antlr/antlr4-master/4.7.2/antlr4-master-4.7.2.pom to /tmp/10153664/.tmp/gradle_download14185996830572688198bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-annotations/2.9.0/jackson-annotations-2.9.0.pom to /tmp/10153664/.tmp/gradle_download17122162220135335120bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-core/2.9.9/jackson-core-2.9.9.pom to /tmp/10153664/.tmp/gradle_download250950220390012097bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/jackson-parent/2.9.0/jackson-parent-2.9.0.pom to /tmp/10153664/.tmp/gradle_download15551590770084266408bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/oss-parent/28/oss-parent-28.pom to /tmp/10153664/.tmp/gradle_download15260126052363783358bin
+Downloading https://repo.maven.apache.org/maven2/org/yaml/snakeyaml/1.23/snakeyaml-1.23.pom to /tmp/10153664/.tmp/gradle_download252879415021303192bin
+Downloading https://repo.maven.apache.org/maven2/org/checkerframework/checker-qual/3.5.0/checker-qual-3.5.0.pom to /tmp/10153664/.tmp/gradle_download14259194555214779324bin
+Downloading https://repo.maven.apache.org/maven2/org/lwjgl/lwjgl-glfw/3.2.2/lwjgl-glfw-3.2.2.pom to /tmp/10153664/.tmp/gradle_download11409050953785706077bin
+Downloading https://repo.maven.apache.org/maven2/org/lwjgl/lwjgl-vulkan/3.2.2/lwjgl-vulkan-3.2.2.pom to /tmp/10153664/.tmp/gradle_download5031302606113264622bin
+Downloading https://repo.maven.apache.org/maven2/org/lwjgl/lwjgl-nfd/3.2.2/lwjgl-nfd-3.2.2.pom to /tmp/10153664/.tmp/gradle_download9472666985855235538bin
+Downloading https://repo.maven.apache.org/maven2/org/lwjgl/lwjgl-jemalloc/3.2.2/lwjgl-jemalloc-3.2.2.pom to /tmp/10153664/.tmp/gradle_download12551851553720975018bin
+Downloading https://repo.maven.apache.org/maven2/org/lwjgl/lwjgl/3.2.2/lwjgl-3.2.2.pom to /tmp/10153664/.tmp/gradle_download14859334712664626728bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-client-core/1.5.4/ktor-client-core-1.5.4.pom to /tmp/10153664/.tmp/gradle_download8550787642084190031bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/httpcomponents/httpcore-nio/4.4.13/httpcore-nio-4.4.13.pom to /tmp/10153664/.tmp/gradle_download14792845670473552848bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/httpcomponents/httpasyncclient/4.1.4/httpasyncclient-4.1.4.pom to /tmp/10153664/.tmp/gradle_download18063112670467645066bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/httpcomponents/httpcore/4.4.13/httpcore-4.4.13.pom to /tmp/10153664/.tmp/gradle_download15648689774646518403bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-client-core/1.5.4/ktor-client-core-1.5.4.module to /tmp/10153664/.tmp/gradle_download15076224532349453932bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/httpcomponents/httpcomponents-asyncclient/4.1.4/httpcomponents-asyncclient-4.1.4.pom to /tmp/10153664/.tmp/gradle_download10037273176036072716bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/httpcomponents/httpcomponents-core/4.4.13/httpcomponents-core-4.4.13.pom to /tmp/10153664/.tmp/gradle_download15534980168680102806bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/httpcomponents/project/7/project-7.pom to /tmp/10153664/.tmp/gradle_download11319928751146298683bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/httpcomponents/httpcomponents-parent/11/httpcomponents-parent-11.pom to /tmp/10153664/.tmp/gradle_download2169147143516971801bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/apache/21/apache-21.pom to /tmp/10153664/.tmp/gradle_download11981778439638070791bin
+Cache entries evicted. In-memory cache of /home/users/lz280/IdeaProjects/OSPREY3/.gradle/7.3/checksums/sha1-checksums.bin: Size{400} MaxSize{400}, CacheStats{hitCount=215, missCount=601, loadSuccessCount=601, loadExceptionCount=0, totalLoadTime=1617199967, evictionCount=201} 
+Performance may suffer from in-memory cache misses. Increase max heap size of Gradle build process to reduce cache misses.
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-common/1.4.32/kotlin-stdlib-common-1.4.32.pom to /tmp/10153664/.tmp/gradle_download1926326270978333892bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-client-json/1.5.4/ktor-client-json-1.5.4.pom to /tmp/10153664/.tmp/gradle_download11776661771750714296bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core/1.4.3-native-mt/kotlinx-coroutines-core-1.4.3-native-mt.pom to /tmp/10153664/.tmp/gradle_download504786994910419013bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-json/1.1.0/kotlinx-serialization-json-1.1.0.pom to /tmp/10153664/.tmp/gradle_download17103158462067140441bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-client-json/1.5.4/ktor-client-json-1.5.4.module to /tmp/10153664/.tmp/gradle_download9222708851956573491bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core/1.4.3-native-mt/kotlinx-coroutines-core-1.4.3-native-mt.module to /tmp/10153664/.tmp/gradle_download17163433391263924711bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-json/1.1.0/kotlinx-serialization-json-1.1.0.module to /tmp/10153664/.tmp/gradle_download640411396525220072bin
+Downloading https://repo.maven.apache.org/maven2/io/netty/netty-transport-native-kqueue/4.1.63.Final/netty-transport-native-kqueue-4.1.63.Final.pom to /tmp/10153664/.tmp/gradle_download12757651283194856839bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-jdk8/1.4.3-native-mt/kotlinx-coroutines-jdk8-1.4.3-native-mt.pom to /tmp/10153664/.tmp/gradle_download16820639537851118384bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-server-host-common-kotlinMultiplatform/1.5.4/ktor-server-host-common-kotlinMultiplatform-1.5.4.pom to /tmp/10153664/.tmp/gradle_download15750355672144474400bin
+Downloading https://repo.maven.apache.org/maven2/io/netty/netty-transport-native-epoll/4.1.63.Final/netty-transport-native-epoll-4.1.63.Final.pom to /tmp/10153664/.tmp/gradle_download4244083548744573736bin
+Downloading https://repo.maven.apache.org/maven2/org/eclipse/jetty/alpn/alpn-api/1.1.3.v20160715/alpn-api-1.1.3.v20160715.pom to /tmp/10153664/.tmp/gradle_download2789208368981416095bin
+Downloading https://repo.maven.apache.org/maven2/io/netty/netty-codec-http2/4.1.63.Final/netty-codec-http2-4.1.63.Final.pom to /tmp/10153664/.tmp/gradle_download5631408310860730579bin
+Downloading https://repo.maven.apache.org/maven2/io/netty/netty-parent/4.1.63.Final/netty-parent-4.1.63.Final.pom to /tmp/10153664/.tmp/gradle_download1972504684649981214bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-server-host-common-kotlinMultiplatform/1.5.4/ktor-server-host-common-kotlinMultiplatform-1.5.4.module to /tmp/10153664/.tmp/gradle_download3496219512304745272bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-jdk8/1.4.3-native-mt/kotlinx-coroutines-jdk8-1.4.3-native-mt.module to /tmp/10153664/.tmp/gradle_download15100107597311538673bin
+Downloading https://repo.maven.apache.org/maven2/org/eclipse/jetty/jetty-parent/21/jetty-parent-21.pom to /tmp/10153664/.tmp/gradle_download13871325395722167955bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-server-core-kotlinMultiplatform/1.5.4/ktor-server-core-kotlinMultiplatform-1.5.4.pom to /tmp/10153664/.tmp/gradle_download1386675579888189515bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-server-core-kotlinMultiplatform/1.5.4/ktor-server-core-kotlinMultiplatform-1.5.4.module to /tmp/10153664/.tmp/gradle_download13357993102623307253bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/sdk-core/2.15.48/sdk-core-2.15.48.pom to /tmp/10153664/.tmp/gradle_download16357815046078574429bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/auth/2.15.48/auth-2.15.48.pom to /tmp/10153664/.tmp/gradle_download3940505041165066665bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/utils/2.15.48/utils-2.15.48.pom to /tmp/10153664/.tmp/gradle_download15687594826538879971bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/annotations/2.15.48/annotations-2.15.48.pom to /tmp/10153664/.tmp/gradle_download13439941003679534698bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/aws-xml-protocol/2.15.48/aws-xml-protocol-2.15.48.pom to /tmp/10153664/.tmp/gradle_download4160773129991380670bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/aws-core/2.15.48/aws-core-2.15.48.pom to /tmp/10153664/.tmp/gradle_download12262972220456406502bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/protocol-core/2.15.48/protocol-core-2.15.48.pom to /tmp/10153664/.tmp/gradle_download11195319337889850670bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/netty-nio-client/2.15.48/netty-nio-client-2.15.48.pom to /tmp/10153664/.tmp/gradle_download8624339752932275535bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/regions/2.15.48/regions-2.15.48.pom to /tmp/10153664/.tmp/gradle_download7413890895070258015bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/arns/2.15.48/arns-2.15.48.pom to /tmp/10153664/.tmp/gradle_download18100674626097741950bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/profiles/2.15.48/profiles-2.15.48.pom to /tmp/10153664/.tmp/gradle_download14941834349855662980bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/http-client-spi/2.15.48/http-client-spi-2.15.48.pom to /tmp/10153664/.tmp/gradle_download5101637490599963481bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/apache-client/2.15.48/apache-client-2.15.48.pom to /tmp/10153664/.tmp/gradle_download7863932464605376739bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/metrics-spi/2.15.48/metrics-spi-2.15.48.pom to /tmp/10153664/.tmp/gradle_download4917213052315535173bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/core/2.15.48/core-2.15.48.pom to /tmp/10153664/.tmp/gradle_download1898109079446820326bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/http-clients/2.15.48/http-clients-2.15.48.pom to /tmp/10153664/.tmp/gradle_download11277322989505662753bin
+Cache entries evicted. In-memory cache of /home/users/lz280/IdeaProjects/OSPREY3/.gradle/7.3/checksums/sha1-checksums.bin: Size{400} MaxSize{400}, CacheStats{hitCount=238, missCount=641, loadSuccessCount=641, loadExceptionCount=0, totalLoadTime=1623382625, evictionCount=241} 
+Performance may suffer from in-memory cache misses. Increase max heap size of Gradle build process to reduce cache misses.
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/protocols/2.15.48/protocols-2.15.48.pom to /tmp/10153664/.tmp/gradle_download18406393196062301478bin
+Downloading https://repo.maven.apache.org/maven2/net/jcip/jcip-annotations/1.0/jcip-annotations-1.0.pom to /tmp/10153664/.tmp/gradle_download2988834058866106990bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/xmlgraphics/xmlgraphics-commons/2.2/xmlgraphics-commons-2.2.pom to /tmp/10153664/.tmp/gradle_download13534900294914660423bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/apache/7/apache-7.pom to /tmp/10153664/.tmp/gradle_download9455686371549775497bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/xmlgraphics/batik-i18n/1.9.1/batik-i18n-1.9.1.pom to /tmp/10153664/.tmp/gradle_download4926282608832678797bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/xmlgraphics/batik-constants/1.9.1/batik-constants-1.9.1.pom to /tmp/10153664/.tmp/gradle_download4471231300671729817bin
+Downloading https://repo.maven.apache.org/maven2/xml-apis/xml-apis/1.3.04/xml-apis-1.3.04.pom to /tmp/10153664/.tmp/gradle_download7047198398289860048bin
+Downloading https://repo.maven.apache.org/maven2/xalan/xalan/2.7.2/xalan-2.7.2.pom to /tmp/10153664/.tmp/gradle_download2006827631404509311bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/xmlgraphics/batik-xml/1.9.1/batik-xml-1.9.1.pom to /tmp/10153664/.tmp/gradle_download10791310478497615575bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/apache/4/apache-4.pom to /tmp/10153664/.tmp/gradle_download3069503804139894528bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/core/1.1.2/core-1.1.2.pom to /tmp/10153664/.tmp/gradle_download2424073427710352455bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/netlib-native_system-win-x86_64/1.1/netlib-native_system-win-x86_64-1.1.pom to /tmp/10153664/.tmp/gradle_download4522582658935625244bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/netlib-native_ref-linux-i686/1.1/netlib-native_ref-linux-i686-1.1.pom to /tmp/10153664/.tmp/gradle_download14405075138981872147bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/netlib-native_system-osx-x86_64/1.1/netlib-native_system-osx-x86_64-1.1.pom to /tmp/10153664/.tmp/gradle_download10853777144459311860bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/netlib-native_ref-linux-armhf/1.1/netlib-native_ref-linux-armhf-1.1.pom to /tmp/10153664/.tmp/gradle_download3300618464667198397bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/netlib-native_ref-win-i686/1.1/netlib-native_ref-win-i686-1.1.pom to /tmp/10153664/.tmp/gradle_download2415604476581723241bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/netlib-native_ref-osx-x86_64/1.1/netlib-native_ref-osx-x86_64-1.1.pom to /tmp/10153664/.tmp/gradle_download14966717571390238235bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/netlib-native_ref-linux-x86_64/1.1/netlib-native_ref-linux-x86_64-1.1.pom to /tmp/10153664/.tmp/gradle_download4606224918526912821bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/netlib-native_ref-win-x86_64/1.1/netlib-native_ref-win-x86_64-1.1.pom to /tmp/10153664/.tmp/gradle_download8910994387862333769bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/netlib-native_system-linux-armhf/1.1/netlib-native_system-linux-armhf-1.1.pom to /tmp/10153664/.tmp/gradle_download1376527215137066119bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/netlib-native_system-win-i686/1.1/netlib-native_system-win-i686-1.1.pom to /tmp/10153664/.tmp/gradle_download16934731583608857164bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/netlib-native_system-linux-x86_64/1.1/netlib-native_system-linux-x86_64-1.1.pom to /tmp/10153664/.tmp/gradle_download14669577988680174994bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/netlib-native_system-linux-i686/1.1/netlib-native_system-linux-i686-1.1.pom to /tmp/10153664/.tmp/gradle_download4001652390513143047bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/native_ref-xbuilds/1.1/native_ref-xbuilds-1.1.pom to /tmp/10153664/.tmp/gradle_download3536905916631532010bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/native_system/1.1/native_system-1.1.pom to /tmp/10153664/.tmp/gradle_download10112856265109330503bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/native_system-xbuilds/1.1/native_system-xbuilds-1.1.pom to /tmp/10153664/.tmp/gradle_download6861862276716220217bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/native_ref/1.1/native_ref-1.1.pom to /tmp/10153664/.tmp/gradle_download17484767012761858703bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-client-core-jvm/1.5.4/ktor-client-core-jvm-1.5.4.pom to /tmp/10153664/.tmp/gradle_download11462248362424624220bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-client-core-jvm/1.5.4/ktor-client-core-jvm-1.5.4.module to /tmp/10153664/.tmp/gradle_download322292643579989467bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/httpcomponents/httpclient/4.5.6/httpclient-4.5.6.pom to /tmp/10153664/.tmp/gradle_download434185583473992183bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/httpcomponents/httpcomponents-client/4.5.6/httpcomponents-client-4.5.6.pom to /tmp/10153664/.tmp/gradle_download13519181571620021132bin
+Cache entries evicted. In-memory cache of /home/users/lz280/IdeaProjects/OSPREY3/.gradle/7.3/checksums/sha1-checksums.bin: Size{400} MaxSize{400}, CacheStats{hitCount=409, missCount=681, loadSuccessCount=681, loadExceptionCount=0, totalLoadTime=1630322598, evictionCount=281} 
+Performance may suffer from in-memory cache misses. Increase max heap size of Gradle build process to reduce cache misses.
+Downloading https://repo.maven.apache.org/maven2/org/apache/httpcomponents/httpcomponents-parent/10/httpcomponents-parent-10.pom to /tmp/10153664/.tmp/gradle_download1853947580708503988bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/apache/18/apache-18.pom to /tmp/10153664/.tmp/gradle_download7281168354506602559bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.4.3-native-mt/kotlinx-coroutines-core-jvm-1.4.3-native-mt.pom to /tmp/10153664/.tmp/gradle_download1231129317392413310bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.4.3-native-mt/kotlinx-coroutines-core-jvm-1.4.3-native-mt.module to /tmp/10153664/.tmp/gradle_download9461855102772248899bin
+Cache entries evicted. In-memory cache of /home/users/lz280/IdeaProjects/OSPREY3/.gradle/7.3/checksums/md5-checksums.bin: Size{359} MaxSize{400}, CacheStats{hitCount=96, missCount=367, loadSuccessCount=360, loadExceptionCount=0, totalLoadTime=134207961, evictionCount=1} 
+Performance may suffer from in-memory cache misses. Increase max heap size of Gradle build process to reduce cache misses.
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-json-jvm/1.1.0/kotlinx-serialization-json-jvm-1.1.0.pom to /tmp/10153664/.tmp/gradle_download11371129277182353852bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-json-jvm/1.1.0/kotlinx-serialization-json-jvm-1.1.0.module to /tmp/10153664/.tmp/gradle_download13883439647968931741bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-client-json-jvm/1.5.4/ktor-client-json-jvm-1.5.4.pom to /tmp/10153664/.tmp/gradle_download12716841102705416985bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-client-json-jvm/1.5.4/ktor-client-json-jvm-1.5.4.module to /tmp/10153664/.tmp/gradle_download15745353787755901144bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-server-host-common/1.5.4/ktor-server-host-common-1.5.4.pom to /tmp/10153664/.tmp/gradle_download4326437622188241955bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-server-host-common/1.5.4/ktor-server-host-common-1.5.4.module to /tmp/10153664/.tmp/gradle_download16820465150627022362bin
+Downloading https://repo.maven.apache.org/maven2/io/netty/netty-buffer/4.1.63.Final/netty-buffer-4.1.63.Final.pom to /tmp/10153664/.tmp/gradle_download14003296935618989950bin
+Downloading https://repo.maven.apache.org/maven2/io/netty/netty-codec-http/4.1.63.Final/netty-codec-http-4.1.63.Final.pom to /tmp/10153664/.tmp/gradle_download1869498030187331350bin
+Downloading https://repo.maven.apache.org/maven2/io/netty/netty-handler/4.1.63.Final/netty-handler-4.1.63.Final.pom to /tmp/10153664/.tmp/gradle_download15684612014747685085bin
+Downloading https://repo.maven.apache.org/maven2/io/netty/netty-common/4.1.63.Final/netty-common-4.1.63.Final.pom to /tmp/10153664/.tmp/gradle_download15999524500393607560bin
+Downloading https://repo.maven.apache.org/maven2/io/netty/netty-codec/4.1.63.Final/netty-codec-4.1.63.Final.pom to /tmp/10153664/.tmp/gradle_download740291652257395135bin
+Downloading https://repo.maven.apache.org/maven2/io/netty/netty-transport/4.1.63.Final/netty-transport-4.1.63.Final.pom to /tmp/10153664/.tmp/gradle_download17733338355200950732bin
+Downloading https://repo.maven.apache.org/maven2/io/netty/netty-transport-native-unix-common/4.1.63.Final/netty-transport-native-unix-common-4.1.63.Final.pom to /tmp/10153664/.tmp/gradle_download17749602254089459225bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-server-core/1.5.4/ktor-server-core-1.5.4.pom to /tmp/10153664/.tmp/gradle_download7607398605842481246bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-server-core/1.5.4/ktor-server-core-1.5.4.module to /tmp/10153664/.tmp/gradle_download3858277328797124399bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/aws-query-protocol/2.15.48/aws-query-protocol-2.15.48.pom to /tmp/10153664/.tmp/gradle_download76188228648125798bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-core/2.10.4/jackson-core-2.10.4.pom to /tmp/10153664/.tmp/gradle_download2286596241811692304bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/jackson-base/2.10.4/jackson-base-2.10.4.pom to /tmp/10153664/.tmp/gradle_download15387310870269299787bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/jackson-bom/2.10.4/jackson-bom-2.10.4.pom to /tmp/10153664/.tmp/gradle_download17307960425535886200bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/jackson-parent/2.10/jackson-parent-2.10.pom to /tmp/10153664/.tmp/gradle_download3621544319849051576bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.10.4/jackson-databind-2.10.4.pom to /tmp/10153664/.tmp/gradle_download10351315596446465243bin
+Downloading https://repo.maven.apache.org/maven2/org/reactivestreams/reactive-streams/1.0.2/reactive-streams-1.0.2.pom to /tmp/10153664/.tmp/gradle_download3472658809220538943bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/eventstream/eventstream/1.0.1/eventstream-1.0.1.pom to /tmp/10153664/.tmp/gradle_download11325193809913861066bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-annotations/2.10.4/jackson-annotations-2.10.4.pom to /tmp/10153664/.tmp/gradle_download3675582328921210173bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/httpcomponents/httpclient/4.5.13/httpclient-4.5.13.pom to /tmp/10153664/.tmp/gradle_download5866067430756534749bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/httpcomponents/httpcomponents-client/4.5.13/httpcomponents-client-4.5.13.pom to /tmp/10153664/.tmp/gradle_download4207378883357583835bin
+Downloading https://repo.maven.apache.org/maven2/com/typesafe/netty/netty-reactive-streams-http/2.0.4/netty-reactive-streams-http-2.0.4.pom to /tmp/10153664/.tmp/gradle_download2693482094205465944bin
+Downloading https://repo.maven.apache.org/maven2/com/typesafe/netty/netty-reactive-streams-parent/2.0.4/netty-reactive-streams-parent-2.0.4.pom to /tmp/10153664/.tmp/gradle_download8551192883813199101bin
+Cache entries evicted. In-memory cache of /home/users/lz280/IdeaProjects/OSPREY3/.gradle/7.3/checksums/sha1-checksums.bin: Size{400} MaxSize{400}, CacheStats{hitCount=448, missCount=721, loadSuccessCount=721, loadExceptionCount=0, totalLoadTime=1635817202, evictionCount=321} 
+Performance may suffer from in-memory cache misses. Increase max heap size of Gradle build process to reduce cache misses.
+Downloading https://repo.maven.apache.org/maven2/xalan/serializer/2.7.2/serializer-2.7.2.pom to /tmp/10153664/.tmp/gradle_download3798590387180187721bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/native_ref-java/1.1/native_ref-java-1.1.pom to /tmp/10153664/.tmp/gradle_download5616268597494780060bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/native_system-java/1.1/native_system-java-1.1.pom to /tmp/10153664/.tmp/gradle_download11665439882842265781bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-http-cio/1.5.4/ktor-http-cio-1.5.4.pom to /tmp/10153664/.tmp/gradle_download4933788688408405117bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-http/1.5.4/ktor-http-1.5.4.pom to /tmp/10153664/.tmp/gradle_download10239269627090758076bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-http-cio/1.5.4/ktor-http-cio-1.5.4.module to /tmp/10153664/.tmp/gradle_download6893748537107811061bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-http/1.5.4/ktor-http-1.5.4.module to /tmp/10153664/.tmp/gradle_download4300664451221762303bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-core/1.1.0/kotlinx-serialization-core-1.1.0.pom to /tmp/10153664/.tmp/gradle_download15619392976928931053bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-core/1.1.0/kotlinx-serialization-core-1.1.0.module to /tmp/10153664/.tmp/gradle_download16484640072429489839bin
+Downloading https://repo.maven.apache.org/maven2/io/netty/netty-resolver/4.1.63.Final/netty-resolver-4.1.63.Final.pom to /tmp/10153664/.tmp/gradle_download10262071624070806133bin
+Downloading https://repo.maven.apache.org/maven2/com/typesafe/config/1.3.1/config-1.3.1.pom to /tmp/10153664/.tmp/gradle_download1288703638517331979bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-utils/1.5.4/ktor-utils-1.5.4.pom to /tmp/10153664/.tmp/gradle_download15837221648268927117bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-utils/1.5.4/ktor-utils-1.5.4.module to /tmp/10153664/.tmp/gradle_download3292508886313204699bin
+Downloading https://repo.maven.apache.org/maven2/commons-codec/commons-codec/1.11/commons-codec-1.11.pom to /tmp/10153664/.tmp/gradle_download18072560161274298053bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/commons/commons-parent/42/commons-parent-42.pom to /tmp/10153664/.tmp/gradle_download10970210752646874089bin
+Downloading https://repo.maven.apache.org/maven2/com/typesafe/netty/netty-reactive-streams/2.0.4/netty-reactive-streams-2.0.4.pom to /tmp/10153664/.tmp/gradle_download11755135302960376692bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/jniloader/1.1/jniloader-1.1.pom to /tmp/10153664/.tmp/gradle_download6840434039759509103bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-http-jvm/1.5.4/ktor-http-jvm-1.5.4.pom to /tmp/10153664/.tmp/gradle_download6741544494357555055bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-http-jvm/1.5.4/ktor-http-jvm-1.5.4.module to /tmp/10153664/.tmp/gradle_download16869638648398498730bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-http-cio-jvm/1.5.4/ktor-http-cio-jvm-1.5.4.pom to /tmp/10153664/.tmp/gradle_download7259100242268991559bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-http-cio-jvm/1.5.4/ktor-http-cio-jvm-1.5.4.module to /tmp/10153664/.tmp/gradle_download17087895179350691176bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-core-jvm/1.1.0/kotlinx-serialization-core-jvm-1.1.0.pom to /tmp/10153664/.tmp/gradle_download11167007432518257059bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-core-jvm/1.1.0/kotlinx-serialization-core-jvm-1.1.0.module to /tmp/10153664/.tmp/gradle_download11427964113149483291bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-utils-jvm/1.5.4/ktor-utils-jvm-1.5.4.pom to /tmp/10153664/.tmp/gradle_download10897380910780336319bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-utils-jvm/1.5.4/ktor-utils-jvm-1.5.4.module to /tmp/10153664/.tmp/gradle_download11132092421154522444bin
+Downloading https://repo.maven.apache.org/maven2/org/reactivestreams/reactive-streams/1.0.3/reactive-streams-1.0.3.pom to /tmp/10153664/.tmp/gradle_download12208313037097467953bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-network/1.5.4/ktor-network-1.5.4.pom to /tmp/10153664/.tmp/gradle_download16109125249616771075bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-network/1.5.4/ktor-network-1.5.4.module to /tmp/10153664/.tmp/gradle_download2593062792428123781bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-io/1.5.4/ktor-io-1.5.4.pom to /tmp/10153664/.tmp/gradle_download627118088948807870bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-io/1.5.4/ktor-io-1.5.4.module to /tmp/10153664/.tmp/gradle_download4574864091369883782bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-network-jvm/1.5.4/ktor-network-jvm-1.5.4.pom to /tmp/10153664/.tmp/gradle_download17961076641672760689bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-network-jvm/1.5.4/ktor-network-jvm-1.5.4.module to /tmp/10153664/.tmp/gradle_download9257855554031236018bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-io-jvm/1.5.4/ktor-io-jvm-1.5.4.pom to /tmp/10153664/.tmp/gradle_download12322451379062904997bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-io-jvm/1.5.4/ktor-io-jvm-1.5.4.module to /tmp/10153664/.tmp/gradle_download6317722002887148583bin
+Resource missing. [HTTP HEAD: https://repo.maven.apache.org/maven2/one/util/streamex/0.7.3/streamex-0.7.3.multi-release-jar]
+Downloading https://repo.maven.apache.org/maven2/org/tukaani/xz/1.8/xz-1.8.jar to /tmp/10153664/.tmp/gradle_download1163608472229212932bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/xmlgraphics/batik-svggen/1.9.1/batik-svggen-1.9.1.jar to /tmp/10153664/.tmp/gradle_download9732444388890934833bin
+Downloading https://repo.maven.apache.org/maven2/org/jogamp/jocl/jocl/2.3.2/jocl-2.3.2-natives-windows-amd64.jar to /tmp/10153664/.tmp/gradle_download13897399938518914273bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-serialization/1.5.4/ktor-serialization-1.5.4.jar to /tmp/10153664/.tmp/gradle_download436191322496189959bin
+Downloading https://repo.maven.apache.org/maven2/de/lmu/ifi/dbs/elki/elki/0.7.1/elki-0.7.1.jar to /tmp/10153664/.tmp/gradle_download1843833607935996533bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/commons/commons-collections4/4.1/commons-collections4-4.1.jar to /tmp/10153664/.tmp/gradle_download1249710041870922831bin
+Downloading https://repo.maven.apache.org/maven2/org/jogamp/gluegen/gluegen-rt/2.3.2/gluegen-rt-2.3.2-natives-windows-amd64.jar to /tmp/10153664/.tmp/gradle_download17994233957533231359bin
+Downloading https://repo.maven.apache.org/maven2/org/openjfx/javafx-graphics/11/javafx-graphics-11-linux.jar to /tmp/10153664/.tmp/gradle_download4456676215076047995bin
+Downloading https://repo.maven.apache.org/maven2/org/slf4j/jul-to-slf4j/1.7.30/jul-to-slf4j-1.7.30.jar to /tmp/10153664/.tmp/gradle_download13227719306407424980bin
+Downloading https://repo.maven.apache.org/maven2/org/jogamp/jocl/jocl/2.3.2/jocl-2.3.2.jar to /tmp/10153664/.tmp/gradle_download1705848944100998224bin
+Cache entries evicted. In-memory cache of /home/users/lz280/IdeaProjects/OSPREY3/.gradle/7.3/checksums/sha1-checksums.bin: Size{400} MaxSize{400}, CacheStats{hitCount=461, missCount=761, loadSuccessCount=761, loadExceptionCount=0, totalLoadTime=1641705639, evictionCount=361} 
+Performance may suffer from in-memory cache misses. Increase max heap size of Gradle build process to reduce cache misses.
+Downloading https://repo.maven.apache.org/maven2/com/cuchazinteractive/kludge/0.2/kludge-0.2.jar to /tmp/10153664/.tmp/gradle_download1218164049005542151bin
+Downloading https://repo.maven.apache.org/maven2/org/openjfx/javafx-base/11/javafx-base-11-linux.jar to /tmp/10153664/.tmp/gradle_download1133542945961425251bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-server-host-common/1.5.4/ktor-server-host-common-1.5.4.jar to /tmp/10153664/.tmp/gradle_download995176433505325248bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-server-netty/1.5.4/ktor-server-netty-1.5.4.jar to /tmp/10153664/.tmp/gradle_download17550632926932826409bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/commons/commons-lang3/3.4/commons-lang3-3.4.jar to /tmp/10153664/.tmp/gradle_download17901963245291442049bin
+Downloading https://repo.maven.apache.org/maven2/org/openjfx/javafx-controls/11/javafx-controls-11-linux.jar to /tmp/10153664/.tmp/gradle_download8702506103889712025bin
+Downloading https://repo.maven.apache.org/maven2/org/openjfx/javafx-base/11/javafx-base-11.jar to /tmp/10153664/.tmp/gradle_download3448185226991950852bin
+Downloading https://repo.maven.apache.org/maven2/org/openjfx/javafx-graphics/11/javafx-graphics-11.jar to /tmp/10153664/.tmp/gradle_download10708204731454282299bin
+Downloading https://repo.maven.apache.org/maven2/ch/qos/logback/logback-classic/1.2.3/logback-classic-1.2.3.jar to /tmp/10153664/.tmp/gradle_download16086454364778701255bin
+Downloading https://repo.maven.apache.org/maven2/org/jogamp/jocl/jocl/2.3.2/jocl-2.3.2-natives-macosx-universal.jar to /tmp/10153664/.tmp/gradle_download16907765364900851195bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/commons/commons-math3/3.6.1/commons-math3-3.6.1.jar to /tmp/10153664/.tmp/gradle_download1845833381053111057bin
+Downloading https://repo.maven.apache.org/maven2/org/jogamp/gluegen/gluegen-rt/2.3.2/gluegen-rt-2.3.2.jar to /tmp/10153664/.tmp/gradle_download12997749442144624597bin
+Downloading https://repo.maven.apache.org/maven2/colt/colt/1.2.0/colt-1.2.0.jar to /tmp/10153664/.tmp/gradle_download1601160512841944966bin
+Downloading https://repo.maven.apache.org/maven2/org/mapdb/mapdb/3.0.5/mapdb-3.0.5.jar to /tmp/10153664/.tmp/gradle_download15126047167749066911bin
+Downloading https://repo.maven.apache.org/maven2/net/java/dev/jna/jna/5.10.0/jna-5.10.0.jar to /tmp/10153664/.tmp/gradle_download11084372531905832885bin
+Downloading https://repo.maven.apache.org/maven2/com/github/haifengl/smile-netlib/1.5.1/smile-netlib-1.5.1.jar to /tmp/10153664/.tmp/gradle_download7718799580770266039bin
+Downloading https://repo.maven.apache.org/maven2/org/jogamp/gluegen/gluegen-rt/2.3.2/gluegen-rt-2.3.2-natives-macosx-universal.jar to /tmp/10153664/.tmp/gradle_download6554327930211586476bin
+Downloading https://repo.maven.apache.org/maven2/ch/obermuhlner/big-math/2.3.0/big-math-2.3.0.jar to /tmp/10153664/.tmp/gradle_download8065052559150044226bin
+Downloading https://repo.maven.apache.org/maven2/org/jcuda/jcuda-natives/0.8.0/jcuda-natives-0.8.0-windows-x86_64.jar to /tmp/10153664/.tmp/gradle_download10747189996991278737bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-server-core/1.5.4/ktor-server-core-1.5.4.jar to /tmp/10153664/.tmp/gradle_download10077712424798281951bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/httpcomponents/httpclient/4.5.13/httpclient-4.5.13.jar to /tmp/10153664/.tmp/gradle_download14633200584152426376bin
+Downloading https://repo.maven.apache.org/maven2/com/hazelcast/hazelcast/4.0/hazelcast-4.0.jar to /tmp/10153664/.tmp/gradle_download8321041894823813620bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/xmlgraphics/batik-css/1.9.1/batik-css-1.9.1.jar to /tmp/10153664/.tmp/gradle_download16030957856281969670bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/xmlgraphics/batik-parser/1.9.1/batik-parser-1.9.1.jar to /tmp/10153664/.tmp/gradle_download14135362151527840026bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-client-serialization-jvm/1.5.4/ktor-client-serialization-jvm-1.5.4.jar to /tmp/10153664/.tmp/gradle_download902950485255777473bin
+Downloading https://repo.maven.apache.org/maven2/xml-apis/xml-apis/1.3.04/xml-apis-1.3.04.jar to /tmp/10153664/.tmp/gradle_download4611069855533918580bin
+Downloading https://repo.maven.apache.org/maven2/com/joptimizer/joptimizer/3.5.1/joptimizer-3.5.1.jar to /tmp/10153664/.tmp/gradle_download10420925054768938178bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/jniloader/1.1/jniloader-1.1.jar to /tmp/10153664/.tmp/gradle_download15398328390422765397bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/xmlgraphics/xmlgraphics-commons/2.2/xmlgraphics-commons-2.2.jar to /tmp/10153664/.tmp/gradle_download12824673753899673807bin
+Downloading https://repo.maven.apache.org/maven2/com/typesafe/netty/netty-reactive-streams-http/2.0.4/netty-reactive-streams-http-2.0.4.jar to /tmp/10153664/.tmp/gradle_download10746293121289614682bin
+Downloading https://repo.maven.apache.org/maven2/commons-io/commons-io/2.5/commons-io-2.5.jar to /tmp/10153664/.tmp/gradle_download12844478710408753740bin
+Downloading https://repo.maven.apache.org/maven2/io/netty/netty-handler/4.1.63.Final/netty-handler-4.1.63.Final.jar to /tmp/10153664/.tmp/gradle_download12999843585653155564bin
+Downloading https://repo.maven.apache.org/maven2/org/jogamp/jocl/jocl/2.3.2/jocl-2.3.2-natives-linux-amd64.jar to /tmp/10153664/.tmp/gradle_download13728326969768038380bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/xmlgraphics/batik-svg-dom/1.9.1/batik-svg-dom-1.9.1.jar to /tmp/10153664/.tmp/gradle_download5607100556378975649bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/s3/2.15.48/s3-2.15.48.jar to /tmp/10153664/.tmp/gradle_download4766590885868159565bin
+Downloading https://repo.maven.apache.org/maven2/org/joml/joml/1.9.19/joml-1.9.19.jar to /tmp/10153664/.tmp/gradle_download4431220273344334609bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/aws-query-protocol/2.15.48/aws-query-protocol-2.15.48.jar to /tmp/10153664/.tmp/gradle_download12395538081549855024bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/xmlgraphics/batik-awt-util/1.9.1/batik-awt-util-1.9.1.jar to /tmp/10153664/.tmp/gradle_download11720106529877584331bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/protocol-core/2.15.48/protocol-core-2.15.48.jar to /tmp/10153664/.tmp/gradle_download13335521327182994796bin
+Downloading https://repo.maven.apache.org/maven2/org/jcuda/jcuda/0.8.0/jcuda-0.8.0.jar to /tmp/10153664/.tmp/gradle_download14376230101144043175bin
+Downloading https://repo.maven.apache.org/maven2/org/jogamp/gluegen/gluegen-rt/2.3.2/gluegen-rt-2.3.2-natives-linux-amd64.jar to /tmp/10153664/.tmp/gradle_download17873512643703506038bin
+Downloading https://repo.maven.apache.org/maven2/io/netty/netty-codec/4.1.63.Final/netty-codec-4.1.63.Final.jar to /tmp/10153664/.tmp/gradle_download8961913952690693348bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/auth/2.15.48/auth-2.15.48.jar to /tmp/10153664/.tmp/gradle_download10216600784342024774bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/aws-xml-protocol/2.15.48/aws-xml-protocol-2.15.48.jar to /tmp/10153664/.tmp/gradle_download10218050182059895154bin
+Downloading https://repo.maven.apache.org/maven2/org/tomlj/tomlj/1.0.0/tomlj-1.0.0.jar to /tmp/10153664/.tmp/gradle_download2539384824517579920bin
+Downloading https://repo.maven.apache.org/maven2/com/github/haifengl/smile-core/1.5.1/smile-core-1.5.1.jar to /tmp/10153664/.tmp/gradle_download2563003531427521381bin
+Downloading https://repo.maven.apache.org/maven2/io/netty/netty-buffer/4.1.63.Final/netty-buffer-4.1.63.Final.jar to /tmp/10153664/.tmp/gradle_download9584716934884375805bin
+Downloading https://repo.maven.apache.org/maven2/io/netty/netty-transport/4.1.63.Final/netty-transport-4.1.63.Final.jar to /tmp/10153664/.tmp/gradle_download18347210362379253686bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/aws-core/2.15.48/aws-core-2.15.48.jar to /tmp/10153664/.tmp/gradle_download1435532945963183510bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/metrics-spi/2.15.48/metrics-spi-2.15.48.jar to /tmp/10153664/.tmp/gradle_download1593964314934088395bin
+Downloading https://repo.maven.apache.org/maven2/com/google/auto/value/auto-value-annotations/1.7/auto-value-annotations-1.7.jar to /tmp/10153664/.tmp/gradle_download13567169360234902311bin
+Downloading https://repo.maven.apache.org/maven2/org/reactivestreams/reactive-streams/1.0.3/reactive-streams-1.0.3.jar to /tmp/10153664/.tmp/gradle_download10275570533401822680bin
+Downloading https://repo.maven.apache.org/maven2/org/sql2o/sql2o/1.6.0/sql2o-1.6.0.jar to /tmp/10153664/.tmp/gradle_download429899564055899760bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/regions/2.15.48/regions-2.15.48.jar to /tmp/10153664/.tmp/gradle_download13479458120783331189bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/sdk-core/2.15.48/sdk-core-2.15.48.jar to /tmp/10153664/.tmp/gradle_download2327345716607594069bin
+Downloading https://repo.maven.apache.org/maven2/org/ojalgo/ojalgo/41.0.0/ojalgo-41.0.0.jar to /tmp/10153664/.tmp/gradle_download11881857166351604086bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/http-client-spi/2.15.48/http-client-spi-2.15.48.jar to /tmp/10153664/.tmp/gradle_download5896945215361064381bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/xmlgraphics/batik-dom/1.9.1/batik-dom-1.9.1.jar to /tmp/10153664/.tmp/gradle_download12782938287003446729bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/apache-client/2.15.48/apache-client-2.15.48.jar to /tmp/10153664/.tmp/gradle_download3235815578661066650bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/netty-nio-client/2.15.48/netty-nio-client-2.15.48.jar to /tmp/10153664/.tmp/gradle_download10580403138905929520bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/profiles/2.15.48/profiles-2.15.48.jar to /tmp/10153664/.tmp/gradle_download12374410071662690728bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-client-apache/1.5.4/ktor-client-apache-1.5.4.jar to /tmp/10153664/.tmp/gradle_download16121890054949301005bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/utils/2.15.48/utils-2.15.48.jar to /tmp/10153664/.tmp/gradle_download655223017279749143bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.10.4/jackson-databind-2.10.4.jar to /tmp/10153664/.tmp/gradle_download9810293678610038200bin
+Cache entries evicted. In-memory cache of /home/users/lz280/IdeaProjects/OSPREY3/.gradle/7.3/checksums/sha1-checksums.bin: Size{400} MaxSize{400}, CacheStats{hitCount=461, missCount=801, loadSuccessCount=801, loadExceptionCount=0, totalLoadTime=1666802698, evictionCount=401} 
+Performance may suffer from in-memory cache misses. Increase max heap size of Gradle build process to reduce cache misses.
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/arns/2.15.48/arns-2.15.48.jar to /tmp/10153664/.tmp/gradle_download14679333314936528466bin
+Downloading https://repo.maven.apache.org/maven2/com/beust/jcommander/1.72/jcommander-1.72.jar to /tmp/10153664/.tmp/gradle_download8323101822961370519bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-network-jvm/1.5.4/ktor-network-jvm-1.5.4.jar to /tmp/10153664/.tmp/gradle_download16564727190483799409bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/dataformat/jackson-dataformat-yaml/2.9.9/jackson-dataformat-yaml-2.9.9.jar to /tmp/10153664/.tmp/gradle_download13752330055181109476bin
+Downloading https://repo.maven.apache.org/maven2/org/jcuda/jcuda-natives/0.8.0/jcuda-natives-0.8.0-apple-x86_64.jar to /tmp/10153664/.tmp/gradle_download17157527121120983100bin
+Downloading https://repo.maven.apache.org/maven2/org/jcuda/jcuda-natives/0.8.0/jcuda-natives-0.8.0-linux-x86_64.jar to /tmp/10153664/.tmp/gradle_download8256023597041371757bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-http-jvm/1.5.4/ktor-http-jvm-1.5.4.jar to /tmp/10153664/.tmp/gradle_download8187107750379969550bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/awssdk/annotations/2.15.48/annotations-2.15.48.jar to /tmp/10153664/.tmp/gradle_download7810076115149952363bin
+Downloading https://repo.maven.apache.org/maven2/io/netty/netty-transport-native-unix-common/4.1.63.Final/netty-transport-native-unix-common-4.1.63.Final.jar to /tmp/10153664/.tmp/gradle_download9128953464237132912bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-utils-jvm/1.5.4/ktor-utils-jvm-1.5.4.jar to /tmp/10153664/.tmp/gradle_download13449019521577326047bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-client-json-jvm/1.5.4/ktor-client-json-jvm-1.5.4.jar to /tmp/10153664/.tmp/gradle_download677291890358412280bin
+Downloading https://repo.maven.apache.org/maven2/com/typesafe/netty/netty-reactive-streams/2.0.4/netty-reactive-streams-2.0.4.jar to /tmp/10153664/.tmp/gradle_download1885265826026264990bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-client-core-jvm/1.5.4/ktor-client-core-jvm-1.5.4.jar to /tmp/10153664/.tmp/gradle_download14264282832129881633bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/xmlgraphics/batik-i18n/1.9.1/batik-i18n-1.9.1.jar to /tmp/10153664/.tmp/gradle_download17123066125299460793bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-http-cio-jvm/1.5.4/ktor-http-cio-jvm-1.5.4.jar to /tmp/10153664/.tmp/gradle_download9268156246439399234bin
+Downloading https://repo.maven.apache.org/maven2/xalan/serializer/2.7.2/serializer-2.7.2.jar to /tmp/10153664/.tmp/gradle_download2699922983604875639bin
+Downloading https://repo.maven.apache.org/maven2/io/netty/netty-codec-http/4.1.63.Final/netty-codec-http-4.1.63.Final.jar to /tmp/10153664/.tmp/gradle_download12806611225598560213bin
+Downloading https://repo.maven.apache.org/maven2/org/postgresql/postgresql/42.2.16/postgresql-42.2.16.jar to /tmp/10153664/.tmp/gradle_download13864023833297779602bin
+Downloading https://repo.maven.apache.org/maven2/one/util/streamex/0.7.3/streamex-0.7.3.jar to /tmp/10153664/.tmp/gradle_download4385108005256024236bin
+Downloading https://repo.maven.apache.org/maven2/software/amazon/eventstream/eventstream/1.0.1/eventstream-1.0.1.jar to /tmp/10153664/.tmp/gradle_download7560590171761497985bin
+Downloading https://repo.maven.apache.org/maven2/xalan/xalan/2.7.2/xalan-2.7.2.jar to /tmp/10153664/.tmp/gradle_download13110683714281436513bin
+Downloading https://repo.maven.apache.org/maven2/io/netty/netty-codec-http2/4.1.63.Final/netty-codec-http2-4.1.63.Final.jar to /tmp/10153664/.tmp/gradle_download5415786351267206874bin
+Downloading https://repo.maven.apache.org/maven2/io/netty/netty-transport-native-epoll/4.1.63.Final/netty-transport-native-epoll-4.1.63.Final.jar to /tmp/10153664/.tmp/gradle_download16469565857792744967bin
+Downloading https://repo.maven.apache.org/maven2/com/typesafe/config/1.3.1/config-1.3.1.jar to /tmp/10153664/.tmp/gradle_download10024356668564091749bin
+Downloading https://repo.maven.apache.org/maven2/commons-codec/commons-codec/1.11/commons-codec-1.11.jar to /tmp/10153664/.tmp/gradle_download14880054278622116864bin
+Downloading https://repo.maven.apache.org/maven2/org/lwjgl/lwjgl-jemalloc/3.2.2/lwjgl-jemalloc-3.2.2-natives-linux.jar to /tmp/10153664/.tmp/gradle_download373961108236942748bin
+Downloading https://repo.maven.apache.org/maven2/io/netty/netty-transport-native-epoll/4.1.63.Final/netty-transport-native-epoll-4.1.63.Final-linux-x86_64.jar to /tmp/10153664/.tmp/gradle_download13982817817067584771bin
+Downloading https://repo.maven.apache.org/maven2/org/lwjgl/lwjgl-nfd/3.2.2/lwjgl-nfd-3.2.2-natives-linux.jar to /tmp/10153664/.tmp/gradle_download9881730242136479004bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/native_system-java/1.1/native_system-java-1.1.jar to /tmp/10153664/.tmp/gradle_download2402266211290614058bin
+Downloading https://repo.maven.apache.org/maven2/org/lwjgl/lwjgl-jemalloc/3.2.2/lwjgl-jemalloc-3.2.2-natives-macos.jar to /tmp/10153664/.tmp/gradle_download10003066910734514311bin
+Downloading https://repo.maven.apache.org/maven2/org/lwjgl/lwjgl-vulkan/3.2.2/lwjgl-vulkan-3.2.2-natives-macos.jar to /tmp/10153664/.tmp/gradle_download11720612331432995118bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/httpcomponents/httpcore/4.4.13/httpcore-4.4.13.jar to /tmp/10153664/.tmp/gradle_download14340676467691637813bin
+Downloading https://repo.maven.apache.org/maven2/net/jcip/jcip-annotations/1.0/jcip-annotations-1.0.jar to /tmp/10153664/.tmp/gradle_download6588960263163159615bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/netlib-native_system-linux-armhf/1.1/netlib-native_system-linux-armhf-1.1-natives.jar to /tmp/10153664/.tmp/gradle_download11851168242937635057bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/core/1.1.2/core-1.1.2.jar to /tmp/10153664/.tmp/gradle_download6515745658881692650bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/xmlgraphics/batik-constants/1.9.1/batik-constants-1.9.1.jar to /tmp/10153664/.tmp/gradle_download8772491828697547456bin
+Downloading https://repo.maven.apache.org/maven2/io/ktor/ktor-io-jvm/1.5.4/ktor-io-jvm-1.5.4.jar to /tmp/10153664/.tmp/gradle_download17342236195913556133bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/netlib-native_system-win-i686/1.1/netlib-native_system-win-i686-1.1-natives.jar to /tmp/10153664/.tmp/gradle_download7410591623313486263bin
+Cache entries evicted. In-memory cache of /home/users/lz280/IdeaProjects/OSPREY3/.gradle/7.3/checksums/sha1-checksums.bin: Size{400} MaxSize{400}, CacheStats{hitCount=461, missCount=841, loadSuccessCount=841, loadExceptionCount=0, totalLoadTime=1676007376, evictionCount=441} 
+Performance may suffer from in-memory cache misses. Increase max heap size of Gradle build process to reduce cache misses.
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-jdk8/1.4.3-native-mt/kotlinx-coroutines-jdk8-1.4.3-native-mt.jar to /tmp/10153664/.tmp/gradle_download14365968894707696744bin
+Downloading https://repo.maven.apache.org/maven2/net/sourceforge/f2j/arpack_combined_all/0.1/arpack_combined_all-0.1.jar to /tmp/10153664/.tmp/gradle_download4102848378144621824bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.4.3-native-mt/kotlinx-coroutines-core-jvm-1.4.3-native-mt.jar to /tmp/10153664/.tmp/gradle_download15305664943777768696bin
+Downloading https://repo.maven.apache.org/maven2/org/eclipse/collections/eclipse-collections-forkjoin/7.1.2/eclipse-collections-forkjoin-7.1.2.jar to /tmp/10153664/.tmp/gradle_download12486939448421942814bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-json-jvm/1.1.0/kotlinx-serialization-json-jvm-1.1.0.jar to /tmp/10153664/.tmp/gradle_download3568515004900426079bin
+Downloading https://repo.maven.apache.org/maven2/org/lwjgl/lwjgl/3.2.2/lwjgl-3.2.2-natives-linux.jar to /tmp/10153664/.tmp/gradle_download9342754909158918577bin
+Downloading https://repo.maven.apache.org/maven2/org/lwjgl/lwjgl/3.2.2/lwjgl-3.2.2-natives-macos.jar to /tmp/10153664/.tmp/gradle_download4533164769181583372bin
+Downloading https://repo.maven.apache.org/maven2/net/sf/trove4j/trove4j/3.0.3/trove4j-3.0.3.jar to /tmp/10153664/.tmp/gradle_download15131044218872950429bin
+Downloading https://repo.maven.apache.org/maven2/org/lwjgl/lwjgl-jemalloc/3.2.2/lwjgl-jemalloc-3.2.2.jar to /tmp/10153664/.tmp/gradle_download17814515683248017855bin
+Downloading https://repo.maven.apache.org/maven2/org/lwjgl/lwjgl-glfw/3.2.2/lwjgl-glfw-3.2.2-natives-windows.jar to /tmp/10153664/.tmp/gradle_download15596910554715200073bin
+Downloading https://repo.maven.apache.org/maven2/io/netty/netty-resolver/4.1.63.Final/netty-resolver-4.1.63.Final.jar to /tmp/10153664/.tmp/gradle_download2815203643366726249bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/commons/commons-csv/1.3/commons-csv-1.3.jar to /tmp/10153664/.tmp/gradle_download12551608422038423607bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/netlib-native_system-osx-x86_64/1.1/netlib-native_system-osx-x86_64-1.1-natives.jar to /tmp/10153664/.tmp/gradle_download14584930409915885876bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/netlib-native_ref-linux-i686/1.1/netlib-native_ref-linux-i686-1.1-natives.jar to /tmp/10153664/.tmp/gradle_download254839367383115806bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/netlib-native_ref-linux-x86_64/1.1/netlib-native_ref-linux-x86_64-1.1-natives.jar to /tmp/10153664/.tmp/gradle_download4166950665013533829bin
+Downloading https://repo.maven.apache.org/maven2/org/lwjgl/lwjgl/3.2.2/lwjgl-3.2.2.jar to /tmp/10153664/.tmp/gradle_download10753320996827794351bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/netlib-native_system-win-x86_64/1.1/netlib-native_system-win-x86_64-1.1-natives.jar to /tmp/10153664/.tmp/gradle_download8186777904327530491bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/netlib-native_system-linux-i686/1.1/netlib-native_system-linux-i686-1.1-natives.jar to /tmp/10153664/.tmp/gradle_download9075591499042419078bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-core-jvm/1.1.0/kotlinx-serialization-core-jvm-1.1.0.jar to /tmp/10153664/.tmp/gradle_download15384201072661380756bin
+Downloading https://repo.maven.apache.org/maven2/org/lwjgl/lwjgl-vulkan/3.2.2/lwjgl-vulkan-3.2.2.jar to /tmp/10153664/.tmp/gradle_download15582636938455943103bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/netlib-native_ref-osx-x86_64/1.1/netlib-native_ref-osx-x86_64-1.1-natives.jar to /tmp/10153664/.tmp/gradle_download11475255518752415226bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/netlib-native_system-linux-x86_64/1.1/netlib-native_system-linux-x86_64-1.1-natives.jar to /tmp/10153664/.tmp/gradle_download10216446633942147085bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/native_ref-java/1.1/native_ref-java-1.1.jar to /tmp/10153664/.tmp/gradle_download8824792376927467522bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/httpcomponents/httpcore-nio/4.4.13/httpcore-nio-4.4.13.jar to /tmp/10153664/.tmp/gradle_download3322273596831569311bin
+Downloading https://repo.maven.apache.org/maven2/org/lwjgl/lwjgl/3.2.2/lwjgl-3.2.2-natives-windows.jar to /tmp/10153664/.tmp/gradle_download18382260193551746166bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-annotations/2.10.4/jackson-annotations-2.10.4.jar to /tmp/10153664/.tmp/gradle_download4829016103274512723bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/netlib-native_ref-win-i686/1.1/netlib-native_ref-win-i686-1.1-natives.jar to /tmp/10153664/.tmp/gradle_download3534365785899120001bin
+Downloading https://repo.maven.apache.org/maven2/com/fasterxml/jackson/core/jackson-core/2.10.4/jackson-core-2.10.4.jar to /tmp/10153664/.tmp/gradle_download5399534468106608698bin
+Downloading https://repo.maven.apache.org/maven2/org/yaml/snakeyaml/1.23/snakeyaml-1.23.jar to /tmp/10153664/.tmp/gradle_download16518294472240735471bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/netlib-native_ref-linux-armhf/1.1/netlib-native_ref-linux-armhf-1.1-natives.jar to /tmp/10153664/.tmp/gradle_download34364263306252321bin
+Downloading https://repo.maven.apache.org/maven2/org/lwjgl/lwjgl-glfw/3.2.2/lwjgl-glfw-3.2.2.jar to /tmp/10153664/.tmp/gradle_download3490253432285014587bin
+Downloading https://repo.maven.apache.org/maven2/org/lwjgl/lwjgl-jemalloc/3.2.2/lwjgl-jemalloc-3.2.2-natives-windows.jar to /tmp/10153664/.tmp/gradle_download8632084117807496031bin
+Downloading https://repo.maven.apache.org/maven2/com/github/fommil/netlib/netlib-native_ref-win-x86_64/1.1/netlib-native_ref-win-x86_64-1.1-natives.jar to /tmp/10153664/.tmp/gradle_download3868928706421048491bin
+Downloading https://repo.maven.apache.org/maven2/org/lwjgl/lwjgl-nfd/3.2.2/lwjgl-nfd-3.2.2-natives-macos.jar to /tmp/10153664/.tmp/gradle_download521826987967941744bin
+Downloading https://repo.maven.apache.org/maven2/org/lwjgl/lwjgl-glfw/3.2.2/lwjgl-glfw-3.2.2-natives-linux.jar to /tmp/10153664/.tmp/gradle_download965147691584017331bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/xmlgraphics/batik-xml/1.9.1/batik-xml-1.9.1.jar to /tmp/10153664/.tmp/gradle_download233794349238205316bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/xmlgraphics/batik-ext/1.9.1/batik-ext-1.9.1.jar to /tmp/10153664/.tmp/gradle_download10879536948865303281bin
+Downloading https://repo.maven.apache.org/maven2/org/lwjgl/lwjgl-nfd/3.2.2/lwjgl-nfd-3.2.2-natives-windows.jar to /tmp/10153664/.tmp/gradle_download6463163394556008666bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/xmlgraphics/batik-util/1.9.1/batik-util-1.9.1.jar to /tmp/10153664/.tmp/gradle_download10379046692835459426bin
+Downloading https://repo.maven.apache.org/maven2/org/lwjgl/lwjgl-nfd/3.2.2/lwjgl-nfd-3.2.2.jar to /tmp/10153664/.tmp/gradle_download4391166070862057559bin
+Cache entries evicted. In-memory cache of /home/users/lz280/IdeaProjects/OSPREY3/.gradle/7.3/checksums/sha1-checksums.bin: Size{400} MaxSize{400}, CacheStats{hitCount=461, missCount=881, loadSuccessCount=881, loadExceptionCount=0, totalLoadTime=1683874848, evictionCount=481} 
+Performance may suffer from in-memory cache misses. Increase max heap size of Gradle build process to reduce cache misses.
+Downloading https://repo.maven.apache.org/maven2/xml-apis/xml-apis-ext/1.3.04/xml-apis-ext-1.3.04.jar to /tmp/10153664/.tmp/gradle_download7670185338586490826bin
+Downloading https://repo.maven.apache.org/maven2/commons-logging/commons-logging/1.2/commons-logging-1.2.jar to /tmp/10153664/.tmp/gradle_download5494055026665285709bin
+Downloading https://repo.maven.apache.org/maven2/com/github/haifengl/smile-math/1.5.1/smile-math-1.5.1.jar to /tmp/10153664/.tmp/gradle_download6776999111492961978bin
+Downloading https://repo.maven.apache.org/maven2/org/eclipse/jetty/alpn/alpn-api/1.1.3.v20160715/alpn-api-1.1.3.v20160715.jar to /tmp/10153664/.tmp/gradle_download12665884583512525109bin
+Downloading https://repo.maven.apache.org/maven2/io/netty/netty-common/4.1.63.Final/netty-common-4.1.63.Final.jar to /tmp/10153664/.tmp/gradle_download6229930821351694378bin
+Downloading https://repo.maven.apache.org/maven2/org/slf4j/slf4j-api/1.7.30/slf4j-api-1.7.30.jar to /tmp/10153664/.tmp/gradle_download15729485373268488612bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/httpcomponents/httpasyncclient/4.1.4/httpasyncclient-4.1.4.jar to /tmp/10153664/.tmp/gradle_download17296850071514243606bin
+Downloading https://repo.maven.apache.org/maven2/org/mapdb/elsa/3.0.0-M5/elsa-3.0.0-M5.jar to /tmp/10153664/.tmp/gradle_download6327027248166089240bin
+Downloading https://repo.maven.apache.org/maven2/net/jpountz/lz4/lz4/1.3.0/lz4-1.3.0.jar to /tmp/10153664/.tmp/gradle_download6211524432123104220bin
+Downloading https://repo.maven.apache.org/maven2/net/sourceforge/csparsej/csparsej/1.1.1/csparsej-1.1.1.jar to /tmp/10153664/.tmp/gradle_download14520275277292643956bin
+Downloading https://repo.maven.apache.org/maven2/org/antlr/antlr4-runtime/4.7.2/antlr4-runtime-4.7.2.jar to /tmp/10153664/.tmp/gradle_download3731664318415050782bin
+Downloading https://repo.maven.apache.org/maven2/com/github/haifengl/smile-graph/1.5.1/smile-graph-1.5.1.jar to /tmp/10153664/.tmp/gradle_download11373348080351527811bin
+Downloading https://repo.maven.apache.org/maven2/org/eclipse/collections/eclipse-collections-api/7.1.2/eclipse-collections-api-7.1.2.jar to /tmp/10153664/.tmp/gradle_download10348380460275472801bin
+Downloading https://repo.maven.apache.org/maven2/concurrent/concurrent/1.3.4/concurrent-1.3.4.jar to /tmp/10153664/.tmp/gradle_download3852170274101958185bin
+Downloading https://repo.maven.apache.org/maven2/log4j/log4j/1.2.14/log4j-1.2.14.jar to /tmp/10153664/.tmp/gradle_download14676704779447518659bin
+Downloading https://repo.maven.apache.org/maven2/ch/qos/logback/logback-core/1.2.3/logback-core-1.2.3.jar to /tmp/10153664/.tmp/gradle_download4571820326653797506bin
+Downloading https://repo.maven.apache.org/maven2/org/lwjgl/lwjgl-glfw/3.2.2/lwjgl-glfw-3.2.2-natives-macos.jar to /tmp/10153664/.tmp/gradle_download16053890613709779473bin
+Downloading https://repo.maven.apache.org/maven2/io/netty/netty-transport-native-kqueue/4.1.63.Final/netty-transport-native-kqueue-4.1.63.Final.jar to /tmp/10153664/.tmp/gradle_download9976733722558250404bin
+Cache entries evicted. In-memory cache of /home/users/lz280/IdeaProjects/OSPREY3/.gradle/7.3/checksums/sha1-checksums.bin: Size{400} MaxSize{400}, CacheStats{hitCount=461, missCount=921, loadSuccessCount=921, loadExceptionCount=0, totalLoadTime=1693951636, evictionCount=521} 
+Performance may suffer from in-memory cache misses. Increase max heap size of Gradle build process to reduce cache misses.
+Downloading https://repo.maven.apache.org/maven2/org/checkerframework/checker-qual/3.5.0/checker-qual-3.5.0.jar to /tmp/10153664/.tmp/gradle_download3150725739041048184bin
+Downloading https://repo.maven.apache.org/maven2/com/github/haifengl/smile-data/1.5.1/smile-data-1.5.1.jar to /tmp/10153664/.tmp/gradle_download9012130464094716164bin
+Downloading https://repo.maven.apache.org/maven2/org/eclipse/collections/eclipse-collections/7.1.2/eclipse-collections-7.1.2.jar to /tmp/10153664/.tmp/gradle_download13844614932045803298bin
+All projects evaluated.
+Selected primary task 'build' from project :
+Tasks to be executed: [task ':compileKotlin', task ':compileJava', task ':processResources', task ':classes', task ':inspectClassesForKotlinIC', task ':jar', task ':startScripts', task ':distTar', task ':distZip', task ':assemble', task ':check', task ':compileShaders', task ':build']
+Tasks that were excluded: [task ':test']
+:compileKotlin (Thread[Execution worker for ':',5,main]) started.
+
+> Task :compileKotlin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-script-runtime/1.6.10/kotlin-script-runtime-1.6.10.pom to /tmp/10153664/.tmp/gradle_download15514850697893122916bin
+Downloading https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-script-runtime/1.6.10/kotlin-script-runtime-1.6.10.jar to /tmp/10153664/.tmp/gradle_download8115175752785671593bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/httpcomponents/httpcore/4.4.10/httpcore-4.4.10.pom to /tmp/10153664/.tmp/gradle_download2146214712749604975bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/httpcomponents/httpcore-nio/4.4.10/httpcore-nio-4.4.10.pom to /tmp/10153664/.tmp/gradle_download11122616437958642275bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/httpcomponents/httpcomponents-core/4.4.10/httpcomponents-core-4.4.10.pom to /tmp/10153664/.tmp/gradle_download18192418945521910689bin
+Downloading https://repo.maven.apache.org/maven2/commons-codec/commons-codec/1.10/commons-codec-1.10.pom to /tmp/10153664/.tmp/gradle_download15263569388206593090bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/commons/commons-parent/35/commons-parent-35.pom to /tmp/10153664/.tmp/gradle_download7078096875457334478bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/apache/15/apache-15.pom to /tmp/10153664/.tmp/gradle_download12037298148162565640bin
+Downloading https://repo.maven.apache.org/maven2/commons-codec/commons-codec/1.10/commons-codec-1.10.jar to /tmp/10153664/.tmp/gradle_download15501529339961169268bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/httpcomponents/httpclient/4.5.6/httpclient-4.5.6.jar to /tmp/10153664/.tmp/gradle_download2172738038058231504bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/httpcomponents/httpcore-nio/4.4.10/httpcore-nio-4.4.10.jar to /tmp/10153664/.tmp/gradle_download15593115901869969602bin
+Downloading https://repo.maven.apache.org/maven2/org/reactivestreams/reactive-streams/1.0.2/reactive-streams-1.0.2.jar to /tmp/10153664/.tmp/gradle_download12009776869477002424bin
+Downloading https://repo.maven.apache.org/maven2/org/apache/httpcomponents/httpcore/4.4.10/httpcore-4.4.10.jar to /tmp/10153664/.tmp/gradle_download173813744913213487bin
+Caching disabled for task ':compileKotlin' because:
+  Build cache is disabled
+Skipping task ':compileKotlin' as it is up-to-date.
+
+> Task :compileKotlin UP-TO-DATE
+:compileKotlin (Thread[Execution worker for ':',5,main]) completed. Took 6.928 secs.
+:compileJava (Thread[Execution worker for ':',5,main]) started.
+
+> Task :compileJava
+Downloading https://repo.maven.apache.org/maven2/com/google/auto/value/auto-value/1.7/auto-value-1.7.pom to /tmp/10153664/.tmp/gradle_download15264042704962491578bin
+Downloading https://repo.maven.apache.org/maven2/com/google/auto/value/auto-value/1.7/auto-value-1.7.jar to /tmp/10153664/.tmp/gradle_download3816831274233704170bin
+Caching disabled for task ':compileJava' because:
+  Build cache is disabled
+Skipping task ':compileJava' as it is up-to-date.
+
+> Task :compileJava UP-TO-DATE
+:compileJava (Thread[Execution worker for ':',5,main]) completed. Took 5.206 secs.
+:processResources (Thread[Execution worker for ':',5,main]) started.
+
+> Task :processResources
+Caching disabled for task ':processResources' because:
+  Build cache is disabled
+Task ':processResources' is not up-to-date because:
+  Task.upToDateWhen is false.
+:processResources (Thread[Execution worker for ':',5,main]) completed. Took 1.102 secs.
+:classes (Thread[Execution worker for ':',5,main]) started.
+
+> Task :classes
+Skipping task ':classes' as it has no actions.
+:classes (Thread[Execution worker for ':',5,main]) completed. Took 0.0 secs.
+:inspectClassesForKotlinIC (Thread[Execution worker for ':',5,main]) started.
+
+> Task :inspectClassesForKotlinIC
+Caching disabled for task ':inspectClassesForKotlinIC' because:
+  Build cache is disabled
+Task ':inspectClassesForKotlinIC' is not up-to-date because:
+  Class path of task ':inspectClassesForKotlinIC' has changed from a1b162a5c0ddfcebcd7b3dddf3b824d5 to 6a4ccf5d73db8d696d4fe9a6208c49b7.
+:inspectClassesForKotlinIC (Thread[Execution worker for ':',5,main]) completed. Took 0.409 secs.
+:jar (Thread[Execution worker for ':',5,main]) started.
+
+> Task :jar
+Caching disabled for task ':jar' because:
+  Build cache is disabled
+Task ':jar' is not up-to-date because:
+  Output property 'archiveFile' file /home/users/lz280/IdeaProjects/OSPREY3/build/libs/osprey-3.3.jar has been removed.
+:jar (Thread[Execution worker for ':',5,main]) completed. Took 4.081 secs.
+:startScripts (Thread[Execution worker for ':',5,main]) started.
+
+> Task :startScripts
+Caching disabled for task ':startScripts' because:
+  Build cache is disabled
+Task ':startScripts' is not up-to-date because:
+  One or more additional actions for task ':startScripts' have changed.
+:startScripts (Thread[Execution worker for ':',5,main]) completed. Took 1.029 secs.
+:distTar (Thread[Execution worker for ':',5,main]) started.
+
+> Task :distTar
+file or directory '/home/users/lz280/IdeaProjects/OSPREY3/src/main/dist', not found
+Caching disabled for task ':distTar' because:
+  Build cache is disabled
+Task ':distTar' is not up-to-date because:
+  Output property 'archiveFile' file /home/users/lz280/IdeaProjects/OSPREY3/build/distributions/osprey-3.3.tar has been removed.
+file or directory '/home/users/lz280/IdeaProjects/OSPREY3/src/main/dist', not found
+file or directory '/home/users/lz280/IdeaProjects/OSPREY3/src/dist', not found
+:distTar (Thread[Execution worker for ':',5,main]) completed. Took 1.78 secs.
+:distZip (Thread[Execution worker for ':',5,main]) started.
+
+> Task :distZip
+file or directory '/home/users/lz280/IdeaProjects/OSPREY3/src/main/dist', not found
+Caching disabled for task ':distZip' because:
+  Build cache is disabled
+Task ':distZip' is not up-to-date because:
+  Output property 'archiveFile' file /home/users/lz280/IdeaProjects/OSPREY3/build/distributions/osprey-3.3.zip has been removed.
+file or directory '/home/users/lz280/IdeaProjects/OSPREY3/src/main/dist', not found
+file or directory '/home/users/lz280/IdeaProjects/OSPREY3/src/dist', not found
+:distZip (Thread[Execution worker for ':',5,main]) completed. Took 8.058 secs.
+:assemble (Thread[Execution worker for ':',5,main]) started.
+
+> Task :assemble
+Skipping task ':assemble' as it has no actions.
+:assemble (Thread[Execution worker for ':',5,main]) completed. Took 0.0 secs.
+:check (Thread[Execution worker for ':',5,main]) started.
+
+> Task :check
+Skipping task ':check' as it has no actions.
+:check (Thread[Execution worker for ':',5,main]) completed. Took 0.0 secs.
+:compileShaders (Thread[Execution worker for ':',5,main]) started.
+
+> Task :compileShaders FAILED
+Caching disabled for task ':compileShaders' because:
+  Build cache is disabled
+Task ':compileShaders' is not up-to-date because:
+  Task has not declared any outputs despite executing actions.
+Starting process 'command 'glslc''. Working directory: /home/users/lz280/IdeaProjects/OSPREY3/src/main/resources/edu/duke/cs/osprey/molscope/shaders Command: glslc --target-env=vulkan1.0 -Werror -x glsl -o ambientOcclusion.comp.spv /home/users/lz280/IdeaProjects/OSPREY3/src/main/glsl/ambientOcclusion.comp
+:compileShaders (Thread[Execution worker for ':',5,main]) completed. Took 0.077 secs.
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 8.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+See https://docs.gradle.org/7.3/userguide/command_line_interface.html#sec:command_line_warnings
+20 actionable tasks: 8 executed, 12 up-to-date
+Some of the file system contents retained in the virtual file system are on file systems that Gradle doesn't support watching. The relevant state was discarded to ensure changes to these locations are properly detected. You can override this by explicitly enabling file system watching.
+
+✗ Build FAILED with exit code 1
+[H[2J[3J

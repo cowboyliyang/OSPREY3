@@ -32,10 +32,20 @@
 
 package edu.duke.cs.osprey.markstar.framework;
 
+import java.math.BigDecimal;
+import java.math.MathContext;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
+import java.util.PriorityQueue;
+import java.util.Queue;
+import java.util.Set;
+
 import edu.duke.cs.osprey.astar.conf.ConfIndex;
 import edu.duke.cs.osprey.astar.conf.RCs;
 import edu.duke.cs.osprey.astar.conf.order.AStarOrder;
-import edu.duke.cs.osprey.astar.conf.order.DynamicHMeanAStarOrder;
 import edu.duke.cs.osprey.astar.conf.pruning.AStarPruner;
 import edu.duke.cs.osprey.astar.conf.scoring.AStarScorer;
 import edu.duke.cs.osprey.astar.conf.scoring.MPLPPairwiseHScorer;
@@ -62,11 +72,6 @@ import edu.duke.cs.osprey.tools.MathTools;
 import edu.duke.cs.osprey.tools.ObjectPool;
 import edu.duke.cs.osprey.tools.Stopwatch;
 import edu.duke.cs.osprey.tools.TimeTools;
-
-import java.math.BigDecimal;
-import java.math.BigInteger;
-import java.math.MathContext;
-import java.util.*;
 
 public class MARKStarBound implements PartitionFunction.WithConfDB {
 
@@ -218,6 +223,13 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
         if(!nonZeroLower) {
             runUntilNonZero();
             updateBound();
+            System.out.println("========== MARK* After runUntilNonZero ==========");
+            System.out.println("  epsilonBound:     " + epsilonBound);
+            System.out.println("  targetEpsilon:    " + targetEpsilon);
+            System.out.println("  lower bound:      " + rootNode.getLowerBound());
+            System.out.println("  upper bound:      " + rootNode.getUpperBound());
+            System.out.println("  Will enter while loop? " + (epsilonBound > targetEpsilon));
+            System.out.println("==================================================");
         }
         while (epsilonBound > targetEpsilon &&
                 workDone()-previousConfCount < maxNumConfs
@@ -245,7 +257,9 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
         debugPrint(String.format("Average Z reduction per minimization: %12.6e",averageReduction));
         values.pstar = rootNode.getUpperBound();
         values.qstar = rootNode.getLowerBound();
-        values.qprime= rootNode.getUpperBound();
+        // qprime should be the gap (upper - lower), not the upper bound itself
+        // This matches the implementation in GradientDescentPfunc.java:486-489
+        values.qprime = rootNode.getUpperBound().subtract(rootNode.getLowerBound());
         if(epsilonBound < targetEpsilon) {
             status = Status.Estimated;
             if(values.qstar.compareTo(BigDecimal.ZERO) == 0) {
@@ -357,7 +371,6 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
                 gscorerFactory.make(minimizingEmat), hscorerFactory.make(minimizingEmat),
                 gscorerFactory.make(rigidEmat),
                 new TraditionalPairwiseHScorer(new NegatedEnergyMatrix(confSpace, rigidEmat), rcs), true);
-                //hscorerFactory.make(new NegatedEnergyMatrix(confSpace, rigidEmat), rcs), true);
         confIndex = new ConfIndex(rcs.getNumPos());
         this.minimizingEmat = minimizingEmat;
         this.rigidEmat = rigidEmat;
@@ -576,6 +589,28 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
         int maxNodes = 1000;
         if(leafTimeAverage > 0)
             maxNodes = Math.max(maxNodes, (int)Math.floor(0.1*leafTimeAverage/internalTimeAverage));
+
+        // LOG: Priority queue state before popping
+        if (numConfsEnergied <= 5) {  // Only log for first few minimizations
+            System.out.println("[QUEUE_STATE] size=" + queue.size() + " internal_nodes=" + internalNodes.size() + " leaf_nodes=" + leafNodes.size());
+            List<MARKStarNode> peek = new ArrayList<>();
+            int count = 0;
+            while (!queue.isEmpty() && count < 10) {
+                MARKStarNode n = queue.poll();
+                peek.add(n);
+                Node nd = n.getConfSearchNode();
+                if (nd.getLevel() == RCs.getNumPos()) {  // leaf node
+                    System.out.println("  [QUEUE_LEAF] rank=" + (count+1)
+                        + " conf=" + SimpleConfSpace.formatConfRCs(nd.assignments)
+                        + " errorBound=" + String.format("%.6e", n.getErrorBound())
+                        + " confLower=" + String.format("%.6f", nd.getConfLowerBound())
+                        + " gscore=" + String.format("%.6f", nd.gscore));
+                }
+                count++;
+            }
+            queue.addAll(peek);
+        }
+
         while(!queue.isEmpty() && internalNodes.size() < maxNodes){
             MARKStarNode curNode = queue.poll();
             Node node = curNode.getConfSearchNode();
@@ -609,6 +644,17 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
                 internalZ = internalZ.add(diff);
             }
             else if(shouldMinimize(node) && !correctedNode(leftoverLeaves, curNode, node)) {
+                // LOG: Why this node will be minimized
+                if (numConfsEnergied <= 5) {
+                    System.out.println("[WILL_MINIMIZE] conf=" + SimpleConfSpace.formatConfRCs(node.assignments)
+                        + " confLower=" + String.format("%.6f", node.getConfLowerBound())
+                        + " confUpper=" + String.format("%.6f", node.getConfUpperBound())
+                        + " gscore=" + String.format("%.6f", node.gscore)
+                        + " rigidScore=" + String.format("%.6f", node.rigidScore)
+                        + " correctgscore=" + String.format("%.6f", correctgscore)
+                        + " confCorrection=" + String.format("%.6f", confCorrection)
+                        + " errorBound=" + String.format("%.6e", curNode.getErrorBound()));
+                }
                 if(leafNodes.size() < maxMinimizations) {
                     leafNodes.add(curNode);
                     leafZ = leafZ.add(diff);
@@ -725,6 +771,16 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
                     child.gscore = child.getConfLowerBound();
                     confLowerBound = lowerbound;
                     child.rigidScore = confRigid;
+
+                    // LOG: Leaf node created with pairwise energy
+                    if (numConfsScored < 10) {
+                        System.out.println("[LEAF_CREATED] conf=" + SimpleConfSpace.formatConfRCs(child.assignments)
+                            + " pairwise=" + String.format("%.6f", lowerbound)
+                            + " correction=" + String.format("%.6f", confCorrection)
+                            + " rigid=" + String.format("%.6f", confRigid)
+                            + " gscore=" + String.format("%.6f", child.gscore));
+                    }
+
                     numConfsScored++;
                     progress.reportLeafNode(child.gscore, queue.size(), epsilonBound);
                 }
@@ -888,6 +944,20 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
 
     protected void processFullConfNode(List<MARKStarNode> newNodes, MARKStarNode curNode, Node node) {
         double confCorrection = correctionMatrix.confE(node.assignments);
+        double pairwiseLowerBound = node.getConfLowerBound();
+        double currentGscore = node.gscore;
+
+        // LOG: Decision point - every time we consider minimizing a conformation
+        boolean hasCorrection = confCorrection > Double.NEGATIVE_INFINITY;
+        boolean willSkipMinimization = (pairwiseLowerBound < confCorrection || currentGscore < confCorrection);
+
+        System.out.println("[MINIMIZATION_DECISION] conf=" + SimpleConfSpace.formatConfRCs(node.assignments)
+            + " pairwise=" + String.format("%.6f", pairwiseLowerBound)
+            + " gscore=" + String.format("%.6f", currentGscore)
+            + " correction=" + (hasCorrection ? String.format("%.6f", confCorrection) : "NONE")
+            + " decision=" + (willSkipMinimization ? "SKIP" : "MINIMIZE")
+            + " reason=" + (willSkipMinimization ? "correction_available" : "no_sufficient_correction"));
+
         if(node.getConfLowerBound() < confCorrection || node.gscore < confCorrection) {
             double oldg = node.gscore;
             node.gscore = confCorrection;
@@ -895,6 +965,11 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
             node.setBoundsFromConfLowerAndUpper(confCorrection, node.getConfUpperBound());
             curNode.markUpdated();
             newNodes.add(curNode);
+            // LOG: Correction applied, minimization skipped
+            System.out.println("[CORRECTION_APPLIED] conf=" + SimpleConfSpace.formatConfRCs(node.assignments)
+                + " pairwise=" + String.format("%.6f", oldg)
+                + " corrected=" + String.format("%.6f", confCorrection)
+                + " improvement=" + String.format("%.6f", confCorrection - oldg));
             return;
         }
         loopTasks.submit(() -> {
@@ -903,7 +978,19 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
                 node.index(context.index);
 
                 ConfSearch.ScoredConf conf = new ConfSearch.ScoredConf(node.assignments, node.getConfLowerBound());
+                Stopwatch minimizationTimer = new Stopwatch().start();
                 ConfAnalyzer.ConfAnalysis analysis = confAnalyzer.analyze(conf);
+                minimizationTimer.stop();
+
+                // LOG: Detailed minimization info
+                double pairwiseEstimate = node.getConfLowerBound();
+                double minimizedEnergy = analysis.epmol.energy;
+                double energyGap = minimizedEnergy - pairwiseEstimate;
+                System.out.println("[MINIMIZE] conf=" + SimpleConfSpace.formatConfRCs(node.assignments)
+                    + " pairwise=" + String.format("%.6f", pairwiseEstimate)
+                    + " minimized=" + String.format("%.6f", minimizedEnergy)
+                    + " gap=" + String.format("%.6f", energyGap)
+                    + " time=" + String.format("%.2f", minimizationTimer.getTimeMs()) + "ms");
                 
                 // record the conf energy in the ConfDB, if needed
                 ConfDB.ConfTable confTable = confTable();
@@ -931,9 +1018,33 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
                     newConfUpper = oldConfUpper;
                     newConfLower = oldConfUpper;
                 }
-                curNode.setBoundsFromConfLowerAndUpper(newConfLower,newConfUpper);
+                
+                // Apply correction unconditionally after minimization (like original version in processPartialConfNode)
+                // This matches the original behavior where correction is applied regardless of whether it's better or worse
+                // NOTE: We must re-fetch the correction value here because computeEnergyCorrection() above may have
+                // updated the correctionMatrix with new triple corrections. The confCorrection variable defined at
+                // method start (line 946) was fetched BEFORE minimization, so it may be stale.
+                // We use a different variable name (updatedConfCorrection) to avoid shadowing the outer variable
+                // and to make it clear this is the updated value after computeEnergyCorrection().
+                double updatedConfCorrection = correctionMatrix.confE(node.assignments);
+                double lowerbound = minimizingEmat.confE(node.assignments);
+                
+                if(lowerbound < updatedConfCorrection) {
+                    recordCorrection(lowerbound, updatedConfCorrection - lowerbound);
+                }
+                // Apply correction unconditionally (matching original processPartialConfNode logic)
+                // This ensures correction is applied even if it's worse than pairwise/minimized energy
                 double oldgscore = node.gscore;
-                node.gscore = newConfLower;
+                curNode.setBoundsFromConfLowerAndUpper(updatedConfCorrection, newConfUpper);
+                node.gscore = updatedConfCorrection;
+                
+                // LOG: Correction applied after minimization
+                System.out.println("[CORRECTION_APPLIED_AFTER_MIN] conf=" + SimpleConfSpace.formatConfRCs(node.assignments)
+                    + " minimized=" + String.format("%.6f", energy)
+                    + " corrected=" + String.format("%.6f", updatedConfCorrection)
+                    + " pairwise=" + String.format("%.6f", lowerbound)
+                    + " improvement=" + String.format("%.6f", updatedConfCorrection - oldgscore));
+                
                 String out = "Energy = " + String.format("%6.3e", energy) + ", [" + (node.getConfLowerBound()) + "," + (node.getConfUpperBound()) + "]";
                 debugPrint(out);
                 curNode.markUpdated();
@@ -941,7 +1052,8 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
                     numConfsEnergied++;
                     minList.set(conf.getAssignments().length-1,minList.get(conf.getAssignments().length-1)+1);
                     recordReduction(oldConfLower, oldConfUpper, energy);
-                    printMinimizationOutput(node, newConfLower, oldgscore);
+                    // Use updatedConfCorrection instead of newConfLower to match the applied correction
+                    printMinimizationOutput(node, updatedConfCorrection, oldgscore);
                 }
 
 
@@ -991,6 +1103,10 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
                                                   ConfEnergyCalculator ecalc) {
         if(conf.getAssignments().length < 3)
             return;
+
+        // Track corrections generated from this conformation
+        int triplesGenerated = 0;
+
         //System.out.println("Analysis:"+analysis);
         EnergyMatrix energyAnalysis = analysis.breakdownEnergyByPosition(ResidueForcefieldBreakdown.Type.All);
         EnergyMatrix scoreAnalysis = analysis.breakdownScoreByPosition(minimizingEmat);
@@ -1046,12 +1162,18 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
                 minList.set(tuple.size()-1,minList.get(tuple.size()-1)+1);
                 computeDifference(tuple, minimizingEcalc);
                 localMinimizations++;
+                triplesGenerated++;
             }
             numPartialMinimizations+=localMinimizations;
             progress.reportPartialMinimization(localMinimizations, epsilonBound);
         }
         correctionTime.stop();
         ecalc.tasks.waitForFinish();
+
+        // LOG: Summary of corrections generated
+        System.out.println("[CORRECTION_SUMMARY] conf=" + SimpleConfSpace.formatConfRCs(conf.getAssignments())
+            + " triples_generated=" + triplesGenerated
+            + " computation_time=" + String.format("%.2f", correctionTime.getTimeMs()) + "ms");
     }
 
 
@@ -1068,12 +1190,27 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
             double tripleEnergy = minimizedTuple.energy;
 
             double lowerbound = minimizingEmat.getInternalEnergy(tuple);
-            if (tripleEnergy - lowerbound > 0) {
-                double correction = tripleEnergy - lowerbound;
+            double correction = tripleEnergy - lowerbound;
+
+            // LOG: Triple correction details
+            System.out.println("[TRIPLE_CORRECTION] tuple=" + tuple.stringListing()
+                + " pairwise=" + String.format("%.6f", lowerbound)
+                + " minimized=" + String.format("%.6f", tripleEnergy)
+                + " correction=" + String.format("%.6f", correction)
+                + " negative=" + (correction < 0));
+
+            if (correction > 0) {
                 correctionMatrix.setHigherOrder(tuple, correction);
             }
-            else
-                System.err.println("Negative correction for "+tuple.stringListing());
+            else {
+                // When triple energy is lower than pairwise bound, the matrix bound is too high.
+                // This can happen when pairwise minimization doesn't find the global minimum
+                // but triple minimization does. We should use the lower (more accurate) triple energy.
+                System.err.println("Negative correction for "+tuple.stringListing() +
+                                 " (correction=" + correction + "). Using triple energy as correction.");
+                // Store a negative correction to lower the bound
+                correctionMatrix.setHigherOrder(tuple, correction);
+            }
         });
     }
 

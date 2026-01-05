@@ -1,0 +1,51 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Run Simple COMETSZ Example",
+            "request": "launch",
+            "mainClass": "SimpleCometsZMARKStarExample",
+            "projectName": "OSPREY3",
+            "cwd": "${workspaceFolder}/examples/java",
+            "classPaths": [
+                "${workspaceFolder}/build/libs/*",
+                "${workspaceFolder}/build/classes/java/main",
+                "${workspaceFolder}/examples/java"
+            ],
+            "vmArgs": "-Xmx4g -Xms1g",
+            "console": "integratedTerminal"
+        },
+        {
+            "type": "java",
+            "name": "Run Complete COMETSZ Example",
+            "request": "launch",
+            "mainClass": "CometsZBBKStarMARKStarExample",
+            "projectName": "OSPREY3",
+            "cwd": "${workspaceFolder}/examples/java",
+            "classPaths": [
+                "${workspaceFolder}/build/libs/*",
+                "${workspaceFolder}/build/classes/java/main",
+                "${workspaceFolder}/examples/java"
+            ],
+            "vmArgs": "-Xmx4g -Xms1g",
+            "console": "integratedTerminal"
+        },
+        {
+            "type": "java",
+            "name": "Debug Simple COMETSZ Example",
+            "request": "launch",
+            "mainClass": "SimpleCometsZMARKStarExample",
+            "projectName": "OSPREY3",
+            "cwd": "${workspaceFolder}/examples/java",
+            "classPaths": [
+                "${workspaceFolder}/build/libs/*",
+                "${workspaceFolder}/build/classes/java/main",
+                "${workspaceFolder}/examples/java"
+            ],
+            "vmArgs": "-Xmx4g -Xms1g",
+            "console": "integratedTerminal",
+            "stopOnEntry": false
+        }
+    ]
+}

@@ -1,0 +1,91 @@
+==========================================
+SLURM Job Configuration
+==========================================
+Job ID:        10153448
+Job name:      cometsz-bbkstar-markstar
+Node:          linux13
+CPUs:          16
+Memory:        51200 MB (50 GB)
+Start time:    Wed Nov 12 03:26:35 PM EST 2025
+Working dir:   /home/users/lz280/IdeaProjects/OSPREY3
+==========================================
+
+Java version:
+openjdk version "17.0.2" 2022-01-18
+OpenJDK Runtime Environment Temurin-17.0.2+8 (build 17.0.2+8)
+OpenJDK 64-Bit Server VM Temurin-17.0.2+8 (build 17.0.2+8, mixed mode, sharing)
+
+JAVA_HOME: /home/users/lz280/java/jdk-17.0.2+8
+
+JVM Options: -Xms40g -Xmx40g -XX:+UseG1GC -XX:MaxGCPauseMillis=200
+
+
+==========================================
+Running CometsZ + BBK* + MARK* Tests
+==========================================
+==========================================
+Test combinations:
+  1. CometsZ + GradientDescent (baseline)
+Resource Usage Monitor
+  2. CometsZ + MARK*
+Test suite: TestCometsZWithBBKStarAndMARKStar
+  3. CometsZ + BBK* + GradientDescent (future)
+==========================================
+  4. CometsZ + BBK* + MARK* (future)
+
+Expected duration: Several hours
+==========================================
+
+[15:26:36] Memory: 2.9Gi/251Gi | CPU Load:  1.43, 1.70, 1.80
+Downloading https://services.gradle.org/distributions/gradle-7.3-bin.zip
+...........10%...........20%...........30%...........40%...........50%...........60%...........70%...........80%...........90%...........100%
+Initialized native services in: /tmp/10153448/native
+Initialized jansi services in: /tmp/10153448/native
+
+Welcome to Gradle 7.3!
+
+Here are the highlights of this release:
+ - Easily declare new test suites in Java projects
+ - Support for Java 17
+ - Support for Scala 3
+
+For more details see https://docs.gradle.org/7.3/release-notes.html
+
+Removing 0 daemon stop events from registry
+Starting a Gradle Daemon (subsequent builds will be faster)
+Starting process 'Gradle build daemon'. Working directory: /tmp/10153448/daemon/7.3 Command: /home/users/lz280/java/jdk-17.0.2+8/bin/java --add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.lang.invoke=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED --add-opens java.prefs/java.util.prefs=ALL-UNNAMED --add-opens java.prefs/java.util.prefs=ALL-UNNAMED --add-opens java.base/java.nio.charset=ALL-UNNAMED --add-opens java.base/java.net=ALL-UNNAMED --add-opens java.base/java.util.concurrent.atomic=ALL-UNNAMED -XX:MaxMetaspaceSize=256m -XX:+HeapDumpOnOutOfMemoryError -Xms256m -Xmx512m -Dfile.encoding=UTF-8 -Duser.country=US -Duser.language=en -Duser.variant -cp /tmp/10153448/wrapper/dists/gradle-7.3-bin/ddwl0k7mt9g6ak16i1m905vyv/gradle-7.3/lib/gradle-launcher-7.3.jar org.gradle.launcher.daemon.bootstrap.GradleDaemon 7.3
+Successfully started process 'Gradle build daemon'
+An attempt to start the daemon took 1.023 secs.
+The client will now receive all logging from the daemon (pid: 1083602). The daemon log file: /tmp/10153448/daemon/7.3/daemon-1083602.out.log
+Starting build in new daemon [memory: 512 MiB]
+Closing daemon's stdin at end of input.
+The daemon will no longer process any standard input.
+Using 16 worker leases.
+Watching the file system is configured to be enabled if available
+Not watching /home/users/lz280/IdeaProjects/OSPREY3 since the file system is not supported
+Not watching /home/users/lz280/IdeaProjects/OSPREY3/buildSrc since the file system is not supported
+File system watching is active
+Starting Build
+Compiling settings file '/home/users/lz280/IdeaProjects/OSPREY3/settings.gradle' using SubsetScriptTransformer.
+Compiling settings file '/home/users/lz280/IdeaProjects/OSPREY3/settings.gradle' using BuildScriptTransformer.
+Settings evaluated using settings file '/home/users/lz280/IdeaProjects/OSPREY3/settings.gradle'.
+Projects loaded. Root project using build file '/home/users/lz280/IdeaProjects/OSPREY3/build.gradle.kts'.
+Included projects: [root project 'osprey']
+
+==========================================
+Test Run Summary
+==========================================
+Exit code:     1
+End time:      Wed Nov 12 03:27:47 PM EST 2025
+Node:          linux13
+
+Job statistics will be available via: seff 10153448
+
+Final memory usage:
+Mem:           251Gi       4.4Gi       240Gi       4.0Mi       6.9Gi       245Gi
+Swap:          8.0Gi        56Mi       7.9Gi
+
+✗ Tests FAILED with exit code 1
+Check error file: cometsz_bbkstar_markstar_10153448.err
+==========================================
+[H[2J[3J

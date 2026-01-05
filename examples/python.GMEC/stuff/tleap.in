@@ -1,0 +1,5 @@
+source leaprc.protein.ff14SB
+mol = loadpdb 6dv2_strip_reduce_prep_rc_add_rc.pdb
+check mol
+saveamberparm mol 6dv2_strip_reduce_prep_rc_add_rc.prmtop 6dv2_strip_reduce_prep_rc_add_rc.inpcrd
+quit

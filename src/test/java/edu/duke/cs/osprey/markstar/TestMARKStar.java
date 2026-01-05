@@ -935,17 +935,36 @@ public class TestMARKStar {
 		TestKStar.ConfSpaces confSpaces = TestKStar.make2RL0();
 		final double epsilon = 0.68;
 		final int numSequences = 10;
+
+		// Run with Traditional K*
+		System.out.println("\n=== Running with Traditional K* (GradientDescentPfunc) ===");
 		Stopwatch timer = new Stopwatch().start();
-		TestBBKStar.Results results = runBBKStar(confSpaces, numSequences, epsilon, null, 1, false);
+		TestBBKStar.Results traditionalResults = runBBKStar(confSpaces, numSequences, epsilon, null, 1, false);
 		timer.stop();
 		String traditionalTime = timer.getTime(2);
+
+		// Print Traditional results
+		System.out.println("\n=== Traditional K* Results (Top 3 sequences) ===");
+		for(int i = 0; i < Math.min(3, traditionalResults.sequences.size()); i++) {
+			printKStarComputationStats(traditionalResults.sequences.get(i));
+		}
+
+		// Run with MARK*
+		System.out.println("\n=== Running with MARK* ===");
 		timer.reset();
 		timer.start();
-		results = runBBKStar(confSpaces, numSequences, epsilon, null, 1, true);
+		TestBBKStar.Results markstarResults = runBBKStar(confSpaces, numSequences, epsilon, null, 1, true);
 		String MARKStarTime = timer.getTime(2);
 		timer.stop();
 
+		// Print MARK* results
+		System.out.println("\n=== MARK* Results (Top 3 sequences) ===");
+		for(int i = 0; i < Math.min(3, markstarResults.sequences.size()); i++) {
+			printKStarComputationStats(markstarResults.sequences.get(i));
+		}
+
 		//assert2RL0(results, numSequences);
+		System.out.println("\n=== Timing Comparison ===");
 		System.out.println("Traditional time: "+traditionalTime);
 		System.out.println("MARK* time: "+MARKStarTime);
 	}
@@ -985,7 +1004,10 @@ public class TestMARKStar {
 
 	@Test
     public void test1GUASmall() {
-	    runMARKStar(3,0.99);
+	    List<MARKStar.ScoredSequence> results = runMARKStar(3,0.99);
+	    System.out.println("\n=== test1GUASmall Results (MARK*) ===");
+	    for(MARKStar.ScoredSequence seq: results)
+	        printMARKStarComputationStats(seq);
     }
 
 	@Test
@@ -1036,10 +1058,80 @@ public class TestMARKStar {
 
 
 	protected static void printKStarComputationStats(KStar.ScoredSequence result)
-	{}
+	{
+		System.out.println("\n=== K* (Traditional) Results ===");
+		System.out.println("Sequence: " + result.sequence.toString(Sequence.Renderer.ResType));
+		System.out.println("K* score: " + result.score.score);
+		System.out.println("K* score bounds: [" + result.score.lowerBound + ", " + result.score.upperBound + "]");
+
+		// Print partition functions
+		System.out.println("\nPartition Functions:");
+		double proteinQ = result.score.protein.values.qstar.doubleValue();
+		double ligandQ = result.score.ligand.values.qstar.doubleValue();
+		double complexQ = result.score.complex.values.qstar.doubleValue();
+
+		System.out.println("  Protein:  " + result.score.protein.values.qstar +
+		                   " (log10: " + (proteinQ > 0 ? Math.log10(proteinQ) : "-Infinity") + ")");
+		System.out.println("  Ligand:   " + result.score.ligand.values.qstar +
+		                   " (log10: " + (ligandQ > 0 ? Math.log10(ligandQ) : "-Infinity") + ")");
+		System.out.println("  Complex:  " + result.score.complex.values.qstar +
+		                   " (log10: " + (complexQ > 0 ? Math.log10(complexQ) : "-Infinity") + ")");
+
+		// Print free energies - calculate from partition function (skip if Q = 0)
+		BoltzmannCalculator bcalc = new BoltzmannCalculator(PartitionFunction.decimalPrecision);
+		System.out.println("\nFree Energies (kcal/mol):");
+		try {
+			System.out.println("  Protein:  " + (proteinQ > 0 ? bcalc.freeEnergy(result.score.protein.values.qstar) : "N/A (Q=0)"));
+			System.out.println("  Ligand:   " + (ligandQ > 0 ? bcalc.freeEnergy(result.score.ligand.values.qstar) : "N/A (Q=0)"));
+			System.out.println("  Complex:  " + (complexQ > 0 ? bcalc.freeEnergy(result.score.complex.values.qstar) : "N/A (Q=0)"));
+		} catch (Exception e) {
+			System.out.println("  Error calculating free energy: " + e.getMessage());
+		}
+
+		// Print conformations counted
+		System.out.println("\nConformations evaluated:");
+		System.out.println("  Protein:  " + result.score.protein.numConfs);
+		System.out.println("  Ligand:   " + result.score.ligand.numConfs);
+		System.out.println("  Complex:  " + result.score.complex.numConfs);
+	}
 
 	protected static void printMARKStarComputationStats(MARKStar.ScoredSequence result)
-	{}
+	{
+		System.out.println("\n=== MARK* Results ===");
+		System.out.println("Sequence: " + result.sequence.toString(Sequence.Renderer.ResType));
+		System.out.println("K* score: " + result.score.score);
+		System.out.println("K* score bounds: [" + result.score.lowerBound + ", " + result.score.upperBound + "]");
+
+		// Print partition function bounds
+		System.out.println("\nPartition Function Bounds:");
+		System.out.println("  Protein:  [" + result.score.protein.values.calcLowerBound() + ", " +
+		                   result.score.protein.values.calcUpperBound() + "]");
+		System.out.println("            (log10: [" + Math.log10(result.score.protein.values.calcLowerBound().doubleValue()) + ", " +
+		                   Math.log10(result.score.protein.values.calcUpperBound().doubleValue()) + "])");
+		System.out.println("  Ligand:   [" + result.score.ligand.values.calcLowerBound() + ", " +
+		                   result.score.ligand.values.calcUpperBound() + "]");
+		System.out.println("            (log10: [" + Math.log10(result.score.ligand.values.calcLowerBound().doubleValue()) + ", " +
+		                   Math.log10(result.score.ligand.values.calcUpperBound().doubleValue()) + "])");
+		System.out.println("  Complex:  [" + result.score.complex.values.calcLowerBound() + ", " +
+		                   result.score.complex.values.calcUpperBound() + "]");
+		System.out.println("            (log10: [" + Math.log10(result.score.complex.values.calcLowerBound().doubleValue()) + ", " +
+		                   Math.log10(result.score.complex.values.calcUpperBound().doubleValue()) + "])");
+
+		// Print free energy bounds
+		System.out.println("\nFree Energy Bounds (kcal/mol):");
+		System.out.println("  Protein:  [" + result.score.protein.values.calcFreeEnergyLowerBound() + ", " +
+		                   result.score.protein.values.calcFreeEnergyUpperBound() + "]");
+		System.out.println("  Ligand:   [" + result.score.ligand.values.calcFreeEnergyLowerBound() + ", " +
+		                   result.score.ligand.values.calcFreeEnergyUpperBound() + "]");
+		System.out.println("  Complex:  [" + result.score.complex.values.calcFreeEnergyLowerBound() + ", " +
+		                   result.score.complex.values.calcFreeEnergyUpperBound() + "]");
+
+		// Print conformations counted
+		System.out.println("\nConformations evaluated:");
+		System.out.println("  Protein:  " + result.score.protein.numConfs);
+		System.out.println("  Ligand:   " + result.score.ligand.numConfs);
+		System.out.println("  Complex:  " + result.score.complex.numConfs);
+	}
 
 	@Test
 	public void KStarComparison() {
@@ -1087,9 +1179,10 @@ public class TestMARKStar {
 				.setIsMinimizing(false)
 				.build();
 		// how should we define energies of conformations?
+		// FIX: Use ecalcArg (the passed parameter) instead of hardcoded minimizingEcalc
 		MARKStar.ConfEnergyCalculatorFactory confEcalcFactory = (confSpaceArg, ecalcArg) -> {
 			return new ConfEnergyCalculator.Builder(confSpaceArg, ecalcArg)
-					.setReferenceEnergies(new SimplerEnergyMatrixCalculator.Builder(confSpaceArg, minimizingEcalc)
+					.setReferenceEnergies(new SimplerEnergyMatrixCalculator.Builder(confSpaceArg, ecalcArg)
 							.build()
 							.calcReferenceEnergies()
 					)
@@ -1248,9 +1341,10 @@ public class TestMARKStar {
 				.setIsMinimizing(false)
 				.build();
 		// how should we define energies of conformations?
+		// FIX: Use ecalcArg (the passed parameter) instead of hardcoded minimizingEcalc
 		MARKStar.ConfEnergyCalculatorFactory confEcalcFactory = (confSpaceArg, ecalcArg) -> {
 			return new ConfEnergyCalculator.Builder(confSpaceArg, ecalcArg)
-					.setReferenceEnergies(new SimplerEnergyMatrixCalculator.Builder(confSpaceArg, minimizingEcalc)
+					.setReferenceEnergies(new SimplerEnergyMatrixCalculator.Builder(confSpaceArg, ecalcArg)
 							.build()
 							.calcReferenceEnergies()
 					)

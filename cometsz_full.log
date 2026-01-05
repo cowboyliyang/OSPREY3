@@ -1,0 +1,204 @@
+nohup: ignoring input
+Exception in thread "DisconnectableInputStream source reader" org.gradle.api.UncheckedIOException: java.io.IOException: Bad file descriptor
+	at org.gradle.internal.UncheckedException.throwAsUncheckedException(UncheckedException.java:62)
+	at org.gradle.internal.UncheckedException.throwAsUncheckedException(UncheckedException.java:41)
+	at org.gradle.util.internal.DisconnectableInputStream$1.run(DisconnectableInputStream.java:127)
+	at java.base/java.lang.Thread.run(Thread.java:829)
+Caused by: java.io.IOException: Bad file descriptor
+	at java.base/java.io.FileInputStream.readBytes(Native Method)
+	at java.base/java.io.FileInputStream.read(FileInputStream.java:279)
+	at java.base/java.io.BufferedInputStream.read1(BufferedInputStream.java:290)
+	at java.base/java.io.BufferedInputStream.read(BufferedInputStream.java:351)
+	at org.gradle.util.internal.DisconnectableInputStream$1.run(DisconnectableInputStream.java:98)
+	... 1 more
+
+> Task :buildSrc:compileKotlin
+'compileJava' task (current target is 11) and 'compileKotlin' task (current target is 1.8) jvm target compatibility should be set to the same Java version.
+w: Runtime JAR files in the classpath should have the same version. These files were found in the classpath:
+    /home/users/lz280/.gradle/wrapper/dists/gradle-7.3-bin/ddwl0k7mt9g6ak16i1m905vyv/gradle-7.3/lib/kotlin-stdlib-1.5.31.jar (version 1.5)
+    /home/users/lz280/.gradle/wrapper/dists/gradle-7.3-bin/ddwl0k7mt9g6ak16i1m905vyv/gradle-7.3/lib/kotlin-stdlib-common-1.5.31.jar (version 1.5)
+    /home/users/lz280/.gradle/wrapper/dists/gradle-7.3-bin/ddwl0k7mt9g6ak16i1m905vyv/gradle-7.3/lib/kotlin-stdlib-jdk7-1.5.31.jar (version 1.5)
+    /home/users/lz280/.gradle/wrapper/dists/gradle-7.3-bin/ddwl0k7mt9g6ak16i1m905vyv/gradle-7.3/lib/kotlin-stdlib-jdk8-1.5.31.jar (version 1.5)
+    /home/users/lz280/.gradle/wrapper/dists/gradle-7.3-bin/ddwl0k7mt9g6ak16i1m905vyv/gradle-7.3/lib/kotlin-reflect-1.5.31.jar (version 1.5)
+    /home/users/lz280/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-stdlib-jdk8/1.6.10/e80fe6ac3c3573a80305f5ec43f86b829e8ab53d/kotlin-stdlib-jdk8-1.6.10.jar (version 1.6)
+    /home/users/lz280/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-reflect/1.5.31/1523fcd842a47da0820cea772b19c51056fec8a9/kotlin-reflect-1.5.31.jar (version 1.5)
+    /home/users/lz280/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-stdlib-jdk7/1.6.10/e1c380673654a089c4f0c9f83d0ddfdc1efdb498/kotlin-stdlib-jdk7-1.6.10.jar (version 1.6)
+    /home/users/lz280/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-stdlib/1.6.10/b8af3fe6f1ca88526914929add63cf5e7c5049af/kotlin-stdlib-1.6.10.jar (version 1.6)
+    /home/users/lz280/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-stdlib-common/1.6.10/c118700e3a33c8a0d9adc920e9dec0831171925/kotlin-stdlib-common-1.6.10.jar (version 1.6)
+w: Consider providing an explicit dependency on kotlin-reflect 1.6 to prevent strange errors
+w: Some runtime JAR files in the classpath have an incompatible version. Consider removing them from the classpath
+w: Some JAR files in the classpath have the Kotlin Runtime library bundled into them. This may cause difficult to debug problems if there's a different version of the Kotlin Runtime library in the classpath. Consider removing these libraries from the classpath
+w: /home/users/lz280/.gradle/caches/modules-2/files-2.1/org.jetbrains.dokka/kotlin-analysis-compiler/1.6.10/e08b1c2b4c60ec5fc8b14a148bf1e39058e1d681/kotlin-analysis-compiler-1.6.10.jar: Library has Kotlin runtime bundled into it
+w: /home/users/lz280/.gradle/caches/modules-2/files-2.1/org.jetbrains.dokka/kotlin-analysis-intellij/1.6.10/44adb96d6c20f276642a5f7236796c4477a9b4ed/kotlin-analysis-intellij-1.6.10.jar: Library has Kotlin runtime bundled into it
+w: /home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/kotlin/osprey/build/desktop.kt: (142, 6): Variable 'desktopRelease' is never used
+w: /home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/kotlin/osprey/docs.kt: (526, 8): Name shadowed: webDir
+w: /home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/kotlin/osprey/python.kt: (19, 70): Elvis operator (?:) always returns the left operand of non-nullable type Boolean
+
+> Task :buildSrc:compileJava FAILED
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:151: error: ')' expected
+				if (type instanceof ClassTree classType) {
+				                             ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:151: error: not a statement
+				if (type instanceof ClassTree classType) {
+				                              ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:151: error: ';' expected
+				if (type instanceof ClassTree classType) {
+				                                       ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:181: error: ')' expected
+			if (member instanceof VariableTree variableMember) {
+			                                  ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:181: error: not a statement
+			if (member instanceof VariableTree variableMember) {
+			                                   ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:181: error: ';' expected
+			if (member instanceof VariableTree variableMember) {
+			                                                 ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:183: error: ')' expected
+			} else if (member instanceof MethodTree methodMember) {
+			                                       ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:183: error: not a statement
+			} else if (member instanceof MethodTree methodMember) {
+			                                        ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:183: error: ';' expected
+			} else if (member instanceof MethodTree methodMember) {
+			                                                    ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:183: error: 'else' without 'if'
+			} else if (member instanceof MethodTree methodMember) {
+			  ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:185: error: ')' expected
+			} else if (member instanceof ClassTree classMember) {
+			                                      ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:185: error: not a statement
+			} else if (member instanceof ClassTree classMember) {
+			                                       ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:185: error: ';' expected
+			} else if (member instanceof ClassTree classMember) {
+			                                                  ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:185: error: 'else' without 'if'
+			} else if (member instanceof ClassTree classMember) {
+			  ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:278: error: ')' expected
+		if (elem instanceof TypeElement typeElem) {
+		                               ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:278: error: not a statement
+		if (elem instanceof TypeElement typeElem) {
+		                                ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:278: error: ';' expected
+		if (elem instanceof TypeElement typeElem) {
+		                                        ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:283: error: ')' expected
+			if (tree instanceof ParameterizedTypeTree typeTree) {
+			                                         ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:283: error: not a statement
+			if (tree instanceof ParameterizedTypeTree typeTree) {
+			                                          ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:283: error: ';' expected
+			if (tree instanceof ParameterizedTypeTree typeTree) {
+			                                                  ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:292: error: 'else' without 'if'
+		} else if (elem instanceof TypeParameterElement) {
+		  ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:341: error: : expected
+				case "cite" ->
+				           ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:341: error: illegal start of expression
+				case "cite" ->
+				            ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:344: error: : expected
+				case "warning", "warn" ->
+				              ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:347: error: : expected
+				case "note" ->
+				           ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:347: error: illegal start of expression
+				case "note" ->
+				            ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:350: error: : expected
+				case "todo" ->
+				           ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:350: error: illegal start of expression
+				case "todo" ->
+				            ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:353: error: : expected
+				default ->
+				       ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:353: error: illegal start of expression
+				default ->
+				        ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:429: error: ')' expected
+		} else if (elem instanceof TypeElement typeElem) {
+		                                      ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:429: error: not a statement
+		} else if (elem instanceof TypeElement typeElem) {
+		                                       ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:429: error: ';' expected
+		} else if (elem instanceof TypeElement typeElem) {
+		                                               ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:439: error: ')' expected
+		} else if (elem instanceof VariableElement varElem) {
+		                                          ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:439: error: not a statement
+		} else if (elem instanceof VariableElement varElem) {
+		                                           ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:439: error: ';' expected
+		} else if (elem instanceof VariableElement varElem) {
+		                                                  ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:439: error: 'else' without 'if'
+		} else if (elem instanceof VariableElement varElem) {
+		  ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:443: error: ')' expected
+			if (container instanceof TypeElement containerTypeElem) {
+			                                    ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:443: error: not a statement
+			if (container instanceof TypeElement containerTypeElem) {
+			                                     ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:443: error: ';' expected
+			if (container instanceof TypeElement containerTypeElem) {
+			                                                      ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:445: error: 'else' without 'if'
+			} else {
+			  ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:459: error: ')' expected
+		} else if (elem instanceof ExecutableElement execElem) {
+		                                            ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:459: error: not a statement
+		} else if (elem instanceof ExecutableElement execElem) {
+		                                             ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:459: error: ';' expected
+		} else if (elem instanceof ExecutableElement execElem) {
+		                                                     ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:459: error: 'else' without 'if'
+		} else if (elem instanceof ExecutableElement execElem) {
+		  ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:463: error: ')' expected
+			if (container instanceof TypeElement containerTypeElem) {
+			                                    ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:463: error: not a statement
+			if (container instanceof TypeElement containerTypeElem) {
+			                                     ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:463: error: ';' expected
+			if (container instanceof TypeElement containerTypeElem) {
+			                                                      ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:465: error: 'else' without 'if'
+			} else {
+			  ^
+/home/users/lz280/IdeaProjects/OSPREY3/buildSrc/src/main/java/osprey/JavadocTool.java:491: error: 'else' without 'if'
+		} else {
+		  ^
+50 errors
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':buildSrc:compileJava'.
+> Compilation failed; see the compiler error output for details.
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+
+* Get more help at https://help.gradle.org
+
+BUILD FAILED in 7s
+2 actionable tasks: 2 executed

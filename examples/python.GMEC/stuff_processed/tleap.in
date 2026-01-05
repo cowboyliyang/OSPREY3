@@ -1,0 +1,4 @@
+source leaprc.protein.ff14SB
+mol = loadpdb ../3bte_clean_no_dup_rn_strip_reduce_prep_rc_add_rc.pdb
+check mol
+saveamberparm mol ../3bte_clean_no_dup_rn_strip_reduce_prep_rc_add_rc.prmtop ../3bte_clean_no_dup_rn_strip_reduce_prep_rc_add_rc.inpcrd

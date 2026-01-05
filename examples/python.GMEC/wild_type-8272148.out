@@ -1,0 +1,96 @@
+no change     /home/users/lz280/miniconda3/condabin/conda
+no change     /home/users/lz280/miniconda3/bin/conda
+no change     /home/users/lz280/miniconda3/bin/conda-env
+no change     /home/users/lz280/miniconda3/bin/activate
+no change     /home/users/lz280/miniconda3/bin/deactivate
+no change     /home/users/lz280/miniconda3/etc/profile.d/conda.sh
+no change     /home/users/lz280/miniconda3/etc/fish/conf.d/conda.fish
+no change     /home/users/lz280/miniconda3/shell/condabin/Conda.psm1
+no change     /home/users/lz280/miniconda3/shell/condabin/conda-hook.ps1
+no change     /home/users/lz280/miniconda3/lib/python3.12/site-packages/xontrib/conda.xsh
+no change     /home/users/lz280/miniconda3/etc/profile.d/conda.csh
+no change     /home/users/lz280/.bashrc
+No action taken.
+/home/users/lz280/miniconda3/envs/AmberTools22/bin/python
+OSPREY 3.3-dev, Python 3.10.13, Java 17.0.14, Linux-5.15.0-131-generic-x86_64-with-glibc2.35
+Using up to 1024 MiB heap memory: 128 MiB for garbage, 896 MiB for storage
+read PDB file from file: 3btd_clean_no_dup_strip_reduce_prep_rc_add_rc.pdb
+read PDB file from file: 3bte_clean_no_dup_strip_reduce_prep_rc_add_rc.pdb
+WARNING: 1 Strand residue(s) could not be matched to templates and were automatically deleted:
+LEU E 185
+WARNING: 1 Strand residue(s) could not be matched to templates and were automatically deleted:
+LEU E 185
+sequence space has 3.200000e+06 sequences
+Residue Types:
+	0:E169  [ 0:asp 1:ALA 2:ARG 3:ASN 4:CYS 5:GLN 6:GLU 7:GLY 8:HIS 9:ILE 10:LEU 11:LYS 12:MET 13:PHE 14:PRO 15:SER 16:THR 17:TRP 18:TYR 19:VAL ]
+	1:E170  [ 0:ser 1:ALA 2:ARG 3:ASN 4:ASP 5:CYS 6:GLN 7:GLU 8:GLY 9:HIS 10:ILE 11:LEU 12:LYS 13:MET 14:PHE 15:PRO 16:THR 17:TRP 18:TYR 19:VAL ]
+	2:E172  [ 0:gln 1:ALA 2:ARG 3:ASN 4:ASP 5:CYS 6:GLU 7:GLY 8:HIS 9:ILE 10:LEU 11:LYS 12:MET 13:PHE 14:PRO 15:SER 16:THR 17:TRP 18:TYR 19:VAL ]
+	3:E175  [ 0:ser 1:ALA 2:ARG 3:ASN 4:ASP 5:CYS 6:GLN 7:GLU 8:GLY 9:HIS 10:ILE 11:LEU 12:LYS 13:MET 14:PHE 15:PRO 16:THR 17:TRP 18:TYR 19:VAL ]
+	4:E190  [ 0:ser 1:ALA 2:ARG 3:ASN 4:ASP 5:CYS 6:GLN 7:GLU 8:GLY 9:HIS 10:ILE 11:LEU 12:LYS 13:MET 14:PHE 15:PRO 16:THR 17:TRP 18:TYR 19:VAL ]
+Calculating reference energies for 953 residue confs...
+Progress:  100.0%   ETA: 0 ns
+Finished in 304.6 ms
+read energy matrix from file: /home/users/lz280/IdeaProjects/OSPREY3/examples/python.GMEC/emat_Bound.dat
+WARNING: energy matrix from file is invalid, will create new one
+Calculating energy matrix with 365735 entries
+Progress:    6.1%   ETA: 1.4 m
+Progress:   12.7%   ETA: 1.2 m
+Progress:   21.7%   ETA: 58.3 s
+Progress:   33.3%   ETA: 44.1 s
+Progress:   40.2%   ETA: 35.6 s
+Progress:   49.8%   ETA: 29.4 s
+Progress:   58.6%   ETA: 24.1 s
+Progress:   67.3%   ETA: 18.5 s
+Progress:   75.8%   ETA: 14.1 s
+Progress:   84.4%   ETA: 9.0 s
+Progress:   94.5%   ETA: 3.9 s
+Progress:  100.0%   ETA: 143.0 ms
+Finished in 58.7 s
+wrote energy matrix to file: /home/users/lz280/IdeaProjects/OSPREY3/examples/python.GMEC/emat_Bound.dat
+Calculating reference energies for 956 residue confs...
+Progress:  100.0%   ETA: 0 ns
+Finished in 104.8 ms
+read energy matrix from file: /home/users/lz280/IdeaProjects/OSPREY3/examples/python.GMEC/emat_Bound.dat
+WARNING: energy matrix from file is invalid, will create new one
+Calculating energy matrix with 368579 entries
+Progress:    6.9%   ETA: 1.3 m
+Progress:   13.9%   ETA: 1.1 m
+Progress:   23.6%   ETA: 50.6 s
+Progress:   35.4%   ETA: 36.9 s
+Progress:   44.4%   ETA: 31.1 s
+Progress:   54.0%   ETA: 25.2 s
+Progress:   64.5%   ETA: 19.4 s
+Progress:   72.5%   ETA: 14.4 s
+Progress:   82.4%   ETA: 9.2 s
+Progress:   92.3%   ETA: 4.7 s
+Progress:  100.0%   ETA: 0 ns
+Finished in 54.5 s
+wrote energy matrix to file: /home/users/lz280/IdeaProjects/OSPREY3/examples/python.GMEC/emat_Bound.dat
+Calculating reference energies for 945 residue confs...
+Progress:  100.0%   ETA: 0 ns
+Finished in 73.3 ms
+read energy matrix from file: /home/users/lz280/IdeaProjects/OSPREY3/examples/python.GMEC/emat_Unbound.dat
+Calculating reference energies for 73 residue confs...
+Progress:  100.0%   ETA: 0 ns
+Finished in 4.2 ms
+read energy matrix from file: /home/users/lz280/IdeaProjects/OSPREY3/examples/python.GMEC/emat_Unbound.dat
+WARNING: energy matrix from file is invalid, will create new one
+Calculating energy matrix with 2128 entries
+Progress:  100.0%   ETA: 0 ns
+Finished in 138.8 ms
+wrote energy matrix to file: /home/users/lz280/IdeaProjects/OSPREY3/examples/python.GMEC/emat_Unbound.dat
+
+COMETS searching for the 5 best sequences among 3.200000e+06 with up to 1 simultaneous mutations ...
+(up to objective function value 0.000000 kcal/mol, or +10.000000 kcal/mol relative to the best sequence)
+
+Discovered promising sequence: E169=asp E170=ser E172=gln E175=ser E190=ser   objective lower bound:  -104.521308
+
+Sequence calculation complete: E169 E170 E172 E175 E190    objective:    -0.905761   Wild-type
+                               asp  ser  gln  ser  ser 
+	State: Bound                   GMEC Energy:   -25.821902
+	State: Bound                   GMEC Energy:   -24.919239
+	State: Unbound                 GMEC Energy:   -12.519802
+	State: Unbound                 GMEC Energy:   -12.522900
+
+COMETS found the best 1 within the window that satisfy all the constraints
+COMETS design completed successfully!

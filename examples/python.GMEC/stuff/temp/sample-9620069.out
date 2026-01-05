@@ -1,0 +1,31 @@
+no change     /home/users/lz280/miniconda3/condabin/conda
+no change     /home/users/lz280/miniconda3/bin/conda
+no change     /home/users/lz280/miniconda3/bin/conda-env
+no change     /home/users/lz280/miniconda3/bin/activate
+no change     /home/users/lz280/miniconda3/bin/deactivate
+no change     /home/users/lz280/miniconda3/etc/profile.d/conda.sh
+no change     /home/users/lz280/miniconda3/etc/fish/conf.d/conda.fish
+no change     /home/users/lz280/miniconda3/shell/condabin/Conda.psm1
+no change     /home/users/lz280/miniconda3/shell/condabin/conda-hook.ps1
+no change     /home/users/lz280/miniconda3/lib/python3.12/site-packages/xontrib/conda.xsh
+no change     /home/users/lz280/miniconda3/etc/profile.d/conda.csh
+no change     /home/users/lz280/.bashrc
+No action taken.
+Stripping 6dv2.pdb. Output path: 6dv2_strip.pdb.
+Reducing 6dv2_strip.pdb. Output path: 6dv2_strip_reduce.pdb.
+Running pdb4amber on 6dv2_strip_reduce.pdb. Output path: 6dv2_strip_reduce_prep.pdb.
+Restoring chain IDs for 6dv2_strip_reduce_prep.pdb based on 6dv2_strip_reduce_prep_renum.txt. Output path: 6dv2_strip_reduce_prep_rc.pdb.
+Running pdb4amber to add missing atoms on 6dv2_strip_reduce_prep_rc.pdb. Output path: 6dv2_strip_reduce_prep_rc_add.pdb.
+Restoring chain IDs for 6dv2_strip_reduce_prep_rc_add.pdb based on 6dv2_strip_reduce_prep_rc_add_renum.txt. Output path: 6dv2_strip_reduce_prep_rc_add_rc.pdb.
+Running sander on 6dv2_strip_reduce_prep_rc_add_rc.pdb. Output path: 6dv2_strip_reduce_prep_rc_add_rc_steps100.pdb.
+OSPREY 3.3-dev, Python 3.10.13, Java 17.0.14, Linux-5.19.0-32-generic-x86_64-with-glibc2.35
+Using up to 200000 MiB heap memory: 128 MiB for garbage, 199872 MiB for storage
+read PDB file from file: 6dv2_strip_reduce_prep_rc_add_rc.pdb
+Name:  B782
+Mutable residues:  B782
+Other flexible residues:  B781 B783 (count: 2)
+Backbone flexibility:  
+Overall residue count: 3
+Chains with translation and rotation: 
+mutableSetInfo None
+Restoring chain IDs for 6dv2_strip_reduce_prep_rc_add_rc_steps100.pdb based on 6dv2_strip_reduce_prep_rc_add_renum.txt. Output path: 6dv2_strip_reduce_prep_rc_add_rc_steps100_rc.pdb.

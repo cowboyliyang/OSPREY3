@@ -1,0 +1,78 @@
+no change     /home/users/lz280/miniconda3/condabin/conda
+no change     /home/users/lz280/miniconda3/bin/conda
+no change     /home/users/lz280/miniconda3/bin/conda-env
+no change     /home/users/lz280/miniconda3/bin/activate
+no change     /home/users/lz280/miniconda3/bin/deactivate
+no change     /home/users/lz280/miniconda3/etc/profile.d/conda.sh
+no change     /home/users/lz280/miniconda3/etc/fish/conf.d/conda.fish
+no change     /home/users/lz280/miniconda3/shell/condabin/Conda.psm1
+no change     /home/users/lz280/miniconda3/shell/condabin/conda-hook.ps1
+no change     /home/users/lz280/miniconda3/lib/python3.12/site-packages/xontrib/conda.xsh
+no change     /home/users/lz280/miniconda3/etc/profile.d/conda.csh
+no change     /home/users/lz280/.bashrc
+No action taken.
+OSPREY 3.3-dev, Python 3.10.13, Java 17.0.14, Linux-5.15.0-140-generic-x86_64-with-glibc2.35
+Using up to 768000 MiB heap memory: 128 MiB for garbage, 767872 MiB for storage
+read PDB file from file: 3btd.df.min_strip_reduce_prep_rc_add_rc_steps100_rc.pdb
+read PDB file from file: 3bte.df.min_strip_reduce_prep_rc_add_rc_steps100_rc.pdb
+sequence space has 4 sequences
+Residue Types:
+	0:A227  [ 0:asp 1:ALA ]
+	1:A171  [ 0:asp 1:ALA ]
+Calculating reference energies for 69 residue confs...
+Progress:  100.0%   ETA: 0 ns
+Finished in 72.0 ms
+read energy matrix from file: /home/users/lz280/IdeaProjects/OSPREY3/examples/python.GMEC/emat_Bound.dat
+WARNING: energy matrix from file is invalid, will create new one
+Calculating energy matrix with 1980 entries
+Progress:  100.0%   ETA: 5.0 ms
+Finished in 541.3 ms
+wrote energy matrix to file: /home/users/lz280/IdeaProjects/OSPREY3/examples/python.GMEC/emat_Bound.dat
+Calculating reference energies for 72 residue confs...
+Progress:  100.0%   ETA: 0 ns
+Finished in 18.8 ms
+read energy matrix from file: /home/users/lz280/IdeaProjects/OSPREY3/examples/python.GMEC/emat_Bound.dat
+WARNING: energy matrix from file is invalid, will create new one
+Calculating energy matrix with 2172 entries
+Progress:  100.0%   ETA: 0 ns
+Finished in 423.6 ms
+wrote energy matrix to file: /home/users/lz280/IdeaProjects/OSPREY3/examples/python.GMEC/emat_Bound.dat
+Calculating reference energies for 59 residue confs...
+Progress:  100.0%   ETA: 0 ns
+Finished in 13.6 ms
+read energy matrix from file: /home/users/lz280/IdeaProjects/OSPREY3/examples/python.GMEC/emat_Unbound.dat
+WARNING: energy matrix from file is invalid, will create new one
+Calculating energy matrix with 1356 entries
+Progress:  100.0%   ETA: 0 ns
+Finished in 180.7 ms
+wrote energy matrix to file: /home/users/lz280/IdeaProjects/OSPREY3/examples/python.GMEC/emat_Unbound.dat
+Calculating reference energies for 59 residue confs...
+Progress:  100.0%   ETA: 0 ns
+Finished in 8.7 ms
+read energy matrix from file: /home/users/lz280/IdeaProjects/OSPREY3/examples/python.GMEC/emat_Unbound.dat
+
+COMETS searching for the 5 best sequences among 4 with up to 1 simultaneous mutations ...
+(up to objective function value 0.000000 kcal/mol, or +10.000000 kcal/mol relative to the best sequence)
+
+Discovered promising sequence: A227=asp A171=asp   objective lower bound:  -121.759099
+Discovered promising sequence: A227=asp A171=ALA   objective lower bound:  -121.366498
+Discovered promising sequence: A227=ALA A171=asp   objective lower bound:  -121.316890
+
+Sequence calculation complete: A227 A171    objective:    -2.567103   
+                               ALA  asp 
+	State: Bound                   GMEC Energy:   -34.610464
+	State: Bound                   GMEC Energy:   -31.206428
+	State: Unbound                 GMEC Energy:   -21.053177
+	State: Unbound                 GMEC Energy:   -20.216245
+
+Sequence calculation complete: A227 A171    objective:    -0.933936   Wild-type
+                               asp  asp 
+	State: Bound                   GMEC Energy:   -33.122514
+	State: Bound                   GMEC Energy:   -31.206428
+	State: Unbound                 GMEC Energy:   -21.198394
+	State: Unbound                 GMEC Energy:   -20.216245
+
+COMETS exiting early: exhausted all conformations in energy window
+
+COMETS found the best 2 within the window that satisfy all the constraints
+COMETS design completed successfully!

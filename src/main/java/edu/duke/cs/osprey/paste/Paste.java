@@ -71,7 +71,7 @@ public class Paste {
              * Smaller values for epsilon yield more accurate predictions, but can take
              * longer to run.
              */
-            private double epsilon = 0.683;
+            private double epsilon = 0.1;
 
             /**
              * can also terminate when you reach a certain energy window difference
@@ -83,7 +83,7 @@ public class Paste {
              * or when you reach a certain number of conformations
              */
 
-            private int maxNumPfConfs = 5000;
+            private int maxNumPfConfs = 10000;
 
             /**
              * decide if you want to stop calculating a partition function when the upper/lower bounds no longer
@@ -151,11 +151,13 @@ public class Paste {
 
             public Builder setNumMaxPfConfs (int val){
                 maxNumPfConfs = val;
+                System.out.println("PAStE maxNumPfConfs set to " + maxNumPfConfs);
                 return this;
             }
 
             public Builder setEpsilon(double val) {
                 epsilon = val;
+                System.out.println("PAStE epsilon set to " + epsilon);
                 return this;
             }
 
