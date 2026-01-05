@@ -184,7 +184,7 @@ public class SeqSpace implements Serializable {
 		}
 
 		private String normalizeResType(String type) {
-			return type.toUpperCase();
+			return type != null ? type.toUpperCase() : null;
 		}
 
 		public boolean hasMutants() {

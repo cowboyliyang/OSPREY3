@@ -219,8 +219,8 @@ tasks.withType<KotlinCompile> {
 }
 
 tasks.withType<Test> {
-	// the default 512m is too little memory to run test designs
-	maxHeapSize = "2g"
+	// Increased for DP-MARKStar tests on real proteins
+	maxHeapSize = "8g"
 	useJUnitPlatform()
     failFast = true
 	// method call appends additional arguments for the JVM
@@ -288,3 +288,63 @@ makeBuildDesktopTasks()
 makeBuildServiceTasks()
 makeBuildServiceDockerTasks()
 makeAzureTasks()
+
+// Task to run CometsZ + BBKStar + MARKStar Example
+tasks.register<JavaExec>("runCometsZExample") {
+	description = "Run COMETSZ + BBKStar + MARKStar Example"
+	group = "application"
+
+	mainClass.set("CometsZBBKStarMARKStarExample")
+	classpath = sourceSets["main"].runtimeClasspath + files("examples/java")
+	workingDir = file("examples/java")
+
+	jvmArgs = listOf("-Xmx4g", "-Xms1g")
+
+	// Ensure the example is compiled first
+	dependsOn("compileJava")
+
+	doFirst {
+		// Compile the example file
+		val exampleFile = file("examples/java/CometsZBBKStarMARKStarExample.java")
+		if (exampleFile.exists()) {
+			exec {
+				commandLine(
+					"${System.getProperty("java.home")}/bin/javac",
+					"-cp", sourceSets["main"].runtimeClasspath.asPath,
+					"-d", "examples/java",
+					exampleFile.absolutePath
+				)
+			}
+		}
+	}
+}
+
+// Task to run TRUE BBK* + MARK* Example
+tasks.register<JavaExec>("runTrueBBKStarExample") {
+	description = "Run TRUE BBK* + MARK* Example (following TestBBKStar pattern)"
+	group = "application"
+
+	mainClass.set("TrueBBKStarMARKStarExample")
+	classpath = sourceSets["main"].runtimeClasspath + files("examples/java")
+	workingDir = file("examples/java")
+
+	jvmArgs = listOf("-Xmx4g", "-Xms1g")
+
+	// Ensure the example is compiled first
+	dependsOn("compileJava")
+
+	doFirst {
+		// Compile the example file
+		val exampleFile = file("examples/java/TrueBBKStarMARKStarExample.java")
+		if (exampleFile.exists()) {
+			exec {
+				commandLine(
+					"${System.getProperty("java.home")}/bin/javac",
+					"-cp", sourceSets["main"].runtimeClasspath.asPath,
+					"-d", "examples/java",
+					exampleFile.absolutePath
+				)
+			}
+		}
+	}
+}

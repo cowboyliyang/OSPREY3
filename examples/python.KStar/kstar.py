@@ -1,6 +1,6 @@
 
 import osprey
-osprey.start()
+osprey.start(attachJvmDebugger=True)
 
 # choose a forcefield
 ffparams = osprey.ForcefieldParams()

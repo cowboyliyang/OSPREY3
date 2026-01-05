@@ -1,0 +1,55 @@
+{
+    // Java 配置
+    "java.configuration.updateBuildConfiguration": "automatic",
+    "java.compile.nullAnalysis.mode": "automatic",
+    "java.debug.settings.hotCodeReplace": "auto",
+    "java.saveActions.organizeImports": true,
+
+    // JVM 内存设置
+    "java.jdt.ls.vmargs": "-Xmx2g -Xms512m",
+
+    // 项目配置
+    "java.project.sourcePaths": [
+        "src/main/java",
+        "examples/java"
+    ],
+    "java.project.outputPath": "build/classes/java/main",
+
+    // 文件关联
+    "files.associations": {
+        "*.gradle": "groovy",
+        "*.md": "markdown"
+    },
+
+    // 终端设置
+    "terminal.integrated.defaultProfile.linux": "bash",
+    "terminal.integrated.cwd": "${workspaceFolder}",
+
+    // 文件排除
+    "files.exclude": {
+        "**/.gradle": true,
+        "**/*.class": true,
+        "**/.classpath": true,
+        "**/.project": true,
+        "**/.settings": true,
+        "**/.factorypath": true
+    },
+
+    // 搜索排除
+    "search.exclude": {
+        "**/build": true,
+        "**/.gradle": true,
+        "**/node_modules": true
+    },
+
+    // 编辑器设置
+    "editor.formatOnSave": false,
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true,
+
+    // Java 代码样式
+    "[java]": {
+        "editor.defaultFormatter": "redhat.java",
+        "editor.tabSize": 4
+    }
+}

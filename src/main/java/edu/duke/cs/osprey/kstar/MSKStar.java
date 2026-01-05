@@ -273,6 +273,7 @@ public class MSKStar {
 
 	private class ConfDBs extends ConfDB.DBs {
 
+		public Map<State,ConfDB> dbs = new HashMap<>();
 		public Map<State,ConfDB.ConfTable> tables = new HashMap<>();
 
 		public ConfDBs() {
@@ -282,10 +283,11 @@ public class MSKStar {
 				add(state.confSpace, state.confDBFile);
 			}
 
-			// make the tables
+			// store the ConfDBs and ConfTables for each state
 			for (State state : states) {
 				ConfDB confdb = get(state.confSpace);
 				if (confdb != null) {
+					dbs.put(state, confdb);
 					tables.put(state, confdb.new ConfTable("MSK*"));
 				}
 			}
@@ -334,7 +336,7 @@ public class MSKStar {
 		PartitionFunction pfunc = null;
 		PartitionFunction.Result pfuncResult = null;
 
-		StateConfs(Sequence sequence, State state, double epsilon, ConfDB.ConfTable confTable, ConfSearchCache confTrees) {
+		StateConfs(Sequence sequence, State state, double epsilon, ConfDB confDB, ConfSearchCache confTrees) {
 
 			this.state = state;
 			this.sequence = sequence;
@@ -343,21 +345,28 @@ public class MSKStar {
 			RCs rcs = sequence.makeRCs(state.confSpace);
 			pfunc = state.pfuncFactory.make(rcs);
 
-			/* TODO: update MSK* to new ConfDB API
-			if (confTable != null) {
-				PartitionFunction.WithConfTable.setOrThrow(pfunc, confTable);
+			// set ConfDB if available and pfunc supports it
+			if (confDB != null) {
+				if (pfunc instanceof PartitionFunction.WithConfDB) {
+					((PartitionFunction.WithConfDB)pfunc).setConfDB(confDB, sequence);
+				}
 			}
-			*/
+
+			// set instance ID for partition functions that require it (e.g., GradientDescentPfunc)
+			pfunc.setInstanceId(0);
 
 			pfunc.init(epsilon);
 		}
 
-		void refineBounds() {
+		void refineBounds(edu.duke.cs.osprey.parallelism.TaskExecutor.ContextGroup ctxGroup) {
 
 			// already done? no need to be an over-achiever
 			if (pfuncResult != null) {
 				return;
 			}
+
+			// set up task contexts for GradientDescentPfunc
+			pfunc.putTaskContexts(ctxGroup);
 
 			// update the bounds
 			pfunc.compute(state.confEcalc.tasks.getParallelism());
@@ -396,7 +405,7 @@ public class MSKStar {
 				StateConfs.Key key = new StateConfs.Key(sequence, state);
 				StateConfs stateConfs = stateConfsCache.get(key);
 				if (stateConfs == null) {
-					stateConfs = new StateConfs(sequence, state, epsilon, confDBs.tables.get(state), confTrees);
+					stateConfs = new StateConfs(sequence, state, epsilon, confDBs.dbs.get(state), confTrees);
 					stateConfsCache.put(key, stateConfs);
 				}
 
@@ -420,9 +429,16 @@ public class MSKStar {
 		 */
 		public MathTools.DoubleBounds refineBounds() {
 
-			// refine the GMEC bounds for each state
-			for (State state : states) {
-				statesConfs.get(state).refineBounds();
+			// create context group for all states to share (they use the same task executor)
+			// get the task executor from any state (they all share the same one)
+			State firstState = states.get(0);
+			StateConfs firstStateConfs = statesConfs.get(firstState);
+			try (edu.duke.cs.osprey.parallelism.TaskExecutor.ContextGroup ctxGroup = firstStateConfs.state.confEcalc.tasks.contextGroup()) {
+
+				// refine the GMEC bounds for each state
+				for (State state : states) {
+					statesConfs.get(state).refineBounds(ctxGroup);
+				}
 			}
 
 			// if any constraints are violated, score the node +inf,
@@ -634,8 +650,6 @@ public class MSKStar {
 	 * searches all sequences within the objective window
 	 */
 	public List<SequenceInfo> findBestSequences(int numSequences) {
-
-		if (true) throw new UnsupportedOperationException("This MSK* implementation doesn't work yet, don't use it!");
 
 		// reset any previous state
 		stateConfsCache.clear();

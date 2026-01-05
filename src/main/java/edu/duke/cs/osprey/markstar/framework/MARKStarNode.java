@@ -402,8 +402,11 @@ public class MARKStarNode implements Comparable<MARKStarNode> {
 		rootNode.index(confIndex);
 		rootNode.gscore = gScorer.calc(confIndex, rcs);
 		rootNode.rigidScore = rigidgScorer.calc(confIndex,rcs);
-        double confUpperBound = rigidgScorer.calc(confIndex,rcs)-negatedHScorer.calc(confIndex, rcs);
-        double confLowerBound = rootNode.gscore+hScorer.calc(confIndex, rcs);
+
+		// Calculate bounds
+        double confUpperBound = rigidgScorer.calc(confIndex, rcs) - negatedHScorer.calc(confIndex, rcs);
+        double confLowerBound = gScorer.calc(confIndex, rcs) + hScorer.calc(confIndex, rcs);
+
         rootNode.computeNumConformations(rcs);
         rootNode.setBoundsFromConfLowerAndUpper(confLowerBound, confUpperBound);
 		return new MARKStarNode(rootNode, null);

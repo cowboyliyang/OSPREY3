@@ -364,6 +364,8 @@ public class TestComets {
 		List<SimpleConfSpace> confSpaces = states.stream()
 			.map(state -> state.confSpace)
 			.collect(Collectors.toList());
+
+
 		try (EnergyCalculator ecalc = new EnergyCalculator.Builder(confSpaces, ffparams)
 			.setParallelism(Parallelism.makeCpu(4))
 			.build()) {

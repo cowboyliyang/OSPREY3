@@ -1,0 +1,68 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build OSPREY",
+            "type": "shell",
+            "command": "./gradlew build",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [],
+            "detail": "编译整个 OSPREY 项目"
+        },
+        {
+            "label": "Clean Build",
+            "type": "shell",
+            "command": "./gradlew clean build",
+            "group": "build",
+            "problemMatcher": [],
+            "detail": "清理并重新编译 OSPREY 项目"
+        },
+        {
+            "label": "Compile Simple Example",
+            "type": "shell",
+            "command": "javac -cp ../../build/libs/*:../../build/classes/java/main SimpleCometsZMARKStarExample.java",
+            "options": {
+                "cwd": "${workspaceFolder}/examples/java"
+            },
+            "group": "build",
+            "problemMatcher": ["$javac"],
+            "detail": "编译简化版 COMETSZ 示例"
+        },
+        {
+            "label": "Compile Complete Example",
+            "type": "shell",
+            "command": "javac -cp ../../build/libs/*:../../build/classes/java/main CometsZBBKStarMARKStarExample.java",
+            "options": {
+                "cwd": "${workspaceFolder}/examples/java"
+            },
+            "group": "build",
+            "problemMatcher": ["$javac"],
+            "detail": "编译完整版 COMETSZ 示例"
+        },
+        {
+            "label": "Run Simple Example (Script)",
+            "type": "shell",
+            "command": "./run_simple_example.sh",
+            "options": {
+                "cwd": "${workspaceFolder}/examples/java"
+            },
+            "group": "test",
+            "problemMatcher": [],
+            "detail": "使用脚本运行简化版示例"
+        },
+        {
+            "label": "Run Complete Example (Script)",
+            "type": "shell",
+            "command": "./run_complete_example.sh",
+            "options": {
+                "cwd": "${workspaceFolder}/examples/java"
+            },
+            "group": "test",
+            "problemMatcher": [],
+            "detail": "使用脚本运行完整版示例"
+        }
+    ]
+}

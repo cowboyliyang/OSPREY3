@@ -51,11 +51,27 @@ import static edu.duke.cs.osprey.tools.Log.log;
 
 
 public class SimplerEnergyMatrixCalculator {
-	
+
 	// NOTE: don't use GPUs on energy matrices, it's too slow
 	// always use the CPU
 	// (until we implement efficient batching in the GPU energy calculator that is...)
 	// unless you're using AllOnPairs energy partition, then the GPU is pretty fast
+
+	// Thread-local context label for better logging output
+	private static ThreadLocal<String> contextLabel = ThreadLocal.withInitial(() -> "");
+
+	public static void setContextLabel(String label) {
+		contextLabel.set(label);
+	}
+
+	public static void clearContextLabel() {
+		contextLabel.set("");
+	}
+
+	private static String getContextPrefix() {
+		String label = contextLabel.get();
+		return label.isEmpty() ? "" : "[" + label + "] ";
+	}
 
 	public static class Builder {
 		
@@ -278,7 +294,7 @@ public class SimplerEnergyMatrixCalculator {
 		Batcher batcher = new Batcher();
 		
 		// convert the workload into tasks for the task executor
-		log("Calculating energy matrix with %d entries", numConst + numSingles + numPairs);
+		log(getContextPrefix() + "Calculating energy matrix with %d entries", numConst + numSingles + numPairs);
 		if (calcConstantTerm) {
 			batcher.getBatch().addConst();
 			batcher.submitIfFull();
@@ -540,7 +556,7 @@ public class SimplerEnergyMatrixCalculator {
 		
 		// send all the tasks
 		Progress progress = new Progress(confSpace.countSingles());
-		System.out.println("Calculating reference energies for " + progress.getTotalWork() + " residue confs...");
+		System.out.println(getContextPrefix() + "Calculating reference energies for " + progress.getTotalWork() + " residue confs...");
 		for (int posi=0; posi<confSpace.numPos(); posi++) {
 			for (int confi=0; confi<confSpace.numConf(posi); confi++) {
 

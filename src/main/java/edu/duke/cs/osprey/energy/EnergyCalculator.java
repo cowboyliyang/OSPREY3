@@ -40,7 +40,9 @@ import cern.colt.matrix.DoubleFactory1D;
 import cern.colt.matrix.DoubleMatrix1D;
 import edu.duke.cs.osprey.confspace.MultiStateConfSpace;
 import edu.duke.cs.osprey.confspace.ParametricMolecule;
+import edu.duke.cs.osprey.confspace.RCTuple;
 import edu.duke.cs.osprey.confspace.SimpleConfSpace;
+import edu.duke.cs.osprey.ematrix.MinimizationCache;
 import edu.duke.cs.osprey.confspace.SimpleConfSpace.DofTypes;
 import edu.duke.cs.osprey.energy.approximation.ApproximatedObjectiveFunction;
 import edu.duke.cs.osprey.energy.approximation.ResidueInteractionsApproximator;
@@ -628,7 +630,19 @@ public class EnergyCalculator implements AutoCleanable {
 	 * @return The calculated energy and the associated molecule pose
 	 */
 	public EnergiedParametricMolecule calcEnergy(ParametricMolecule pmol, ResidueInteractions inters) {
-		return calcEnergy(pmol, inters, null);
+		return calcEnergy(pmol, inters, null, null);
+	}
+
+	/**
+	 * Calculate the energy of a molecule with Phase 2 DOF caching support.
+	 *
+	 * @param pmol The molecule
+	 * @param inters Residue interactions for the energy function
+	 * @param conf The conformation (for DOF caching), can be null to disable caching
+	 * @return The calculated energy and the associated molecule pose
+	 */
+	public EnergiedParametricMolecule calcEnergy(ParametricMolecule pmol, ResidueInteractions inters, RCTuple conf) {
+		return calcEnergy(pmol, inters, null, conf);
 	}
 
 	/**
@@ -638,9 +652,10 @@ public class EnergyCalculator implements AutoCleanable {
 	 * @param pmol The molecule
 	 * @param inters Residue interactions for the energy function
 	 * @param approximator An approximator to compute approximations to the energy function for certain residue interactions
+	 * @param conf The conformation (for Phase 2 DOF caching), can be null
 	 * @return The calculated energy and the associated molecule pose
 	 */
-	public EnergiedParametricMolecule calcEnergy(ParametricMolecule pmol, ResidueInteractions inters, ResidueInteractionsApproximator approximator) {
+	public EnergiedParametricMolecule calcEnergy(ParametricMolecule pmol, ResidueInteractions inters, ResidueInteractionsApproximator approximator, RCTuple conf) {
 		
 		// short circuit: no inters, no energy!
 		if (inters.size() <= 0) {
@@ -705,7 +720,10 @@ public class EnergyCalculator implements AutoCleanable {
 
 			try (Minimizer minimizer = context.minimizers.make(f)) {
 
-				Minimizer.Result result = minimizer.minimizeFrom(x);
+				// Phase 2: Wrap with CachedMinimizer if enabled (pass ObjectiveFunction for TRUE subtree caching)
+				Minimizer actualMinimizer = wrapMinimizerIfNeeded(minimizer, conf, f);
+
+				Minimizer.Result result = actualMinimizer.minimizeFrom(x);
 
 				// did we fall into an infinite energy well?
 				if (isInfiniteWell(result.energy)) {
@@ -740,6 +758,17 @@ public class EnergyCalculator implements AutoCleanable {
 
 	private boolean isInfiniteWell(double energy) {
 		return infiniteWellEnergy != null && energy <= infiniteWellEnergy;
+	}
+
+	/**
+	 * Phase 2: Wrap minimizer with CachedMinimizer if enabled
+	 * Now supports TRUE subtree caching by passing ObjectiveFunction
+	 */
+	private Minimizer wrapMinimizerIfNeeded(Minimizer minimizer, RCTuple conf, ObjectiveFunction objFunc) {
+		if (edu.duke.cs.osprey.ematrix.CachedMinimizer.ENABLE_SUBTREE_CACHE && conf != null) {
+			return new edu.duke.cs.osprey.ematrix.CachedMinimizer(minimizer, conf, objFunc);
+		}
+		return minimizer;
 	}
 
 	public EnergyFunction makeEnergyFunction(EnergiedParametricMolecule epmol) {

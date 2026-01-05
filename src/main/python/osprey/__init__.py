@@ -1561,7 +1561,7 @@ def COMETS_State(name, confSpace):
 	${type_java(.gmec.Comets$State)}
 	'''
 
-	return jvm.getInnerClass(c.gmec.Comets, 'State')(name, confSpace)
+	return jvm.getInnerClass(c.gmecgmec.Comets, 'State')(name, confSpace)
 
 
 def COMETS_ConfSearchFactory(func):
