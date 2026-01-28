@@ -81,7 +81,10 @@ import edu.duke.cs.osprey.tools.UseableBuilder;
  * If a fragment has continuous degrees of freedom, minimization will be performed before forcefield evaluation.
  */
 public class EnergyCalculator implements AutoCleanable {
-	
+
+	// DOF value logging configuration
+	public static boolean ENABLE_RCTUPLE_LOGGING = false;
+
 	public static class Builder implements UseableBuilder<EnergyCalculator> {
 		
 		private ForcefieldParams ffparams;
@@ -720,29 +723,74 @@ public class EnergyCalculator implements AutoCleanable {
 
 			try (Minimizer minimizer = context.minimizers.make(f)) {
 
-				// Phase 2: Wrap with CachedMinimizer if enabled (pass ObjectiveFunction for TRUE subtree caching)
-				Minimizer actualMinimizer = wrapMinimizerIfNeeded(minimizer, conf, f);
-
-				Minimizer.Result result = actualMinimizer.minimizeFrom(x);
-
-				// did we fall into an infinite energy well?
-				if (isInfiniteWell(result.energy)) {
-
-					// try to resolve the clash and try the minimization again
-					Minimizer.Result vdwResult = minimizeWithVdw(pmol, ffInters, x);
-					result = minimizer.minimizeFrom(vdwResult.dofValues);
-
-					// are we still in the well?
-					if (isInfiniteWell(result.energy)) {
-
-						// return positive infinity energy
-						return new EnergiedParametricMolecule(pmol, inters, result.dofValues, Double.POSITIVE_INFINITY);
-					}
-
-					// we got out of the well, yay!
+				// Control DOF logging: only enable for partial/full conformations (>= 3 residues), not for 1-2 residue fragments
+				boolean savedDofLogging = edu.duke.cs.osprey.minimization.SimpleCCDMinimizer.ENABLE_DOF_VALUE_LOGGING;
+				if (conf == null || conf.size() < 7) {
+					// This is fragment minimization (energy matrix calculation) - disable DOF logging
+					// Only log full 7-residue conformations from A* search
+					edu.duke.cs.osprey.minimization.SimpleCCDMinimizer.ENABLE_DOF_VALUE_LOGGING = false;
+				} else {
+					// Set RC tuple for full conformation minimization (7 residues)
+					edu.duke.cs.osprey.minimization.SimpleCCDMinimizer.currentRCTuple.set(conf.stringListing());
 				}
 
-				return new EnergiedParametricMolecule(pmol, inters, result.dofValues, result.energy);
+				try {
+					// Log RC tuple information before minimization (optional, SimpleCCDMinimizer will also log it)
+					if (ENABLE_RCTUPLE_LOGGING && conf != null && conf.size() >= 7) {
+						System.out.println("[RC-TUPLE] Minimizing: " + conf.stringListing() + " (size=" + conf.size() + ", numDOFs=" + pmol.dofs.size() + ")");
+						System.out.flush();
+					}
+
+					// Phase 2: Wrap with CachedMinimizer if enabled (pass ObjectiveFunction for TRUE subtree caching)
+					Minimizer actualMinimizer = wrapMinimizerIfNeeded(minimizer, conf, f);
+
+					// Track minimization time ONLY for Phase 1 (correction computation)
+					// Phase 2 timing is handled inside SubtreeDOFCache to avoid double-counting
+					Minimizer.Result result;
+					if (conf == null) {
+						// Phase 1: Correction computation (not cached) - track time here
+						long minStartTime = System.nanoTime();
+						result = actualMinimizer.minimizeFrom(x);
+						long minEndTime = System.nanoTime();
+						edu.duke.cs.osprey.markstar.MinimizationTimer.recordPhase1Minimization(minEndTime - minStartTime);
+					} else {
+						// Phase 2: A* search (cached) - timing handled in SubtreeDOFCache
+						result = actualMinimizer.minimizeFrom(x);
+					}
+
+					// did we fall into an infinite energy well?
+					if (isInfiniteWell(result.energy)) {
+
+						// try to resolve the clash and try the minimization again
+						Minimizer.Result vdwResult = minimizeWithVdw(pmol, ffInters, x);
+
+						// Re-minimize with timing (ONLY for Phase 1)
+						if (conf == null) {
+							long retryStartTime = System.nanoTime();
+							result = minimizer.minimizeFrom(vdwResult.dofValues);
+							long retryEndTime = System.nanoTime();
+							edu.duke.cs.osprey.markstar.MinimizationTimer.recordPhase1Minimization(retryEndTime - retryStartTime);
+						} else {
+							result = minimizer.minimizeFrom(vdwResult.dofValues);
+						}
+
+						// are we still in the well?
+						if (isInfiniteWell(result.energy)) {
+
+							// return positive infinity energy
+							return new EnergiedParametricMolecule(pmol, inters, result.dofValues, Double.POSITIVE_INFINITY);
+						}
+
+						// we got out of the well, yay!
+					}
+
+					return new EnergiedParametricMolecule(pmol, inters, result.dofValues, result.energy);
+				} finally {
+					// Restore DOF logging flag
+					edu.duke.cs.osprey.minimization.SimpleCCDMinimizer.ENABLE_DOF_VALUE_LOGGING = savedDofLogging;
+					// Clear RC tuple ThreadLocal
+					edu.duke.cs.osprey.minimization.SimpleCCDMinimizer.currentRCTuple.remove();
+				}
 			}
 		}
 	}

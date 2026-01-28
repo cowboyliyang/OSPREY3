@@ -101,7 +101,7 @@ public class MARKStarProgress extends AStarProgress {
         // should we write a progress report?
         int msRunning = (int)stopwatch.getTimeMs();
         if (msRunning >= this.msRunning + ReportIntervalMs) {
-            printProgressReport();
+            // printProgressReport();
             this.msRunning = msRunning;
             this.numNodesQueuedThisReport = 0;
         }
@@ -164,7 +164,7 @@ public class MARKStarProgress extends AStarProgress {
         // should we write a progress report?
         int msRunning = (int)stopwatch.getTimeMs();
         if (msRunning >= this.msRunning + ReportIntervalMs) {
-            printProgressReport();
+            // printProgressReport();
             this.msRunning = msRunning;
             this.numNodesQueuedThisReport = 0;
             this.numPartialMinimizations = 0;

@@ -6,6 +6,9 @@ import edu.duke.cs.osprey.confspace.SimpleConfSpace;
 import edu.duke.cs.osprey.minimization.Minimizer;
 import edu.duke.cs.osprey.minimization.ObjectiveFunction;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * Phase 2: Cached Minimizer Wrapper for TRUE Subtree DOF Caching
  *
@@ -20,6 +23,10 @@ import edu.duke.cs.osprey.minimization.ObjectiveFunction;
  * - Now requires ObjectiveFunction to create ConstrainedMinimizers
  * - Caches individual subtrees, not just complete conformations
  * - Provides 30-50% speedup when conformations share subtrees
+ *
+ * IMPORTANT: K* algorithm uses multiple ConfSpaces (Protein, Ligand, Complex).
+ * Each ConfSpace must have its own cache to avoid position index incompatibility.
+ * Use initializeGlobalCache() for each ConfSpace before running K*.
  */
 public class CachedMinimizer implements Minimizer {
 
@@ -31,41 +38,146 @@ public class CachedMinimizer implements Minimizer {
 
     // Configuration
     public static boolean ENABLE_SUBTREE_CACHE = false; // Global enable/disable
+    public static boolean ENABLE_MINIMIZATION_LOGGING = false; // Enable to log minimizations
+    public static boolean ENABLE_DOF_VALUE_LOGGING = false; // Enable to log DOF values before and after minimization
+
+    // Per-ConfSpace caches (keyed by number of positions for matching)
+    // Using position count as key because conformations only know their size, not their ConfSpace
+    private static Map<Integer, SubtreeDOFCache> cachesByPositionCount = new HashMap<>();
+    private static Map<Integer, BranchDecomposition> branchDecompsByPositionCount = new HashMap<>();
+
+    // Legacy single cache reference (for backward compatibility with existing code)
     private static SubtreeDOFCache globalCache = null;
     private static BranchDecomposition globalBranchDecomp = null;
 
     /**
-     * Initialize global cache for a conformation space
-     * Call this once when setting up MARKStar
+     * Initialize global cache for a conformation space.
+     *
+     * IMPORTANT for K* algorithm: Call this for EACH ConfSpace (protein, ligand, complex)
+     * to ensure each has its own properly-sized cache and branch decomposition.
+     *
+     * Example:
+     *   CachedMinimizer.initializeGlobalCache(confSpaces.protein);
+     *   CachedMinimizer.initializeGlobalCache(confSpaces.ligand);
+     *   CachedMinimizer.initializeGlobalCache(confSpaces.complex);
      */
     public static void initializeGlobalCache(SimpleConfSpace confSpace) {
-        if (ENABLE_SUBTREE_CACHE && globalBranchDecomp == null) {
-            globalBranchDecomp = new BranchDecomposition(confSpace);
-            globalCache = new SubtreeDOFCache(globalBranchDecomp, confSpace);
-
-            System.out.println("[Phase 2] TRUE Subtree DOF Cache initialized");
-            System.out.println("[Phase 2] Branch decomposition: " + globalBranchDecomp.getStats());
+        if (!ENABLE_SUBTREE_CACHE) {
+            return;
         }
+
+        int positionCount = confSpace.positions.size();
+
+        // Check if cache already exists for this position count
+        if (cachesByPositionCount.containsKey(positionCount)) {
+            System.out.println("[Phase 2] Cache already exists for " + positionCount + " positions, skipping");
+            return;
+        }
+
+        // Create new cache for this ConfSpace
+        BranchDecomposition branchDecomp = new BranchDecomposition(confSpace);
+        SubtreeDOFCache cache = new SubtreeDOFCache(branchDecomp, confSpace);
+
+        branchDecompsByPositionCount.put(positionCount, branchDecomp);
+        cachesByPositionCount.put(positionCount, cache);
+
+        // Set legacy global references to largest cache (typically Complex)
+        if (globalCache == null || positionCount > globalBranchDecomp.getPositionCount()) {
+            globalBranchDecomp = branchDecomp;
+            globalCache = cache;
+        }
+
+        System.out.println("[Phase 2] TRUE Subtree DOF Cache initialized for " + positionCount + " positions");
+        System.out.println("[Phase 2] Branch decomposition: " + branchDecomp.getStats());
     }
 
     /**
-     * Print global cache statistics
+     * Get cache for a specific conformation size
+     * Returns the cache that matches the conformation's position count
+     */
+    private static SubtreeDOFCache getCacheForConf(RCTuple conf) {
+        if (conf == null) {
+            return globalCache;
+        }
+        int size = conf.size();
+        SubtreeDOFCache cache = cachesByPositionCount.get(size);
+        if (cache == null) {
+            // No matching cache found - this is the bug scenario we're fixing!
+            // Log a warning and return null to skip caching
+            System.out.println("[Phase 2 WARNING] No cache for conf size " + size +
+                ". Available sizes: " + cachesByPositionCount.keySet() +
+                ". Falling back to standard minimization.");
+            return null;
+        }
+        return cache;
+    }
+
+    /**
+     * Print global cache statistics for all ConfSpaces
      */
     public static void printGlobalStats() {
-        if (globalCache != null) {
-            globalCache.printStats();
+        System.out.println("\n=== Subtree DOF Cache Statistics (All ConfSpaces) ===");
+
+        // Aggregate timing statistics across all caches
+        long totalMinimizationTimeNs = 0;
+        long totalCacheLookupTimeNs = 0;
+        long totalMinimizationCount = 0;
+
+        for (Map.Entry<Integer, SubtreeDOFCache> entry : cachesByPositionCount.entrySet()) {
+            System.out.println("\n--- ConfSpace with " + entry.getKey() + " positions ---");
+            entry.getValue().printStats();
+
+            // Accumulate timing stats
+            SubtreeDOFCache cache = entry.getValue();
+            totalMinimizationTimeNs += cache.getTotalMinimizationTimeNs();
+            totalCacheLookupTimeNs += cache.getTotalCacheLookupTimeNs();
+            totalMinimizationCount += cache.getMinimizationCount();
+        }
+
+        // Print aggregated timing statistics
+        if (totalMinimizationCount > 0) {
+            System.out.println("\n=== AGGREGATED TIMING STATISTICS (All ConfSpaces) ===");
+            double totalMinSec = totalMinimizationTimeNs / 1e9;
+            double totalLookupSec = totalCacheLookupTimeNs / 1e9;
+            double totalSec = totalMinSec + totalLookupSec;
+
+            System.out.println("Total minimization calls:   " + totalMinimizationCount);
+            System.out.println("Time in minimization:       " + String.format("%.2f s (%.1f%%)",
+                totalMinSec, 100.0 * totalMinSec / totalSec));
+            System.out.println("Time in cache lookup:       " + String.format("%.2f s (%.1f%%)",
+                totalLookupSec, 100.0 * totalLookupSec / totalSec));
+            System.out.println("Total cache overhead time:  " + String.format("%.2f s", totalSec));
+
+            double avgMinMs = totalMinimizationTimeNs / (totalMinimizationCount * 1e6);
+            System.out.println("Avg minimization time:      " + String.format("%.2f ms", avgMinMs));
+            System.out.println("\nNOTE: This timing only covers minimization calls that go through the cache.");
+            System.out.println("      Phase 1 corrections and fragments may use different code paths.");
         }
     }
 
     /**
-     * Clear global cache
+     * Clear all global caches
      */
     public static void clearGlobalCache() {
-        if (globalCache != null) {
-            globalCache.clearCache();
+        for (SubtreeDOFCache cache : cachesByPositionCount.values()) {
+            cache.clearCache();
         }
+        cachesByPositionCount.clear();
+        branchDecompsByPositionCount.clear();
         globalBranchDecomp = null;
         globalCache = null;
+    }
+
+    /**
+     * Get the global cache for a given ConfSpace
+     * Returns null if no cache has been initialized
+     */
+    public static SubtreeDOFCache getGlobalCache(SimpleConfSpace confSpace) {
+        if (confSpace == null) {
+            return globalCache;
+        }
+        int positionCount = confSpace.positions.size();
+        return cachesByPositionCount.get(positionCount);
     }
 
     /**
@@ -79,8 +191,9 @@ public class CachedMinimizer implements Minimizer {
         this.delegate = delegate;
         this.conf = conf;
         this.objectiveFunction = objectiveFunction;
-        this.dofCache = globalCache;
-        this.enableCache = ENABLE_SUBTREE_CACHE && globalCache != null;
+        // Get the appropriate cache for this conformation's size
+        this.dofCache = getCacheForConf(conf);
+        this.enableCache = ENABLE_SUBTREE_CACHE && this.dofCache != null;
     }
 
     /**
@@ -129,14 +242,30 @@ public class CachedMinimizer implements Minimizer {
                     System.out.println("  conf.size()=" + conf.size());
                 }
             }
-            return delegate.minimizeFrom(x);
+
+            // Log DOF values before minimization
+            if (ENABLE_DOF_VALUE_LOGGING && conf != null && conf.size() >= 3) {
+                System.out.println("[DOF-BEFORE] " + conf.stringListing() + " DOFs=" + formatDOFs(x));
+            }
+
+            Result result = delegate.minimizeFrom(x);
+
+            // Log DOF values after minimization
+            if (ENABLE_DOF_VALUE_LOGGING && conf != null && conf.size() >= 3) {
+                System.out.println("[DOF-AFTER] " + conf.stringListing() + " DOFs=" + formatDOFs(result.dofValues) + " E=" + String.format("%.4f", result.energy));
+            }
+
+            if (ENABLE_MINIMIZATION_LOGGING && conf != null && conf.size() >= 3) {
+                System.out.println("[Minimize-NoCache] " + conf.stringListing() + " E=" + String.format("%.4f", result.energy));
+            }
+            return result;
         }
 
         // CRITICAL: Only use subtree caching for FULL conformations
         // During energy matrix calculation, we minimize fragments (partial conformations)
         // which don't work with ConstrainedMinimizer's assumptions
         // Skip caching if this looks like a fragment (small number of positions)
-        if (conf.size() < 3) {
+        if (conf.size() < 4) {
             // This is likely a fragment (single or pair), not a full conformation
             // Use standard minimization
             debugCallCount++;
@@ -144,7 +273,11 @@ public class CachedMinimizer implements Minimizer {
                 System.out.println("[CachedMinimizer DEBUG #" + debugCallCount + "] Skipping cache - fragment detected:");
                 System.out.println("  conf.size()=" + conf.size() + " < 3 (threshold for full conformation)");
             }
-            return delegate.minimizeFrom(x);
+            Result result = delegate.minimizeFrom(x);
+            if (ENABLE_MINIMIZATION_LOGGING) {
+                System.out.println("[Minimize-Fragment] " + conf.stringListing() + " E=" + String.format("%.4f", result.energy));
+            }
+            return result;
         }
 
         // Use SubtreeDOFCache for TRUE subtree minimization with caching
@@ -152,8 +285,23 @@ public class CachedMinimizer implements Minimizer {
         if (debugCallCount <= DEBUG_PRINT_LIMIT) {
             System.out.println("[CachedMinimizer DEBUG #" + debugCallCount + "] USING CACHE for conf.size()=" + conf.size());
         }
+
+        // Log DOF values before minimization
+        if (ENABLE_DOF_VALUE_LOGGING) {
+            System.out.println("[DOF-BEFORE] " + conf.stringListing() + " DOFs=" + formatDOFs(x));
+        }
+
         SubtreeDOFCache.MinimizationResult result =
             dofCache.minimizeWithCache(conf, delegate, x, objectiveFunction);
+
+        // Log DOF values after minimization
+        if (ENABLE_DOF_VALUE_LOGGING) {
+            System.out.println("[DOF-AFTER] " + conf.stringListing() + " DOFs=" + formatDOFs(result.dofs) + " E=" + String.format("%.4f", result.energy));
+        }
+
+        if (ENABLE_MINIMIZATION_LOGGING) {
+            System.out.println("[Minimize-WithCache] " + conf.stringListing() + " E=" + String.format("%.4f", result.energy));
+        }
 
         // Convert back to standard Result
         return new Result(result.dofs, result.energy);
@@ -178,5 +326,21 @@ public class CachedMinimizer implements Minimizer {
      */
     public boolean isCacheEnabled() {
         return enableCache;
+    }
+
+    /**
+     * Format DOF values for logging
+     */
+    private static String formatDOFs(DoubleMatrix1D dofs) {
+        if (dofs == null) {
+            return "null";
+        }
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < dofs.size(); i++) {
+            if (i > 0) sb.append(", ");
+            sb.append(String.format("%.4f", dofs.get(i)));
+        }
+        sb.append("]");
+        return sb.toString();
     }
 }

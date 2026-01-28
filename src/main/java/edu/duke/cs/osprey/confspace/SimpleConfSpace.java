@@ -666,9 +666,82 @@ public class SimpleConfSpace implements Serializable, ConfSpaceIteration {
 	 * create a new {@link Molecule} in the specified conformation
 	 * but without any continuous flexibility
 	 */
+	// Debug flag for molecule construction logging
+	public static boolean ENABLE_MOLECULE_DEBUG = false;
+
+	// Template integrity tracking
+	private int lastKnownTemplateHash = 0;
+	private boolean templateIntegrityInitialized = false;
+
+	// Initialize template integrity tracking
+	private void initTemplateIntegrity() {
+		if (!templateIntegrityInitialized) {
+			lastKnownTemplateHash = computeTemplateHash();
+			templateIntegrityInitialized = true;
+			if (ENABLE_MOLECULE_DEBUG) {
+				System.out.println("[TEMPLATE_INIT] Initial template hash: " + lastKnownTemplateHash);
+			}
+		}
+	}
+
+	// Check if template has been modified
+	private void checkTemplateIntegrity(String location) {
+		if (!ENABLE_MOLECULE_DEBUG) return;
+
+		initTemplateIntegrity();
+		int currentHash = computeTemplateHash();
+		if (currentHash != lastKnownTemplateHash) {
+			System.err.println("[TEMPLATE_MUTATION] ⚠️  Template changed at: " + location);
+			System.err.println("  Previous hash: " + lastKnownTemplateHash);
+			System.err.println("  Current hash:  " + currentHash);
+			System.err.println("  Stack trace:");
+			Thread.dumpStack();
+			lastKnownTemplateHash = currentHash;  // Update for next check
+		}
+	}
+
+	// Compute a hash of template coordinates for tracking changes
+	private int computeTemplateHash() {
+		int hash = 0;
+		for (Residue res : molTemplate.residues) {
+			if (res.coords != null) {
+				// Sample first 9 coordinate values (3 atoms worth)
+				int n = Math.min(9, res.coords.length);
+				for (int i = 0; i < n; i++) {
+					hash = 31 * hash + Double.hashCode(res.coords[i]);
+				}
+			}
+		}
+		return hash;
+	}
+
+	// Compute hash of created molecule
+	private int computeMoleculeHash(Molecule mol) {
+		int hash = 0;
+		for (Residue res : mol.residues) {
+			if (res.coords != null) {
+				// Sample first 9 coordinate values (3 atoms worth)
+				int n = Math.min(9, res.coords.length);
+				for (int i = 0; i < n; i++) {
+					hash = 31 * hash + Double.hashCode(res.coords[i]);
+				}
+			}
+		}
+		return hash;
+	}
+
 	public Molecule makeDiscreteMolecule(RCTuple conf) {
 
+		checkTemplateIntegrity("makeDiscreteMolecule START");
+
+		if (ENABLE_MOLECULE_DEBUG && conf.size() == 3) {
+			// Log template hash to detect if template changes
+			int templateHash = computeTemplateHash();
+			System.out.println("[MOLECULE_DEBUG] tuple=" + conf.stringListing() + " templateHash=" + templateHash);
+		}
+
 		Molecule mol = new Molecule();
+
 		for (Residue res : molTemplate.residues) {
 
 			// is this a conformation residue?
@@ -684,7 +757,10 @@ public class SimpleConfSpace implements Serializable, ConfSpaceIteration {
 
 					// build the residue from the RC
 					Residue newRes = res.copyToMol(mol, false);
+					checkTemplateIntegrity("makeDiscreteMolecule AFTER copyToMol");
+
 					rc.updateResidue(pos.strand.templateLib, newRes, mutAlignmentCache);
+					checkTemplateIntegrity("makeDiscreteMolecule AFTER updateResidue");
 
 					continue;
 				}
@@ -692,9 +768,35 @@ public class SimpleConfSpace implements Serializable, ConfSpaceIteration {
 
 			// otherise, just copy from the template molecule
 			res.copyToMol(mol, true);
+			checkTemplateIntegrity("makeDiscreteMolecule AFTER copyToMol(template)");
 		}
 
 		mol.markInterResBonds();
+
+		checkTemplateIntegrity("makeDiscreteMolecule AFTER markInterResBonds");
+
+		if (ENABLE_MOLECULE_DEBUG && conf.size() == 3) {
+			// Log molecule hash to detect if molecules are identical
+			int moleculeHash = computeMoleculeHash(mol);
+			System.out.println("[MOLECULE_DEBUG]   moleculeHash=" + moleculeHash);
+
+			// Check for coords aliasing
+			int aliasCount = 0;
+			for (int i = 0; i < mol.residues.size(); i++) {
+				Residue molRes = mol.residues.get(i);
+				if (molRes.coords != null && i < molTemplate.residues.size()) {
+					Residue templateRes = molTemplate.residues.get(i);
+					if (templateRes.coords != null && molRes.coords == templateRes.coords) {
+						aliasCount++;
+					}
+				}
+			}
+			if (aliasCount > 0) {
+				System.out.println("[COORDS_ALIAS] WARNING: " + aliasCount + " residues share coords with template!");
+			}
+		}
+
+		checkTemplateIntegrity("makeDiscreteMolecule END");
 
 		return mol;
 	}
@@ -709,8 +811,12 @@ public class SimpleConfSpace implements Serializable, ConfSpaceIteration {
 	 */
 	public ParametricMolecule makeMolecule(RCTuple conf) {
 
+		checkTemplateIntegrity("makeMolecule START");
+
 		// copy the molecule from the template and make mutations as needed
 		Molecule mol = makeDiscreteMolecule(conf);
+
+		checkTemplateIntegrity("makeMolecule AFTER makeDiscreteMolecule");
 
 		// figure out what conformational DOFs are specified by the conf
 		HashSet<String> confDOFNames = new HashSet<>();
@@ -783,6 +889,8 @@ public class SimpleConfSpace implements Serializable, ConfSpaceIteration {
 				}
 			}
 		}
+
+		checkTemplateIntegrity("makeMolecule END (before return ParametricMolecule)");
 
 		return new ParametricMolecule(mol, dofs, dofBounds);
 	}

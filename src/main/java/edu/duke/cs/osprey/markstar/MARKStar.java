@@ -356,16 +356,34 @@ public class MARKStar {
 
 			pfunc.setCorrections(correctionEmat);
 
-			if (settings.showPfuncProgress == true){
-				System.out.println("Computing "+type+":");
+			// NEW: Set Triple DOF Cache if enabled
+			if (edu.duke.cs.osprey.ematrix.SubtreeDOFCache.ENABLE_TRIPLE_DOF_CACHE) {
+				edu.duke.cs.osprey.ematrix.SubtreeDOFCache cache = edu.duke.cs.osprey.ematrix.CachedMinimizer.getGlobalCache(confSpace);
+				if (cache != null) {
+					pfunc.setTripleDOFCache(cache);
+				}
 			}
+
+			// PartialFixCache (Phase 4): Set BWM*-inspired L-set/M-set cache if enabled
+			if (edu.duke.cs.osprey.ematrix.PartialFixIntegration.ENABLE_PARTIALFIX_CACHE) {
+				edu.duke.cs.osprey.ematrix.PartialFixCache partialFixCache =
+					edu.duke.cs.osprey.ematrix.PartialFixIntegration.getOrCreateCache(confSpace);
+				if (partialFixCache != null) {
+					pfunc.setPartialFixCache(partialFixCache);
+					System.out.println("PartialFixCache (Phase 4) L-set/M-set caching enabled for " + type);
+				}
+			}
+
+			// if (settings.showPfuncProgress == true){
+			// 	System.out.println("Computing "+type+":");
+			// }
 
 			// compute it
 			pfunc.init(settings.epsilon);
 			Stopwatch computeTimer = new Stopwatch().start();
 			pfunc.compute();
 			computeTimer.stop();
-			System.out.println("Computation for "+sequence.toString()+":"+computeTimer.getTime(2));
+			// System.out.println("Computation for "+sequence.toString("+":"+computeTimer.getTime(2));
 
 			// save the result
 			result = pfunc.makeResult();

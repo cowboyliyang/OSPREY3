@@ -1,0 +1,18 @@
+no change     /home/users/lz280/miniconda3/condabin/conda
+no change     /home/users/lz280/miniconda3/bin/conda
+no change     /home/users/lz280/miniconda3/bin/conda-env
+no change     /home/users/lz280/miniconda3/bin/activate
+no change     /home/users/lz280/miniconda3/bin/deactivate
+no change     /home/users/lz280/miniconda3/etc/profile.d/conda.sh
+no change     /home/users/lz280/miniconda3/etc/fish/conf.d/conda.fish
+no change     /home/users/lz280/miniconda3/shell/condabin/Conda.psm1
+no change     /home/users/lz280/miniconda3/shell/condabin/conda-hook.ps1
+no change     /home/users/lz280/miniconda3/lib/python3.12/site-packages/xontrib/conda.xsh
+no change     /home/users/lz280/miniconda3/etc/profile.d/conda.csh
+no change     /home/users/lz280/.bashrc
+No action taken.
+OSPREY 3.3-dev, Python 3.10.13, Java 17.0.14, Linux-5.15.0-163-generic-x86_64-with-glibc2.35
+Using up to 768000 MiB heap memory: 128 MiB for garbage, 767872 MiB for storage
+read PDB file from file: 6dv2_strip_reduce_prep_rc_add_rc.pdb
+WARNING: Template coordinates for ALY did not match any template
+WARNING: Template coordinates for SLL did not match any template

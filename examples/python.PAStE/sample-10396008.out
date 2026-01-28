@@ -1,0 +1,28 @@
+no change     /home/users/lz280/miniconda3/condabin/conda
+no change     /home/users/lz280/miniconda3/bin/conda
+no change     /home/users/lz280/miniconda3/bin/conda-env
+no change     /home/users/lz280/miniconda3/bin/activate
+no change     /home/users/lz280/miniconda3/bin/deactivate
+no change     /home/users/lz280/miniconda3/etc/profile.d/conda.sh
+no change     /home/users/lz280/miniconda3/etc/fish/conf.d/conda.fish
+no change     /home/users/lz280/miniconda3/shell/condabin/Conda.psm1
+no change     /home/users/lz280/miniconda3/shell/condabin/conda-hook.ps1
+no change     /home/users/lz280/miniconda3/lib/python3.12/site-packages/xontrib/conda.xsh
+no change     /home/users/lz280/miniconda3/etc/profile.d/conda.csh
+no change     /home/users/lz280/.bashrc
+No action taken.
+OSPREY 3.3-dev, Python 3.10.13, Java 17.0.14, Linux-5.15.0-163-generic-x86_64-with-glibc2.35
+Using up to 768000 MiB heap memory: 128 MiB for garbage, 767872 MiB for storage
+read PDB file from file: 6dv2_strip_reduce_prep_rc_add_rc.pdb
+Calculating reference energies for 88 residue confs...
+Progress:  100.0%   ETA: 0 ns
+Finished in 89.3 ms
+read energy matrix from file: /home/users/lz280/IdeaProjects/OSPREY3/examples/python.PAStE/emat.protein.dat
+WARNING: energy matrix from file is invalid, will create new one
+Calculating energy matrix with 3136 entries
+Progress:  100.0%   ETA: 0 ns
+Finished in 880.1 ms
+wrote energy matrix to file: /home/users/lz280/IdeaProjects/OSPREY3/examples/python.PAStE/emat.protein.dat
+computing PAStE scores for 2 sequence(s) to epsilon = 0.1 ...
+B781=ALY   PAStE ddG: -0.090906 in [-6.336216,-0.000805]              Mutation Increases Stability   
+B781=SLL   PAStE ddG: 3.789036  in [0.000348 , 3.879138]              Mutation Decreases Stability   

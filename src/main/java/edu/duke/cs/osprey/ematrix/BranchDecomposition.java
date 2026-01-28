@@ -264,6 +264,13 @@ public class BranchDecomposition {
     }
 
     /**
+     * Get the number of positions in this branch decomposition
+     */
+    public int getPositionCount() {
+        return confSpace.positions.size();
+    }
+
+    /**
      * Get statistics about this decomposition
      */
     public String getStats() {

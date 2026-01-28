@@ -1,0 +1,13 @@
+WARNING: Using incubator modules: jdk.incubator.foreign
+Traceback (most recent call last):
+  File "ResidueTemplateLibrary.java", line 221, in edu.duke.cs.osprey.restypes.ResidueTemplateLibrary$Builder.build
+Exception: Java Exception
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/users/lz280/IdeaProjects/OSPREY3/examples/python.PAStE/PASTE_6dv2.py", line 12, in <module>
+    customizedTemplateLib = osprey.TemplateLibrary(
+  File "/home/users/lz280/miniconda3/envs/AmberTools22/lib/python3.10/site-packages/osprey/__init__.py", line 463, in TemplateLibrary
+    return builder.build()
+java.lang.java.lang.IndexOutOfBoundsException: java.lang.IndexOutOfBoundsException: Index 1 out of bounds for length 0

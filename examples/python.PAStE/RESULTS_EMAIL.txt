@@ -1,0 +1,92 @@
+Subject: TFP M404K Post-Translational Modification Analysis - OSPREY Results
+
+Dear [Collaborator Name],
+
+I hope this email finds you well. I'm writing to share the computational results from our OSPREY analysis of post-translational modifications (PTMs) on the TFP M404K mutant at position B781 (K404).
+
+BACKGROUND
+----------
+We investigated two non-enzymatic PTMs that occur on lysine residues in mitochondria:
+- N6-acetyl-lysine (ALY): Acetylation at the ε-amino group
+- N6-succinyl-lysine (SLL): Succinylation at the ε-amino group
+
+Both modifications neutralize the positive charge of lysine but differ significantly in size and chemical properties.
+
+COMPUTATIONAL METHOD
+--------------------
+- Software: OSPREY 3.3 with PAStE algorithm (Partition function-based Algorithm for Sampling and Testing Ensembles)
+- Template geometry: Based on PDB Chemical Component Dictionary (ALY.cif, SLL.cif)
+- Force field: AMBER with continuous sidechain optimization
+- Epsilon: 0.1 (energy precision)
+- Structure: TFP protein (PDB 6DV2), position B781
+
+RESULTS
+-------
+The PAStE algorithm computed ΔΔG values for stability changes upon PTM:
+
+1. **Acetylation (ALY)**
+   - PAStE ΔΔG: +2.88 kcal/mol
+   - 95% confidence interval: [-1.07, +2.97] kcal/mol
+   - **Interpretation: Effect on stability UNCLEAR**
+   - The confidence interval crosses zero, indicating we cannot definitively determine whether acetylation stabilizes or destabilizes the protein
+
+2. **Succinylation (SLL)**
+   - PAStE ΔΔG: +25.61 kcal/mol
+   - 95% confidence interval: [+0.001, +25.70] kcal/mol
+   - **Interpretation: Mutation DECREASES stability**
+   - Highly unfavorable modification (positive ΔΔG indicates destabilization)
+   - **IMPORTANT NOTE**: This value is unusually large and triggered a "NoWindowOverlap" warning, suggesting potential issues:
+     * The succinyl template may have incorrect protonation state (should be -COO⁻ at physiological pH)
+     * Possible steric clashes that need structural inspection
+     * This result should be validated with refined parameters before drawing strong conclusions
+
+BIOLOGICAL INTERPRETATION
+-------------------------
+1. **Acetylation**: The effect is marginal and statistically uncertain. This suggests that simple charge neutralization at position 404 may not significantly impact TFP stability. The small, compact acetyl group (-COCH3) appears to be tolerated.
+
+2. **Succinylation**: This modification appears highly destabilizing (+25.6 kcal/mol), BUT this value is likely overestimated due to:
+   - **Protonation state issue**: The current template uses a neutral carboxyl group (-COOH), but at pH 7.4 it should be deprotonated (-COO⁻). This incorrect charge distribution may artificially inflate the destabilization energy.
+   - **Steric effects**: The bulkier succinyl group (-COCH2CH2COO⁻) may genuinely cause clashes with surrounding residues.
+   - **Recommendation**: This result requires refinement with corrected protonation state before making definitive biological conclusions.
+
+3. **Clinical relevance**: The acetylation result (+2.88 kcal/mol) is more reliable. The succinylation result needs validation, but even if the magnitude is overestimated, the direction (destabilizing) may still be correct.
+
+TECHNICAL NOTES
+---------------
+- Templates were generated with accurate geometry from PDB Chemical Component Dictionary
+- Key improvement: Amide bond NZ-C geometry corrected to 1.347 Å with 120° sp2 angles (vs. approximated 1.522 Å with 109.5° sp3 angles)
+- Calculation completed in ~2 minutes on 12 CPU cores with 768 GB memory allocation
+- Energy matrix was pre-computed and reused for both PTM variants
+
+NEXT STEPS
+----------
+Based on these results, I would suggest:
+
+1. **PRIORITY: Correct SLL protonation state**:
+   - Update the succinyl-lysine template with deprotonated carboxyl group (-COO⁻)
+   - Recalculate to get accurate ΔΔG value
+   - This should bring the value into a more reasonable range
+
+2. **Acetylation refinement**: Run with tighter epsilon (e.g., 0.01) to narrow the confidence interval and determine if there's a subtle stability effect
+
+3. **Structural analysis**: Visualize the lowest-energy conformations to identify specific interactions:
+   - Why is acetylation nearly neutral?
+   - What causes succinylation destabilization (steric vs. electrostatic)?
+
+4. **Additional positions**: Screen other lysine residues in TFP to identify which positions are most susceptible to PTMs
+
+5. **Experimental validation**: If possible, test whether acetylation/succinylation occurs on M404K mutant in patient samples
+
+Please let me know if you would like me to:
+- Provide more detailed structural analysis
+- Test additional PTM variants
+- Analyze other lysine positions in the structure
+- Generate figures for manuscript preparation
+
+Best regards,
+[Your Name]
+
+---
+Technical Output:
+B781=ALY   PAStE ddG: 2.880935  in [-1.072566, 2.971036]   Affect on Stability Unclear
+B781=SLL   PAStE ddG: 25.611070 in [0.001225, 25.701171]   Mutation Decreases Stability

@@ -1,3 +1,0 @@
-stty: 'standard input': Inappropriate ioctl for device
-ERROR: Unable to locate a modulefile for 'Java/17'
-WARNING: Using incubator modules: jdk.incubator.foreign
