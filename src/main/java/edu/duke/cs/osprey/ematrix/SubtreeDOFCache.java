@@ -57,10 +57,24 @@ public class SubtreeDOFCache {
     private long totalQueries = 0;
     private long totalSubtreeQueries = 0;
 
+    // Timing Statistics (in nanoseconds)
+    private long totalMinimizationTimeNs = 0;  // Time spent in actual minimization
+    private long totalCacheLookupTimeNs = 0;   // Time spent looking up cache
+    private long minimizationCount = 0;        // Number of minimizations performed
+
+    // Triple DOF Cache
+    private final Map<TripleKey, MinimizedTriple> tripleDOFCache;
+    private long tripleCacheHits = 0;
+    private long tripleCacheMisses = 0;
+    private long tripleCacheStores = 0;
+
     // Configuration
     private static final int MAX_CACHE_SIZE = 100000;
     private static final boolean ENABLE_CACHE = true;
     private static final boolean ENABLE_BOUNDARY_REFINEMENT = true; // Now uses local DOF mapping
+
+    // Triple DOF Cache Configuration
+    public static boolean ENABLE_TRIPLE_DOF_CACHE = false; // Feature flag for triple caching
 
     public SubtreeDOFCache(BranchDecomposition branchDecomp, SimpleConfSpace confSpace) {
         this.branchDecomp = branchDecomp;
@@ -69,6 +83,14 @@ public class SubtreeDOFCache {
             @Override
             protected boolean removeEldestEntry(Map.Entry<SubtreeKey, MinimizedSubtree> eldest) {
                 return size() > MAX_CACHE_SIZE;
+            }
+        };
+
+        // Initialize triple DOF cache with LRU eviction
+        this.tripleDOFCache = new LinkedHashMap<TripleKey, MinimizedTriple>(16, 0.75f, true) {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<TripleKey, MinimizedTriple> eldest) {
+                return size() > MAX_CACHE_SIZE / 10; // Keep 10k triples max
             }
         };
     }
@@ -90,18 +112,48 @@ public class SubtreeDOFCache {
             ObjectiveFunction objectiveFunction) {
 
         if (!ENABLE_CACHE) {
+            long startTime = System.nanoTime();
             Minimizer.Result result = minimizer.minimizeFrom(initialDOFs);
+            long endTime = System.nanoTime();
+            long durationNs = endTime - startTime;
+            totalMinimizationTimeNs += durationNs;
+            minimizationCount++;
+            // Record in global timer (Phase 2)
+            edu.duke.cs.osprey.markstar.MinimizationTimer.recordPhase2Minimization(durationNs);
             return new MinimizationResult(result.dofValues, result.energy, false);
         }
 
         totalQueries++;
+
+        // NEW: Check for triple DOF cache matches FIRST (before subtree decomposition)
+        DoubleMatrix1D enhancedInitialDOFs = initialDOFs.copy();
+        boolean appliedTriple = false;
+
+        if (ENABLE_TRIPLE_DOF_CACHE && conf.size() >= 4) {
+            edu.duke.cs.osprey.confspace.ParametricMolecule pmol = null;
+            if (objectiveFunction instanceof edu.duke.cs.osprey.minimization.MoleculeObjectiveFunction) {
+                pmol = ((edu.duke.cs.osprey.minimization.MoleculeObjectiveFunction) objectiveFunction).pmol;
+            }
+
+            if (pmol != null) {
+                appliedTriple = applyBestMatchingTriple(conf, enhancedInitialDOFs, pmol);
+            }
+        }
 
         // Get subtrees for this conformation
         List<Subtree> subtrees = getSubtrees(conf);
 
         if (subtrees.isEmpty()) {
             // No subtree decomposition available, fall back to full minimization
-            Minimizer.Result result = minimizer.minimizeFrom(initialDOFs);
+            // Use enhancedInitialDOFs which may have triple cache applied
+            long startTime = System.nanoTime();
+            Minimizer.Result result = minimizer.minimizeFrom(enhancedInitialDOFs);
+            long endTime = System.nanoTime();
+            long durationNs = endTime - startTime;
+            totalMinimizationTimeNs += durationNs;
+            minimizationCount++;
+            // Record in global timer (Phase 2)
+            edu.duke.cs.osprey.markstar.MinimizationTimer.recordPhase2Minimization(durationNs);
             return new MinimizationResult(result.dofValues, result.energy, false);
         }
 
@@ -114,9 +166,10 @@ public class SubtreeDOFCache {
 
         // Check cache for each subtree
         List<Subtree> uncachedSubtrees = new ArrayList<>();
-        DoubleMatrix1D combinedDOFs = initialDOFs.copy();
+        DoubleMatrix1D combinedDOFs = enhancedInitialDOFs.copy();
         int cachedCount = 0;
 
+        long cacheStartTime = System.nanoTime();
         for (Subtree subtree : subtrees) {
             totalSubtreeQueries++;
             SubtreeKey key = new SubtreeKey(subtree, conf);
@@ -133,6 +186,11 @@ public class SubtreeDOFCache {
                 uncachedSubtrees.add(subtree);
             }
         }
+        long cacheEndTime = System.nanoTime();
+        long cacheDuration = cacheEndTime - cacheStartTime;
+        totalCacheLookupTimeNs += cacheDuration;
+        // Record in global timer
+        edu.duke.cs.osprey.markstar.MinimizationTimer.recordCacheLookup(cacheDuration);
 
         // Minimize uncached subtrees using TRUE ConstrainedMinimizer
         // with dynamically computed LOCAL DOF indices
@@ -152,8 +210,15 @@ public class SubtreeDOFCache {
                     combinedDOFs
                 );
 
-                // Minimize this subtree
+                // Minimize this subtree (with timing)
+                long minStartTime = System.nanoTime();
                 Minimizer.Result subtreeResult = constrainedMin.minimizeFrom(combinedDOFs);
+                long minEndTime = System.nanoTime();
+                long durationNs = minEndTime - minStartTime;
+                totalMinimizationTimeNs += durationNs;
+                minimizationCount++;
+                // Record in global timer (Phase 2)
+                edu.duke.cs.osprey.markstar.MinimizationTimer.recordPhase2Minimization(durationNs);
 
                 // Extract and cache this subtree's DOFs
                 DoubleMatrix1D subtreeDOFs = extractSubtreeDOFs(subtreeResult.dofValues, localDOFIndices);
@@ -452,6 +517,18 @@ public class SubtreeDOFCache {
 
     // Statistics
 
+    public long getTotalMinimizationTimeNs() {
+        return totalMinimizationTimeNs;
+    }
+
+    public long getTotalCacheLookupTimeNs() {
+        return totalCacheLookupTimeNs;
+    }
+
+    public long getMinimizationCount() {
+        return minimizationCount;
+    }
+
     public void printStats() {
         System.out.println("\n=== Subtree DOF Cache Statistics (TRUE SUBTREE CACHING) ===");
         System.out.println("Total conformation queries: " + totalQueries);
@@ -477,7 +554,135 @@ public class SubtreeDOFCache {
             System.out.println("Estimated speedup:          " + String.format("%.2fx", estimatedSpeedup));
         }
 
+        // Timing Statistics
+        System.out.println("\n--- Timing Breakdown ---");
+        System.out.println("Total minimization calls:   " + minimizationCount);
+        double totalMinSec = totalMinimizationTimeNs / 1e9;
+        double totalLookupSec = totalCacheLookupTimeNs / 1e9;
+        System.out.println("Time in minimization:       " + String.format("%.2f s", totalMinSec));
+        System.out.println("Time in cache lookup:       " + String.format("%.2f s", totalLookupSec));
+        if (minimizationCount > 0) {
+            double avgMinMs = totalMinimizationTimeNs / (minimizationCount * 1e6);
+            System.out.println("Avg minimization time:      " + String.format("%.2f ms", avgMinMs));
+        }
+
+        // Triple DOF Cache Statistics
+        if (ENABLE_TRIPLE_DOF_CACHE) {
+            System.out.println("\n--- Triple DOF Cache Statistics ---");
+            System.out.println("Triple cache stores:        " + tripleCacheStores);
+            System.out.println("Triple cache hits:          " + tripleCacheHits);
+            System.out.println("Triple cache misses:        " + tripleCacheMisses);
+
+            long totalTripleQueries = tripleCacheHits + tripleCacheMisses;
+            if (totalTripleQueries > 0) {
+                double tripleHitRate = 100.0 * tripleCacheHits / totalTripleQueries;
+                System.out.println("Triple cache hit rate:      " + String.format("%.1f%%", tripleHitRate));
+            }
+
+            System.out.println("Triple cache size:          " + tripleDOFCache.size() + " / " + (MAX_CACHE_SIZE / 10));
+        }
+
         System.out.println("===========================================================\n");
+    }
+
+    /**
+     * Store minimized DOF values for a triple
+     * Called from MARKStarBound after triple minimization
+     */
+    public void storeTripleDOFs(RCTuple triple, DoubleMatrix1D dofs, double energy,
+                                edu.duke.cs.osprey.confspace.ParametricMolecule pmol) {
+        if (!ENABLE_TRIPLE_DOF_CACHE || triple.size() != 3) {
+            return;
+        }
+
+        TripleKey key = new TripleKey(triple);
+
+        // Extract DOF indices for this triple
+        List<Integer> positions = new ArrayList<>();
+        for (int i = 0; i < triple.size(); i++) {
+            positions.add(triple.pos.get(i));
+        }
+        List<Integer> dofIndices = getLocalDOFIndices(positions, pmol);
+
+        // Extract DOF values for just these positions
+        DoubleMatrix1D tripleDOFs = extractSubtreeDOFs(dofs, dofIndices);
+
+        synchronized (tripleDOFCache) {
+            tripleDOFCache.put(key, new MinimizedTriple(tripleDOFs, energy, dofIndices.size()));
+            tripleCacheStores++;
+        }
+    }
+
+    /**
+     * Find and apply the best matching triple to the initial DOF guess
+     * "Best" = triple with most total DOFs
+     */
+    private boolean applyBestMatchingTriple(RCTuple conf, DoubleMatrix1D targetDOFs,
+                                            edu.duke.cs.osprey.confspace.ParametricMolecule pmol) {
+        List<RCTuple> candidateTriples = generateTripleSubsets(conf);
+
+        MinimizedTriple bestMatch = null;
+        TripleKey bestKey = null;
+        int maxDOFs = 0;
+
+        synchronized (tripleDOFCache) {
+            for (RCTuple triple : candidateTriples) {
+                TripleKey key = new TripleKey(triple);
+                MinimizedTriple cached = tripleDOFCache.get(key);
+
+                if (cached != null && cached.numDOFs > maxDOFs) {
+                    bestMatch = cached;
+                    bestKey = key;
+                    maxDOFs = cached.numDOFs;
+                }
+            }
+        }
+
+        if (bestMatch == null) {
+            tripleCacheMisses++;
+            return false;
+        }
+
+        tripleCacheHits++;
+
+        // Apply cached DOFs
+        List<Integer> triplePositions = new ArrayList<>(bestKey.positions);
+        List<Integer> dofIndices = getLocalDOFIndices(triplePositions, pmol);
+
+        for (int i = 0; i < Math.min(bestMatch.dofs.size(), dofIndices.size()); i++) {
+            int targetIdx = dofIndices.get(i);
+            if (targetIdx >= 0 && targetIdx < targetDOFs.size()) {
+                targetDOFs.set(targetIdx, bestMatch.dofs.get(i));
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Generate all 3-position subsets of a conformation (C(n,3) combinations)
+     */
+    private List<RCTuple> generateTripleSubsets(RCTuple conf) {
+        List<RCTuple> triples = new ArrayList<>();
+        int n = conf.size();
+
+        if (n < 3) {
+            return triples; // Not enough positions
+        }
+
+        for (int i = 0; i < n - 2; i++) {
+            for (int j = i + 1; j < n - 1; j++) {
+                for (int k = j + 1; k < n; k++) {
+                    RCTuple triple = new RCTuple(
+                        conf.pos.get(i), conf.RCs.get(i),
+                        conf.pos.get(j), conf.RCs.get(j),
+                        conf.pos.get(k), conf.RCs.get(k)
+                    );
+                    triples.add(triple);
+                }
+            }
+        }
+        return triples;
     }
 
     public void clearCache() {
@@ -487,6 +692,12 @@ public class SubtreeDOFCache {
         partialHits = 0;
         totalQueries = 0;
         totalSubtreeQueries = 0;
+
+        // Clear triple cache
+        tripleDOFCache.clear();
+        tripleCacheHits = 0;
+        tripleCacheMisses = 0;
+        tripleCacheStores = 0;
     }
 
     // Inner classes
@@ -580,6 +791,63 @@ public class SubtreeDOFCache {
         public Subtree(List<Integer> positions, List<Integer> dofIndices) {
             this.positions = positions;
             // Ignore dofIndices - they will be computed dynamically
+        }
+    }
+
+    /**
+     * Key for triple DOF cache
+     * Identifies a unique triple configuration (3 positions with specific RCs)
+     */
+    private static class TripleKey {
+        final List<Integer> positions; // Sorted position indices
+        final int[] RCs; // RC assignments for these positions
+
+        TripleKey(RCTuple triple) {
+            if (triple.size() != 3) {
+                throw new IllegalArgumentException("TripleKey requires exactly 3 positions, got " + triple.size());
+            }
+
+            this.positions = new ArrayList<>(triple.pos);
+            Collections.sort(this.positions);
+
+            this.RCs = new int[3];
+            for (int i = 0; i < 3; i++) {
+                int pos = positions.get(i);
+                for (int j = 0; j < triple.pos.size(); j++) {
+                    if (triple.pos.get(j) == pos) {
+                        this.RCs[i] = triple.RCs.get(j);
+                        break;
+                    }
+                }
+            }
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof TripleKey)) return false;
+            TripleKey that = (TripleKey) o;
+            return positions.equals(that.positions) && Arrays.equals(RCs, that.RCs);
+        }
+
+        @Override
+        public int hashCode() {
+            return 31 * positions.hashCode() + Arrays.hashCode(RCs);
+        }
+    }
+
+    /**
+     * Cached minimized triple DOFs
+     */
+    private static class MinimizedTriple {
+        final DoubleMatrix1D dofs;   // DOF values for this triple
+        final double energy;          // Energy of this triple
+        final int numDOFs;           // Number of DOFs (for selecting best match)
+
+        MinimizedTriple(DoubleMatrix1D dofs, double energy, int numDOFs) {
+            this.dofs = dofs.copy();
+            this.energy = energy;
+            this.numDOFs = numDOFs;
         }
     }
 }

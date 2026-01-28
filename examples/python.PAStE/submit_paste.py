@@ -1,11 +1,12 @@
 #!/bin/bash
 #SBATCH --job-name=sample
-#SBATCH --partition=compsci-gpu
-#SBATCH --nodes=1
-#SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=8
-#SBATCH --gres=gpu:a6000:1
-#SBATCH --mem=32G
+#SBATCH -p compsci
+#SBATCH -N 1
+#SBATCH --mem=100g
+#SBATCH -n 20
+#SBATCH -t 24:00:00
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=lz280@duke.edu
 #SBATCH --output=%x-%j.out
 #SBATCH --error=%x-%j.err
 

@@ -4,15 +4,18 @@ osprey.start(heapSizeMiB=768000)
 # choose a forcefield
 ffparams = osprey.ForcefieldParams()
 
-# read a PDB file for molecular info
-mol = osprey.readPdb('6dv2_strip_reduce_prep_rc_add_rc.pdb')
+# 创建包含acetyl-lysine (ALY/K03) 和 succinyl-lysine (SLL/K04) 的自定义模板库
+# 必须在创建Strand之前定义模板库
+customizedTemplateLib = osprey.TemplateLibrary(
+    extraTemplates=['K03_template.in', 'K04_template.in'],
+    extraTemplateCoords=['K03_coords.in', 'K04_coords.in'],
+    extraRotamers=['K03_rotlib.dat', 'K04_rotlib.dat']
+)
 
-# make sure all strands share the same template library
-templateLib = osprey.TemplateLibrary(ffparams.forcefld)
-
-# define the protein strand
-protein = osprey.Strand(mol, templateLib=templateLib, residues=['B734', 'B782'])
-protein.flexibility['B781'].setLibraryRotamers(osprey.WILD_TYPE, 'LYS').addWildTypeRotamers().setContinuous()
+# define the protein strand - 直接用PDB文件名，传入自定义模板库
+protein = osprey.Strand('6dv2_strip_reduce_prep_rc_add_rc.pdb', templateLib=customizedTemplateLib, residues=['B734', 'B782'])
+# B781位置: 允许野生型(LYS)、acetyl-lysine(ALY)、succinyl-lysine(SLL)
+protein.flexibility['B781'].setLibraryRotamers(osprey.WILD_TYPE, 'ALY', 'SLL').addWildTypeRotamers().setContinuous()
 protein.flexibility['B780'].setLibraryRotamers(osprey.WILD_TYPE).addWildTypeRotamers().setContinuous()
 protein.flexibility['B782'].setLibraryRotamers(osprey.WILD_TYPE).addWildTypeRotamers().setContinuous()
 
@@ -30,7 +33,7 @@ complexConfSpace = osprey.ConfSpace([protein])
 
 # how should we compute energies of molecules?
 # (give the complex conf space to the ecalc since it knows about all the templates and degrees of freedom)
-parallelism = osprey.Parallelism(cpuCores=4)
+parallelism = osprey.Parallelism(cpuCores=20)
 ecalc = osprey.EnergyCalculator(complexConfSpace, ffparams, parallelism=parallelism)
 
 # configure PAStE

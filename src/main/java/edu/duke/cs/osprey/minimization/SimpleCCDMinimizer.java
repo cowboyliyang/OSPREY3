@@ -39,10 +39,19 @@ import cern.colt.matrix.DoubleMatrix1D;
 import edu.duke.cs.osprey.tools.Factory;
 
 public class SimpleCCDMinimizer implements Minimizer.NeedsCleanup, Minimizer.Reusable {
-	
+
 	private static final double MaxIterations = 30; // same as CCDMinimizer
 	private static final double ConvergenceThreshold = 0.001; // same as CCDMinimizer
-	
+
+	// DOF value logging configuration
+	public static boolean ENABLE_DOF_VALUE_LOGGING = false;
+
+	// ThreadLocal to pass RC tuple information from EnergyCalculator to SimpleCCDMinimizer
+	public static ThreadLocal<String> currentRCTuple = new ThreadLocal<>();
+
+	// Lock for thread-safe logging (prevent interleaved output from multiple threads)
+	private static final Object LOG_LOCK = new Object();
+
 	private Factory<LineSearcher,Void> lineSearcherFactory;
 	private ObjectiveFunction f;
 	private List<LineSearcher> lineSearchers;
@@ -92,6 +101,13 @@ public class SimpleCCDMinimizer implements Minimizer.NeedsCleanup, Minimizer.Reu
 	@Override
 	public Minimizer.Result minimizeFrom(DoubleMatrix1D startx) {
 
+		// Save initial DOF values and RC tuple for logging
+		// ALWAYS capture these, regardless of ENABLE_DOF_VALUE_LOGGING flag
+		// (the flag may change during execution due to multi-threading)
+		String rcTuple = currentRCTuple.get();
+		String dofBeforeStr = (rcTuple != null) ? formatDOFs(startx) : null;
+		int numDOFs = f.getNumDOFs();
+
 		int n = f.getNumDOFs();
 		DoubleMatrix1D herex = startx.copy();
 		DoubleMatrix1D nextx = startx.copy();
@@ -99,39 +115,41 @@ public class SimpleCCDMinimizer implements Minimizer.NeedsCleanup, Minimizer.Reu
 		// ccd is pretty simple actually
 		// just do a line search along each dimension until we stop improving
 		// we deal with cycles by just capping the number of iterations
-		
+
 		// get the current objective function value
 		double herefx = f.getValue(herex);
-		
+
+		int actualIterations = 0; // Track actual number of iterations
 		for (int iter=0; iter<MaxIterations; iter++) {
-			
+			actualIterations = iter + 1;
+
 			// update all the dofs using line search
 			for (int d=0; d<n; d++) {
-				
+
 				LineSearcher lineSearcher = lineSearchers.get(d);
 				if (lineSearcher != null) {
-					
+
 					// get the next x value for this dof
 					double xd = nextx.get(d);
 					xd = lineSearcher.search(xd);
 					nextx.set(d, xd);
 				}
 			}
-			
+
 			// how much did we improve?
 			double nextfx = f.getValue(nextx);
 			double improvement = herefx - nextfx;
-			
+
 			if (improvement > 0) {
-				
+
 				// take the step
 				herex.assign(nextx);
 				herefx = nextfx;
-				
+
 				if (improvement < ConvergenceThreshold) {
 					break;
 				}
-				
+
 			} else {
 				break;
 			}
@@ -139,6 +157,22 @@ public class SimpleCCDMinimizer implements Minimizer.NeedsCleanup, Minimizer.Reu
 
 		// update the protein conf, one last time
 		f.setDOFs(herex);
+
+		// Log complete minimization record atomically (thread-safe)
+		// Only log if we have RC tuple information (i.e., this is a full 7-residue conformation, not a fragment)
+		// Don't check ENABLE_DOF_VALUE_LOGGING here because it may be modified by other threads
+		// The presence of rcTuple is sufficient to determine if we should log
+		if (rcTuple != null && dofBeforeStr != null) {
+			synchronized (LOG_LOCK) {
+				String rcInfo = " RC=" + rcTuple;
+				System.out.println("\n============ SimpleCCDMinimizer: DOF LOGGING ============");
+				System.out.println("[MINIMIZATION-START] NumDOFs=" + numDOFs + rcInfo);
+				System.out.println("[DOF-BEFORE] DOFs=" + dofBeforeStr + rcInfo);
+				System.out.println("[DOF-AFTER] DOFs=" + formatDOFs(herex) + " E=" + String.format("%.4f", herefx) + " Iterations=" + actualIterations + rcInfo);
+				System.out.println("==========================================================");
+				System.out.flush();
+			}
+		}
 
 		return new Minimizer.Result(herex, herefx);
 	}
@@ -150,5 +184,21 @@ public class SimpleCCDMinimizer implements Minimizer.NeedsCleanup, Minimizer.Reu
 				((LineSearcher.NeedsCleanup)lineSearcher).cleanup();
 			}
 		}
+	}
+
+	/**
+	 * Format DOF values for logging
+	 */
+	private static String formatDOFs(DoubleMatrix1D dofs) {
+		if (dofs == null) {
+			return "null";
+		}
+		StringBuilder sb = new StringBuilder("[");
+		for (int i = 0; i < dofs.size(); i++) {
+			if (i > 0) sb.append(", ");
+			sb.append(String.format("%.4f", dofs.get(i)));
+		}
+		sb.append("]");
+		return sb.toString();
 	}
 }

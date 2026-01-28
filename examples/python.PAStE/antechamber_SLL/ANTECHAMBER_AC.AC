@@ -1,0 +1,65 @@
+CHARGE     -1.00 ( -1 )
+Formula: H16 C9 N2 O4 Cl1 
+ATOM      1  C   SLL     1      -6.032  -0.453  -0.056  0.000000        CZ
+ATOM      2  N   SLL     1      -4.914   1.564   0.710  0.000000        NT
+ATOM      3  O   SLL     1      -6.681  -0.404   0.962  0.000000         O
+ATOM      4  CA  SLL     1      -4.826   0.435  -0.226  0.000000        CT
+ATOM      5  CB  SLL     1      -3.557  -0.369   0.062  0.000000        CT
+ATOM      6  CD  SLL     1      -1.059  -0.308   0.058  0.000000        CT
+ATOM      7  CE  SLL     1       0.169   0.557  -0.235  0.000000        CT
+ATOM      8  CG  SLL     1      -2.329   0.496  -0.230  0.000000        CT
+ATOM      9  CK  SLL     1       3.846  -0.441   0.137  0.000000        CT
+ATOM     10  CL  SLL     1       5.074   0.423  -0.155  0.000000        DU
+ATOM     11  CP  SLL     1       6.325  -0.368   0.128  0.000000         C
+ATOM     12  CX  SLL     1       2.595   0.350  -0.147  0.000000         C
+ATOM     13  OX  SLL     1       2.678   1.493  -0.544  0.000000         O
+ATOM     14  NZ  SLL     1       1.385  -0.212   0.041  0.000000         N
+ATOM     15  OP1 SLL     1       6.242  -1.507   0.523  0.000000        O2
+ATOM     16  OP2 SLL     1       7.530   0.192  -0.059  0.000000        O2
+ATOM     17  H   SLL     1      -4.946   1.240   1.665  0.000000         H
+ATOM     18  H2  SLL     1      -4.150   2.208   0.572  0.000000         H
+ATOM     19  HA  SLL     1      -4.794   0.812  -1.248  0.000000        H1
+ATOM     20  HB  SLL     1      -3.547  -0.671   1.109  0.000000        HC
+ATOM     21  HBA SLL     1      -3.536  -1.255  -0.572  0.000000        HC
+ATOM     22  HD  SLL     1      -1.038  -1.194  -0.576  0.000000        HC
+ATOM     23  HDA SLL     1      -1.050  -0.609   1.105  0.000000        HC
+ATOM     24  HE  SLL     1       0.160   0.859  -1.282  0.000000        H1
+ATOM     25  HEA SLL     1       0.148   1.444   0.399  0.000000        H1
+ATOM     26  HG  SLL     1      -2.338   0.798  -1.278  0.000000        HC
+ATOM     27  HGA SLL     1      -2.349   1.382   0.404  0.000000        HC
+ATOM     28  HK  SLL     1       3.866  -1.328  -0.497  0.000000        H1
+ATOM     29  HKA SLL     1       3.855  -0.743   1.184  0.000000        H1
+ATOM     30  HL  SLL     1       5.064   0.725  -1.203  0.000000        HA
+ATOM     31  HLA SLL     1       5.053   1.310   0.478  0.000000        HA
+ATOM     32  HNZ SLL     1       1.319  -1.127   0.358  0.000000         H
+BOND    1    1    3    0      C    O
+BOND    2    1    4    0      C   CA
+BOND    3    2    4    0      N   CA
+BOND    4    2   17    0      N    H
+BOND    5    2   18    0      N   H2
+BOND    6    4    5    0     CA   CB
+BOND    7    4   19    0     CA   HA
+BOND    8    5    8    0     CB   CG
+BOND    9    5   20    0     CB   HB
+BOND   10    5   21    0     CB  HBA
+BOND   11    6    7    0     CD   CE
+BOND   12    6    8    0     CD   CG
+BOND   13    6   22    0     CD   HD
+BOND   14    6   23    0     CD  HDA
+BOND   15    7   14    0     CE   NZ
+BOND   16    7   24    0     CE   HE
+BOND   17    7   25    0     CE  HEA
+BOND   18    8   26    0     CG   HG
+BOND   19    8   27    0     CG  HGA
+BOND   20    9   10    0     CK   CL
+BOND   21    9   12    0     CK   CX
+BOND   22    9   28    0     CK   HK
+BOND   23    9   29    0     CK  HKA
+BOND   24   10   11    0     CL   CP
+BOND   25   10   30    0     CL   HL
+BOND   26   10   31    0     CL  HLA
+BOND   27   11   15    0     CP  OP1
+BOND   28   11   16    0     CP  OP2
+BOND   29   12   13    0     CX   OX
+BOND   30   12   14    0     CX   NZ
+BOND   31   14   32    0     NZ  HNZ

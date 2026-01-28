@@ -1,0 +1,145 @@
+====================================================================================
+-------------------------------ring property (I)------------------------------------
+
+====================================================================================
+-------------------------------ring property (II)------------------------------------
+
+====================================================================================
+-------------------------------ring property (III)-----------------------------------
+atom[ 1] (C   ) is not in any ring (nr[1]=1)
+atom[ 2] (N   ) is not in any ring (nr[2]=1)
+atom[ 3] (O   ) is not in any ring (nr[3]=1)
+atom[ 4] (CA  ) is not in any ring (nr[4]=1)
+atom[ 5] (CB  ) is not in any ring (nr[5]=1)
+atom[ 6] (CD  ) is not in any ring (nr[6]=1)
+atom[ 7] (CE  ) is not in any ring (nr[7]=1)
+atom[ 8] (CG  ) is not in any ring (nr[8]=1)
+atom[ 9] (CK  ) is not in any ring (nr[9]=1)
+atom[10] (CL  ) is not in any ring (nr[10]=1)
+atom[11] (CP  ) is not in any ring (nr[11]=1)
+atom[12] (CX  ) is not in any ring (nr[12]=1)
+atom[13] (OX  ) is not in any ring (nr[13]=1)
+atom[14] (NZ  ) is not in any ring (nr[14]=1)
+atom[15] (OP1 ) is not in any ring (nr[15]=1)
+atom[16] (OP2 ) is not in any ring (nr[16]=1)
+atom[17] (H   ) is not in any ring (nr[17]=1)
+atom[18] (H2  ) is not in any ring (nr[18]=1)
+atom[19] (HA  ) is not in any ring (nr[19]=1)
+atom[20] (HB  ) is not in any ring (nr[20]=1)
+atom[21] (HBA ) is not in any ring (nr[21]=1)
+atom[22] (HD  ) is not in any ring (nr[22]=1)
+atom[23] (HDA ) is not in any ring (nr[23]=1)
+atom[24] (HE  ) is not in any ring (nr[24]=1)
+atom[25] (HEA ) is not in any ring (nr[25]=1)
+atom[26] (HG  ) is not in any ring (nr[26]=1)
+atom[27] (HGA ) is not in any ring (nr[27]=1)
+atom[28] (HK  ) is not in any ring (nr[28]=1)
+atom[29] (HKA ) is not in any ring (nr[29]=1)
+atom[30] (HL  ) is not in any ring (nr[30]=1)
+atom[31] (HLA ) is not in any ring (nr[31]=1)
+atom[32] (HNZ ) is not in any ring (nr[32]=1)
+
+====================================================================================
+-------------------------------aromatic property------------------------------------
+
+====================================================================================
+-------------------------------electronic property----------------------------------
+atom [ 1] (C   ) is not an electron-withdrew atom
+atom [ 2] (N   ) is an electron-withdrew atom
+atom [ 3] (O   ) is an electron-withdrew atom
+atom [ 4] (CA  ) is not an electron-withdrew atom
+atom [ 5] (CB  ) is not an electron-withdrew atom
+atom [ 6] (CD  ) is not an electron-withdrew atom
+atom [ 7] (CE  ) is not an electron-withdrew atom
+atom [ 8] (CG  ) is not an electron-withdrew atom
+atom [ 9] (CK  ) is not an electron-withdrew atom
+atom [10] (CL  ) is an electron-withdrew atom
+atom [11] (CP  ) is not an electron-withdrew atom
+atom [12] (CX  ) is not an electron-withdrew atom
+atom [13] (OX  ) is an electron-withdrew atom
+atom [14] (NZ  ) is an electron-withdrew atom
+atom [15] (OP1 ) is an electron-withdrew atom
+atom [16] (OP2 ) is an electron-withdrew atom
+atom [17] (H   ) is not an electron-withdrew atom
+atom [18] (H2  ) is not an electron-withdrew atom
+atom [19] (HA  ) is not an electron-withdrew atom
+atom [20] (HB  ) is not an electron-withdrew atom
+atom [21] (HBA ) is not an electron-withdrew atom
+atom [22] (HD  ) is not an electron-withdrew atom
+atom [23] (HDA ) is not an electron-withdrew atom
+atom [24] (HE  ) is not an electron-withdrew atom
+atom [25] (HEA ) is not an electron-withdrew atom
+atom [26] (HG  ) is not an electron-withdrew atom
+atom [27] (HGA ) is not an electron-withdrew atom
+atom [28] (HK  ) is not an electron-withdrew atom
+atom [29] (HKA ) is not an electron-withdrew atom
+atom [30] (HL  ) is not an electron-withdrew atom
+atom [31] (HLA ) is not an electron-withdrew atom
+atom [32] (HNZ ) is not an electron-withdrew atom
+
+====================================================================================
+--------------------------------connectivity property-------------------------------
+atom[ 1] (C   )     3     O
+atom[ 1] (C   )     4    CA
+atom[ 2] (N   )     4    CA
+atom[ 2] (N   )    17     H
+atom[ 2] (N   )    18    H2
+atom[ 3] (O   )     1     C
+atom[ 4] (CA  )     1     C
+atom[ 4] (CA  )     2     N
+atom[ 4] (CA  )     5    CB
+atom[ 4] (CA  )    19    HA
+atom[ 5] (CB  )     4    CA
+atom[ 5] (CB  )     8    CG
+atom[ 5] (CB  )    20    HB
+atom[ 5] (CB  )    21   HBA
+atom[ 6] (CD  )     7    CE
+atom[ 6] (CD  )     8    CG
+atom[ 6] (CD  )    22    HD
+atom[ 6] (CD  )    23   HDA
+atom[ 7] (CE  )     6    CD
+atom[ 7] (CE  )    14    NZ
+atom[ 7] (CE  )    24    HE
+atom[ 7] (CE  )    25   HEA
+atom[ 8] (CG  )     5    CB
+atom[ 8] (CG  )     6    CD
+atom[ 8] (CG  )    26    HG
+atom[ 8] (CG  )    27   HGA
+atom[ 9] (CK  )    10    CL
+atom[ 9] (CK  )    12    CX
+atom[ 9] (CK  )    28    HK
+atom[ 9] (CK  )    29   HKA
+atom[10] (CL  )     9    CK
+atom[10] (CL  )    11    CP
+atom[10] (CL  )    30    HL
+atom[10] (CL  )    31   HLA
+atom[11] (CP  )    10    CL
+atom[11] (CP  )    15   OP1
+atom[11] (CP  )    16   OP2
+atom[12] (CX  )     9    CK
+atom[12] (CX  )    13    OX
+atom[12] (CX  )    14    NZ
+atom[13] (OX  )    12    CX
+atom[14] (NZ  )     7    CE
+atom[14] (NZ  )    12    CX
+atom[14] (NZ  )    32   HNZ
+atom[15] (OP1 )    11    CP
+atom[16] (OP2 )    11    CP
+atom[17] (H   )     2     N
+atom[18] (H2  )     2     N
+atom[19] (HA  )     4    CA
+atom[20] (HB  )     5    CB
+atom[21] (HBA )     5    CB
+atom[22] (HD  )     6    CD
+atom[23] (HDA )     6    CD
+atom[24] (HE  )     7    CE
+atom[25] (HEA )     7    CE
+atom[26] (HG  )     8    CG
+atom[27] (HGA )     8    CG
+atom[28] (HK  )     9    CK
+atom[29] (HKA )     9    CK
+atom[30] (HL  )    10    CL
+atom[31] (HLA )    10    CL
+atom[32] (HNZ )    14    NZ
+----------------------------------------END-----------------------------------------
+

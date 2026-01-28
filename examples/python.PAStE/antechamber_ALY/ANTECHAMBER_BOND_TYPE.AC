@@ -1,0 +1,53 @@
+CHARGE      0.00 ( 0 )
+Formula: H14 C8 N2 O2 
+ATOM      1  OH  ALY     1       1.006  -0.557   4.738  0.000000        OH
+ATOM      2  CH  ALY     1      -0.053   0.007   4.572  0.000000        CH
+ATOM      3  CH3 ALY     1      -0.861   0.460   5.761  0.000000       CH3
+ATOM      4  NZ  ALY     1      -0.509   0.231   3.324  0.000000        NZ
+ATOM      5  CE  ALY     1       0.275  -0.208   2.167  0.000000        CE
+ATOM      6  CD  ALY     1      -0.461   0.164   0.879  0.000000        CD
+ATOM      7  CG  ALY     1       0.358  -0.294  -0.327  0.000000        CG
+ATOM      8  CB  ALY     1      -0.377   0.078  -1.615  0.000000        CB
+ATOM      9  CA  ALY     1       0.442  -0.381  -2.823  0.000000        CA
+ATOM     10  N   ALY     1       1.755   0.276  -2.802  0.000000         N
+ATOM     11  C   ALY     1      -0.283  -0.013  -4.092  0.000000         C
+ATOM     12  O   ALY     1      -0.079   1.056  -4.616  0.000000         O
+ATOM     13  HH3 ALY     1      -0.336   0.194   6.679  0.000000       HH3
+ATOM     14  H1  ALY     1      -0.994   1.541   5.719  0.000000       HH3
+ATOM     15  H2  ALY     1      -1.835  -0.027   5.746  0.000000       HH3
+ATOM     16  HZ  ALY     1      -1.357   0.683   3.191  0.000000        HZ
+ATOM     17  HE3 ALY     1       1.250   0.278   2.183  0.000000       HE3
+ATOM     18  HE2 ALY     1       0.409  -1.289   2.209  0.000000       HE2
+ATOM     19  HD3 ALY     1      -1.435  -0.322   0.864  0.000000       HD3
+ATOM     20  HD2 ALY     1      -0.594   1.245   0.837  0.000000       HD2
+ATOM     21  HG3 ALY     1       1.333   0.192  -0.312  0.000000       HG3
+ATOM     22  HG2 ALY     1       0.492  -1.375  -0.285  0.000000       HG2
+ATOM     23  HB3 ALY     1      -1.352  -0.409  -1.631  0.000000       HB3
+ATOM     24  HB2 ALY     1      -0.511   1.159  -1.657  0.000000       HB2
+ATOM     25  HA  ALY     1       0.575  -1.462  -2.781  0.000000        HA
+ATOM     26  H   ALY     1       1.583   1.269  -2.842  0.000000         H
+BOND    1    1    2    0     OH   CH
+BOND    2    2    3    0     CH  CH3
+BOND    3    2    4    0     CH   NZ
+BOND    4    3   13    0    CH3  HH3
+BOND    5    3   14    0    CH3   H1
+BOND    6    3   15    0    CH3   H2
+BOND    7    4    5    0     NZ   CE
+BOND    8    4   16    0     NZ   HZ
+BOND    9    5    6    0     CE   CD
+BOND   10    5   17    0     CE  HE3
+BOND   11    5   18    0     CE  HE2
+BOND   12    6    7    0     CD   CG
+BOND   13    6   19    0     CD  HD3
+BOND   14    6   20    0     CD  HD2
+BOND   15    7    8    0     CG   CB
+BOND   16    7   21    0     CG  HG3
+BOND   17    7   22    0     CG  HG2
+BOND   18    8    9    0     CB   CA
+BOND   19    8   23    0     CB  HB3
+BOND   20    8   24    0     CB  HB2
+BOND   21    9   10    0     CA    N
+BOND   22    9   11    0     CA    C
+BOND   23    9   25    0     CA   HA
+BOND   24   10   26    0      N    H
+BOND   25   11   12    0      C    O

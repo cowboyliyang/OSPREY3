@@ -152,6 +152,10 @@ public class MARKStarBoundFastQueues extends MARKStarBound {
             double correctgscore = correctionMatrix.confE(node.assignments);
             double hscore = node.getConfLowerBound() - node.gscore;
             double confCorrection = Math.min(correctgscore, node.rigidScore) + hscore;
+
+            // PartialFixCache: Try to tighten upper bound (symmetric to triple correction for lower bound)
+            double quickUpperBound = tryQuickUpperBound(node);
+
             if(!node.isMinimized() && node.getConfLowerBound() < confCorrection
                     && node.getConfLowerBound() - confCorrection > 1e-5) {
                 if(confCorrection < node.getConfLowerBound()) {
@@ -166,7 +170,8 @@ public class MARKStarBoundFastQueues extends MARKStarBound {
                     node.gscore = node.rigidScore;
                     confCorrection = node.rigidScore + hscore;
                 }
-                node.setBoundsFromConfLowerAndUpper(confCorrection, node.getConfUpperBound());
+                // Use tightened upper bound from PartialFixCache
+                node.setBoundsFromConfLowerAndUpper(confCorrection, quickUpperBound);
                 curNode.markUpdated();
                 leftoverLeaves.add(curNode);
                 continue;

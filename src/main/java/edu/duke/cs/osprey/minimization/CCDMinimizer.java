@@ -80,6 +80,9 @@ public class CCDMinimizer implements Minimizer {
     static double numTol = 1e-6;
     static double GCTol = 1e-10;//tolerance for violation of non-box constraints
 
+    // DOF value logging configuration
+    public static boolean ENABLE_DOF_VALUE_LOGGING = false;
+
     double[] firstStep, lastStep;//Keep track of first and most recent (last) steps in each DOF
 
     boolean useCorners;//Indicates if we should search the corners of the voxel for
@@ -181,8 +184,25 @@ public class CCDMinimizer implements Minimizer {
 		if(!compInitVals())//Initialize x
 			return null;//No initial values found (this is currently only for IBEX)
 
+        // Log DOF values before minimization
+        if (ENABLE_DOF_VALUE_LOGGING) {
+            System.out.println("============ DOF LOGGING IS ENABLED ============");
+            System.out.println("[DOF-BEFORE] DOFs=" + formatDOFs(this.x));
+            System.out.flush(); // Force flush to ensure output appears
+        }
+
         minimizeFromCurPoint();
-        return new Minimizer.Result(this.x, objFcn.getValue(this.x));
+
+        double finalEnergy = objFcn.getValue(this.x);
+
+        // Log DOF values after minimization
+        if (ENABLE_DOF_VALUE_LOGGING) {
+            System.out.println("[DOF-AFTER] DOFs=" + formatDOFs(this.x) + " E=" + String.format("%.4f", finalEnergy));
+            System.out.println("============ DOF LOGGING COMPLETE ============");
+            System.out.flush(); // Force flush to ensure output appears
+        }
+
+        return new Minimizer.Result(this.x, finalEnergy);
     }
 
     public void minimizeFromCurPoint(){//minimize from current starting vector
@@ -949,13 +969,28 @@ public class CCDMinimizer implements Minimizer {
         return E;
     }
     
-    
+
     public void setInitVals(DoubleMatrix1D initVals){
         singleInitVal = initVals;
     }
-    
-    
-    
+
+    /**
+     * Format DOF values for logging
+     */
+    private static String formatDOFs(DoubleMatrix1D dofs) {
+        if (dofs == null) {
+            return "null";
+        }
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < dofs.size(); i++) {
+            if (i > 0) sb.append(", ");
+            sb.append(String.format("%.4f", dofs.get(i)));
+        }
+        sb.append("]");
+        return sb.toString();
+    }
+
+
 
 
 }
