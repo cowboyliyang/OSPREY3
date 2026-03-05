@@ -5,6 +5,7 @@ import edu.duke.cs.osprey.confspace.RCTuple;
 import edu.duke.cs.osprey.energy.ConfEnergyCalculator;
 import edu.duke.cs.osprey.energy.ResidueInteractions;
 import edu.duke.cs.osprey.minimization.ApproximationObjectiveFunction;
+import edu.duke.cs.osprey.minimization.MLPSurrogateObjectiveFunction;
 
 import java.io.File;
 
@@ -68,5 +69,51 @@ public class ConfSpaceSpecificSurrogateFactory {
 
         ParametricMolecule pmol = confEcalcWithApproximator.confSpace.makeMolecule(tuple);
         return new ApproximationObjectiveFunction(pmol, approximator.approximator);
+    }
+
+    /**
+     * Train or load a confspace-specific MLP surrogate matrix for one-body and pairwise energies.
+     */
+    public static MLPSurrogateMatrix loadOrTrainTaskSpecificMLPSurrogate(
+            ConfEnergyCalculator baseConfEcalc,
+            File cacheRoot,
+            String taskTag,
+            int numSamplesPerParam,
+            int hidden1,
+            int hidden2,
+            int epochs,
+            int batchSize,
+            double learningRate
+    ) {
+        ConfSpaceSpecificMLPSurrogateCache.Config cfg = new ConfSpaceSpecificMLPSurrogateCache.Config();
+        cfg.cacheRoot = cacheRoot;
+        cfg.taskTag = taskTag;
+        cfg.numSamplesPerParam = numSamplesPerParam;
+        cfg.hidden1 = hidden1;
+        cfg.hidden2 = hidden2;
+        cfg.epochs = epochs;
+        cfg.batchSize = batchSize;
+        cfg.learningRate = learningRate;
+        return ConfSpaceSpecificMLPSurrogateCache.loadOrTrain(baseConfEcalc, cfg);
+    }
+
+    /**
+     * Create a CCD objective function backed only by MLP one-body/pair surrogates.
+     */
+    public static MLPSurrogateObjectiveFunction makeMLPSurrogateObjective(
+            ConfEnergyCalculator confEcalc,
+            MLPSurrogateMatrix surrogate,
+            RCTuple tuple,
+            boolean requireFullApproximation
+    ) {
+        double erefOffset = 0.0;
+        if (confEcalc.eref != null) {
+            for (int i = 0; i < tuple.pos.size(); i++) {
+                erefOffset += confEcalc.eref.getOffset(confEcalc.confSpace, tuple.pos.get(i), tuple.RCs.get(i));
+            }
+        }
+        return new MLPSurrogateObjectiveFunction(
+                confEcalc.confSpace, tuple, surrogate, requireFullApproximation, erefOffset
+        );
     }
 }

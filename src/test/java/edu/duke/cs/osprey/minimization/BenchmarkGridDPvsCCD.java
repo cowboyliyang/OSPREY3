@@ -12,9 +12,11 @@ import edu.duke.cs.osprey.ematrix.SimplerEnergyMatrixCalculator;
 import edu.duke.cs.osprey.energy.ConfEnergyCalculator;
 import edu.duke.cs.osprey.energy.EnergyCalculator;
 import edu.duke.cs.osprey.energy.approximation.ConfSpaceSpecificSurrogateFactory;
+import edu.duke.cs.osprey.energy.approximation.MLPSurrogateMatrix;
 import edu.duke.cs.osprey.energy.forcefield.ForcefieldParams;
 import edu.duke.cs.osprey.markstar.framework.ApproximatedGridDPMinimizer;
 import edu.duke.cs.osprey.markstar.framework.GridDPMinimizer;
+import edu.duke.cs.osprey.markstar.framework.MLPApproximatedGridDPMinimizer;
 import edu.duke.cs.osprey.markstar.framework.branch.BranchDecomposition;
 import edu.duke.cs.osprey.markstar.framework.branch.InteractionGraph;
 import edu.duke.cs.osprey.markstar.framework.branch.RootedTreeEdge;
@@ -152,22 +154,41 @@ public class BenchmarkGridDPvsCCD {
 
         SurrogateRunConfig surrogateCfg = SurrogateRunConfig.fromSystemProperties();
         ConfEnergyCalculator surrogateConfEcalc = null;
+        MLPSurrogateMatrix mlpSurrogate = null;
         if (surrogateCfg.enabled) {
-            surrogateConfEcalc = ConfSpaceSpecificSurrogateFactory.withTaskSpecificApproximator(
-                    confEcalcMinimized,
-                    surrogateCfg.cacheRoot,
-                    surrogateCfg.taskTag,
-                    surrogateCfg.samplesPerParam,
-                    surrogateCfg.errorBudget
-            );
+            if (surrogateCfg.modelType == SurrogateModelType.Quadratic) {
+                surrogateConfEcalc = ConfSpaceSpecificSurrogateFactory.withTaskSpecificApproximator(
+                        confEcalcMinimized,
+                        surrogateCfg.cacheRoot,
+                        surrogateCfg.taskTag,
+                        surrogateCfg.samplesPerParam,
+                        surrogateCfg.errorBudget
+                );
+            } else if (surrogateCfg.modelType == SurrogateModelType.MLP) {
+                mlpSurrogate = ConfSpaceSpecificSurrogateFactory.loadOrTrainTaskSpecificMLPSurrogate(
+                        confEcalcMinimized,
+                        surrogateCfg.cacheRoot,
+                        surrogateCfg.taskTag,
+                        surrogateCfg.samplesPerParam,
+                        surrogateCfg.mlpHidden1,
+                        surrogateCfg.mlpHidden2,
+                        surrogateCfg.mlpEpochs,
+                        surrogateCfg.mlpBatchSize,
+                        surrogateCfg.mlpLearningRate
+                );
+            }
             System.out.println(String.format(
-                    "Surrogate enabled: taskTag=%s, cache=%s, samplesPerParam=%d, errorBudget=%g, requireFull=%s, fallback=%s",
+                    "Surrogate enabled: type=%s, taskTag=%s, cache=%s, samplesPerParam=%d, errorBudget=%g, requireFull=%s, fallback=%s, mlpHidden=%dx%d, mlpEpochs=%d",
+                    surrogateCfg.modelType,
                     surrogateCfg.taskTag,
                     surrogateCfg.cacheRoot.getAbsolutePath(),
                     surrogateCfg.samplesPerParam,
                     surrogateCfg.errorBudget,
                     surrogateCfg.requireFullApproximation,
-                    surrogateCfg.gridDPFallbackToForcefield
+                    surrogateCfg.gridDPFallbackToForcefield,
+                    surrogateCfg.mlpHidden1,
+                    surrogateCfg.mlpHidden2,
+                    surrogateCfg.mlpEpochs
             ));
         }
 
@@ -185,50 +206,66 @@ public class BenchmarkGridDPvsCCD {
             rigidEnergies[i] = confEcalcRigid.calcEnergy(new RCTuple(scoredConfs.get(i).getAssignments())).energy;
         }
 
+        EnergyCalculator.Type.Context ecalcContext = minimizingEcalc.context;
+
         // Warm up JIT
         if (!scoredConfs.isEmpty()) {
             int[] warmConf = scoredConfs.get(0).getAssignments();
-            if (surrogateCfg.enabled) {
+            if (surrogateCfg.enabled && surrogateCfg.modelType == SurrogateModelType.Quadratic) {
                 surrogateConfEcalc.calcEnergy(new RCTuple(warmConf));
+            } else if (surrogateCfg.enabled && surrogateCfg.modelType == SurrogateModelType.MLP) {
+                RCTuple tuple = new RCTuple(warmConf);
+                var obj = makeObjectiveFunction(
+                        confSpace, tuple, confEcalcMinimized, surrogateConfEcalc, mlpSurrogate,
+                        surrogateCfg, ecalcContext
+                );
+                obj.objective.getValue(obj.objective.getDOFsCenter());
+                obj.close();
             } else {
                 confEcalcMinimized.calcEnergy(new RCTuple(warmConf));
             }
-            makeGridDPMinimizer(confSpace, ig, rootEdge, ffparams, eref, surrogateCfg, surrogateConfEcalc).minimize(warmConf);
+            makeGridDPMinimizer(confSpace, ig, rootEdge, ffparams, eref, surrogateCfg, surrogateConfEcalc, mlpSurrogate).minimize(warmConf);
         }
 
-        EnergyCalculator.Type.Context ecalcContext = minimizingEcalc.context;
-        ConfEnergyCalculator ccdReferenceEcalc = surrogateCfg.enabled ? surrogateConfEcalc : confEcalcMinimized;
+        ConfEnergyCalculator ccdReferenceEcalc = (surrogateCfg.enabled && surrogateCfg.modelType == SurrogateModelType.Quadratic)
+                ? surrogateConfEcalc : confEcalcMinimized;
 
         // CCD reference energies (original SurfingLineSearcher, maxIterations=30)
         long ccdTotalStart = System.nanoTime();
         for (int i = 0; i < n; i++) {
-            ccdEnergies[i] = ccdReferenceEcalc.calcEnergy(new RCTuple(scoredConfs.get(i).getAssignments())).energy;
+            RCTuple tuple = new RCTuple(scoredConfs.get(i).getAssignments());
+            if (surrogateCfg.enabled && surrogateCfg.modelType == SurrogateModelType.MLP) {
+                ObjectiveWithCleanup obj = makeObjectiveFunction(
+                        confSpace, tuple, confEcalcMinimized, surrogateConfEcalc, mlpSurrogate,
+                        surrogateCfg, ecalcContext
+                );
+                SimpleCCDMinimizer ccd = new SimpleCCDMinimizer();
+                ccd.init(obj.objective);
+                ccd.setMaxIterations(SimpleCCDMinimizer.DefaultMaxIterations);
+                ccdEnergies[i] = ccd.minimizeFromCenter().energy;
+                ccd.close();
+                obj.close();
+            } else {
+                ccdEnergies[i] = ccdReferenceEcalc.calcEnergy(tuple).energy;
+            }
         }
         long ccdTotalNs = System.nanoTime() - ccdTotalStart;
 
         // ===== Method 1: Hybrid GridDP + CCD =====
         long hybridTotalStart = System.nanoTime();
         GridDPMinimizer gridDPForHybrid = makeGridDPMinimizer(
-                confSpace, ig, rootEdge, ffparams, eref, surrogateCfg, surrogateConfEcalc
+                confSpace, ig, rootEdge, ffparams, eref, surrogateCfg, surrogateConfEcalc, mlpSurrogate
         );
         for (int i = 0; i < n; i++) {
             int[] conf = scoredConfs.get(i).getAssignments();
             RCTuple tuple = new RCTuple(conf);
             GridDPMinimizer.Result gridResult = gridDPForHybrid.minimize(conf);
             gridDPEnergies[i] = gridResult.energy;
-            boolean usesForcefield = !surrogateCfg.enabled;
-            EnergyFunction efunc = null;
-            edu.duke.cs.osprey.minimization.ObjectiveFunction objFunc;
-            if (surrogateCfg.enabled) {
-                objFunc = ConfSpaceSpecificSurrogateFactory.makeApproximationObjective(
-                        surrogateConfEcalc, tuple, surrogateCfg.requireFullApproximation
-                );
-            } else {
-                ParametricMolecule pmol = confSpace.makeMolecule(tuple);
-                ResidueInteractions inters = confEcalcMinimized.makeFragInters(tuple);
-                efunc = ecalcContext.efuncs.make(inters, pmol.mol);
-                objFunc = new MoleculeObjectiveFunction(pmol, efunc);
-            }
+            ObjectiveWithCleanup obj = makeObjectiveFunction(
+                    confSpace, tuple, confEcalcMinimized, surrogateConfEcalc, mlpSurrogate,
+                    surrogateCfg, ecalcContext
+            );
+            edu.duke.cs.osprey.minimization.ObjectiveFunction objFunc = obj.objective;
             SimpleCCDMinimizer ccd = new SimpleCCDMinimizer((context) -> new QuadraticLineSearcher());
             ccd.init(objFunc);
             ccd.setMaxIterations(2);
@@ -249,10 +286,8 @@ public class BenchmarkGridDPvsCCD {
             }
             Minimizer.Result ccdResult = ccd.minimizeFrom(startx);
             hybridEnergies[i] = ccdResult.energy;
-            if (usesForcefield) {
-                efunc.close();
-            }
             ccd.close();
+            obj.close();
         }
         long hybridTotalNs = System.nanoTime() - hybridTotalStart;
 
@@ -263,7 +298,7 @@ public class BenchmarkGridDPvsCCD {
         long multiWarmTotalStart = System.nanoTime();
         long totalMWGridDPNs = 0, totalMWInitNs = 0, totalMWPopNs = 0, totalMWCCDCreateNs = 0, totalMWCCDMinNs = 0;
         GridDPMinimizer gridDPForMulti = makeGridDPMinimizer(
-                confSpace, ig, rootEdge, ffparams, eref, surrogateCfg, surrogateConfEcalc
+                confSpace, ig, rootEdge, ffparams, eref, surrogateCfg, surrogateConfEcalc, mlpSurrogate
         );
         for (int i = 0; i < n; i++) {
             int[] conf = scoredConfs.get(i).getAssignments();
@@ -297,20 +332,15 @@ public class BenchmarkGridDPvsCCD {
             t0 = System.nanoTime();
             int nStarts = topNDOFs.size();
             edu.duke.cs.osprey.minimization.ObjectiveFunction[] objFuncs = new edu.duke.cs.osprey.minimization.ObjectiveFunction[nStarts];
+            ObjectiveWithCleanup[] objHolders = new ObjectiveWithCleanup[nStarts];
             SimpleCCDMinimizer[] ccds = new SimpleCCDMinimizer[nStarts];
-            EnergyFunction[] efuncs = surrogateCfg.enabled ? null : new EnergyFunction[nStarts];
             cern.colt.matrix.DoubleMatrix1D[] startxs = new cern.colt.matrix.DoubleMatrix1D[nStarts];
             for (int k = 0; k < nStarts; k++) {
-                if (surrogateCfg.enabled) {
-                    objFuncs[k] = ConfSpaceSpecificSurrogateFactory.makeApproximationObjective(
-                            surrogateConfEcalc, tuple, surrogateCfg.requireFullApproximation
-                    );
-                } else {
-                    ParametricMolecule pmolK = confSpace.makeMolecule(tuple);
-                    ResidueInteractions inters = confEcalcMinimized.makeFragInters(tuple);
-                    efuncs[k] = ecalcContext.efuncs.make(inters, pmolK.mol);
-                    objFuncs[k] = new MoleculeObjectiveFunction(pmolK, efuncs[k]);
-                }
+                objHolders[k] = makeObjectiveFunction(
+                        confSpace, tuple, confEcalcMinimized, surrogateConfEcalc, mlpSurrogate,
+                        surrogateCfg, ecalcContext
+                );
+                objFuncs[k] = objHolders[k].objective;
                 ccds[k] = new SimpleCCDMinimizer((context) -> new QuadraticLineSearcher());
                 ccds[k].init(objFuncs[k]);
                 ccds[k].setMaxIterations(2);
@@ -352,9 +382,7 @@ public class BenchmarkGridDPvsCCD {
             totalMWCCDMinNs += System.nanoTime() - t1;
             // Cleanup
             for (int k = 0; k < nStarts; k++) {
-                if (efuncs != null) {
-                    efuncs[k].close();
-                }
+                objHolders[k].close();
                 ccds[k].close();
             }
         }
@@ -2241,54 +2269,152 @@ public class BenchmarkGridDPvsCCD {
             ForcefieldParams ffparams,
             SimpleReferenceEnergies eref,
             SurrogateRunConfig surrogateCfg,
-            ConfEnergyCalculator surrogateConfEcalc
+            ConfEnergyCalculator surrogateConfEcalc,
+            MLPSurrogateMatrix mlpSurrogate
     ) {
         if (!surrogateCfg.enabled) {
             return new GridDPMinimizer(confSpace, ig, rootEdge, 2, ffparams, eref, true);
         }
-        return new ApproximatedGridDPMinimizer(
-                confSpace, ig, rootEdge, 2, ffparams, eref, true,
-                surrogateConfEcalc.amat, surrogateCfg.gridDPFallbackToForcefield
-        );
+        if (surrogateCfg.modelType == SurrogateModelType.Quadratic) {
+            return new ApproximatedGridDPMinimizer(
+                    confSpace, ig, rootEdge, 2, ffparams, eref, true,
+                    surrogateConfEcalc.amat, surrogateCfg.gridDPFallbackToForcefield
+            );
+        }
+        if (surrogateCfg.modelType == SurrogateModelType.MLP) {
+            return new MLPApproximatedGridDPMinimizer(
+                    confSpace, ig, rootEdge, 2, ffparams, eref, true,
+                    mlpSurrogate, surrogateCfg.gridDPFallbackToForcefield
+            );
+        }
+        throw new IllegalStateException("Unsupported surrogate model type: " + surrogateCfg.modelType);
+    }
+
+    private ObjectiveWithCleanup makeObjectiveFunction(
+            SimpleConfSpace confSpace,
+            RCTuple tuple,
+            ConfEnergyCalculator confEcalcMinimized,
+            ConfEnergyCalculator surrogateConfEcalc,
+            MLPSurrogateMatrix mlpSurrogate,
+            SurrogateRunConfig surrogateCfg,
+            EnergyCalculator.Type.Context ecalcContext
+    ) {
+        if (!surrogateCfg.enabled) {
+            ParametricMolecule pmol = confSpace.makeMolecule(tuple);
+            ResidueInteractions inters = confEcalcMinimized.makeFragInters(tuple);
+            EnergyFunction efunc = ecalcContext.efuncs.make(inters, pmol.mol);
+            return new ObjectiveWithCleanup(new MoleculeObjectiveFunction(pmol, efunc), efunc);
+        }
+        if (surrogateCfg.modelType == SurrogateModelType.Quadratic) {
+            return new ObjectiveWithCleanup(
+                    ConfSpaceSpecificSurrogateFactory.makeApproximationObjective(
+                            surrogateConfEcalc, tuple, surrogateCfg.requireFullApproximation
+                    ),
+                    null
+            );
+        }
+        if (surrogateCfg.modelType == SurrogateModelType.MLP) {
+            return new ObjectiveWithCleanup(
+                    ConfSpaceSpecificSurrogateFactory.makeMLPSurrogateObjective(
+                            confEcalcMinimized, mlpSurrogate, tuple, surrogateCfg.requireFullApproximation
+                    ),
+                    null
+            );
+        }
+        throw new IllegalStateException("Unsupported surrogate model type: " + surrogateCfg.modelType);
+    }
+
+    private static class ObjectiveWithCleanup {
+        final edu.duke.cs.osprey.minimization.ObjectiveFunction objective;
+        final EnergyFunction efunc;
+
+        ObjectiveWithCleanup(edu.duke.cs.osprey.minimization.ObjectiveFunction objective, EnergyFunction efunc) {
+            this.objective = objective;
+            this.efunc = efunc;
+        }
+
+        void close() {
+            if (efunc != null) {
+                efunc.close();
+            }
+        }
+    }
+
+    private enum SurrogateModelType {
+        Quadratic,
+        MLP;
+
+        static SurrogateModelType fromString(String s) {
+            String normalized = s == null ? "" : s.trim().toLowerCase();
+            if (normalized.equals("mlp")) {
+                return MLP;
+            }
+            return Quadratic;
+        }
     }
 
     private static class SurrogateRunConfig {
         final boolean enabled;
         final File cacheRoot;
         final String taskTag;
+        final SurrogateModelType modelType;
         final int samplesPerParam;
         final double errorBudget;
         final boolean requireFullApproximation;
         final boolean gridDPFallbackToForcefield;
+        final int mlpHidden1;
+        final int mlpHidden2;
+        final int mlpEpochs;
+        final int mlpBatchSize;
+        final double mlpLearningRate;
 
-        private SurrogateRunConfig(boolean enabled, File cacheRoot, String taskTag, int samplesPerParam,
+        private SurrogateRunConfig(boolean enabled, File cacheRoot, String taskTag, SurrogateModelType modelType, int samplesPerParam,
                                    double errorBudget, boolean requireFullApproximation,
-                                   boolean gridDPFallbackToForcefield) {
+                                   boolean gridDPFallbackToForcefield,
+                                   int mlpHidden1, int mlpHidden2, int mlpEpochs, int mlpBatchSize, double mlpLearningRate) {
             this.enabled = enabled;
             this.cacheRoot = cacheRoot;
             this.taskTag = taskTag;
+            this.modelType = modelType;
             this.samplesPerParam = samplesPerParam;
             this.errorBudget = errorBudget;
             this.requireFullApproximation = requireFullApproximation;
             this.gridDPFallbackToForcefield = gridDPFallbackToForcefield;
+            this.mlpHidden1 = mlpHidden1;
+            this.mlpHidden2 = mlpHidden2;
+            this.mlpEpochs = mlpEpochs;
+            this.mlpBatchSize = mlpBatchSize;
+            this.mlpLearningRate = mlpLearningRate;
         }
 
         static SurrogateRunConfig fromSystemProperties() {
             boolean enabled = Boolean.parseBoolean(System.getProperty(SURROGATE_PROP_PREFIX + "enabled", "false"));
             String cacheRootPath = System.getProperty(SURROGATE_PROP_PREFIX + "cacheRoot", "/tmp/osprey-confspace-surrogate-cache");
             String taskTag = System.getProperty(SURROGATE_PROP_PREFIX + "taskTag", "benchmark-griddp-vs-ccd");
+            SurrogateModelType modelType = SurrogateModelType.fromString(System.getProperty(SURROGATE_PROP_PREFIX + "type", "quadratic"));
             int samplesPerParam = Integer.parseInt(System.getProperty(SURROGATE_PROP_PREFIX + "samplesPerParam", "10"));
             double errorBudget = Double.parseDouble(System.getProperty(SURROGATE_PROP_PREFIX + "errorBudget", "1000000.0"));
             boolean requireFullApproximation = Boolean.parseBoolean(System.getProperty(SURROGATE_PROP_PREFIX + "requireFullApproximation", "false"));
             boolean fallback = Boolean.parseBoolean(System.getProperty(SURROGATE_PROP_PREFIX + "gridDPFallbackToForcefield", "true"));
+            int mlpHidden1 = Integer.parseInt(System.getProperty(SURROGATE_PROP_PREFIX + "mlp.hidden1", "32"));
+            int mlpHidden2 = Integer.parseInt(System.getProperty(SURROGATE_PROP_PREFIX + "mlp.hidden2", "32"));
+            int mlpEpochs = Integer.parseInt(System.getProperty(SURROGATE_PROP_PREFIX + "mlp.epochs", "300"));
+            int mlpBatchSize = Integer.parseInt(System.getProperty(SURROGATE_PROP_PREFIX + "mlp.batchSize", "64"));
+            double mlpLearningRate = Double.parseDouble(System.getProperty(SURROGATE_PROP_PREFIX + "mlp.learningRate", "0.001"));
             return new SurrogateRunConfig(
                     enabled,
                     new File(cacheRootPath),
                     taskTag,
+                    modelType,
                     samplesPerParam,
                     errorBudget,
                     requireFullApproximation,
-                    fallback
+                    fallback,
+                    mlpHidden1,
+                    mlpHidden2,
+                    mlpEpochs,
+                    mlpBatchSize,
+                    mlpLearningRate
             );
         }
     }
