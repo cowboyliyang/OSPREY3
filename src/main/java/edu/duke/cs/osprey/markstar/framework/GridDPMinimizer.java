@@ -653,7 +653,8 @@ public class GridDPMinimizer {
      * Subclasses can override this to replace forcefield calls with surrogate models.
      */
     protected double evalOneBodyEnergy(ParametricMolecule mol, ResidueForcefieldEnergy efunc,
-                                       int pos, int rc, int gridState, double erefOffset) {
+                                       int pos, int rc, int gridState, double[] posDofValues,
+                                       double erefOffset) {
         return efunc.getEnergy() + erefOffset;
     }
 
@@ -662,8 +663,8 @@ public class GridDPMinimizer {
      * Subclasses can override this to replace forcefield calls with surrogate models.
      */
     protected double evalPairEnergy(ParametricMolecule mol, ResidueForcefieldEnergy efunc,
-                                    int pos1, int rc1, int gridState1,
-                                    int pos2, int rc2, int gridState2) {
+                                    int pos1, int rc1, int gridState1, double[] pos1DofValues,
+                                    int pos2, int rc2, int gridState2, double[] pos2DofValues) {
         return efunc.getEnergy();
     }
 
@@ -734,7 +735,8 @@ public class GridDPMinimizer {
                 double[] energies = new double[numStates];
                 for (int gs = 0; gs < numStates; gs++) {
                     setPositionGridStateOnMol(mol, dofIndices, gs);
-                    energies[gs] = evalOneBodyEnergy(mol, efunc, p, confAssignments[p], gs, erefOff);
+                    double[] posDofValues = decodeGridStateToDofValues(dofIndices, gs);
+                    energies[gs] = evalOneBodyEnergy(mol, efunc, p, confAssignments[p], gs, posDofValues, erefOff);
                 }
                 return energies;
             }));
@@ -807,7 +809,13 @@ public class GridDPMinimizer {
                     setPositionGridStateOnMol(mol, dofIndicesI, gi);
                     for (int gj = 0; gj < statesJ; gj++) {
                         setPositionGridStateOnMol(mol, dofIndicesJ, gj);
-                        table[gi][gj] = evalPairEnergy(mol, efunc, ei, confAssignments[ei], gi, ej, confAssignments[ej], gj);
+                        double[] dofsI = decodeGridStateToDofValues(dofIndicesI, gi);
+                        double[] dofsJ = decodeGridStateToDofValues(dofIndicesJ, gj);
+                        table[gi][gj] = evalPairEnergy(
+                                mol, efunc,
+                                ei, confAssignments[ei], gi, dofsI,
+                                ej, confAssignments[ej], gj, dofsJ
+                        );
                     }
                 }
                 return table;
@@ -885,7 +893,10 @@ public class GridDPMinimizer {
 
             for (int gs = 0; gs < numStates; gs++) {
                 setPositionGridState(pos, gs);
-                oneBodyEnergy[pos][gs] = evalOneBodyEnergy(pmol, efunc, pos, confAssignments[pos], gs, erefOffset);
+                double[] posDofValues = decodeGridStateToDofValues(positionDOFIndices[pos], gs);
+                oneBodyEnergy[pos][gs] = evalOneBodyEnergy(
+                        pmol, efunc, pos, confAssignments[pos], gs, posDofValues, erefOffset
+                );
             }
 
             // Store in cache
@@ -927,7 +938,13 @@ public class GridDPMinimizer {
                     setPositionGridState(i, gi);
                     for (int gj = 0; gj < statesJ; gj++) {
                         setPositionGridState(j, gj);
-                        table[gi][gj] = evalPairEnergy(pmol, efunc, i, confAssignments[i], gi, j, confAssignments[j], gj);
+                        double[] dofsI = decodeGridStateToDofValues(positionDOFIndices[i], gi);
+                        double[] dofsJ = decodeGridStateToDofValues(positionDOFIndices[j], gj);
+                        table[gi][gj] = evalPairEnergy(
+                                pmol, efunc,
+                                i, confAssignments[i], gi, dofsI,
+                                j, confAssignments[j], gj, dofsJ
+                        );
                     }
                 }
 
@@ -956,6 +973,24 @@ public class GridDPMinimizer {
             remaining /= gridSize;
             pmol.dofs.get(dofIndices[d]).apply(gridValues[dofIndices[d]][gridPointIdx]);
         }
+    }
+
+    /**
+     * Decode a position-local grid state into DOF values.
+     * Returned values are in the same order as dofIndices.
+     */
+    private double[] decodeGridStateToDofValues(int[] dofIndices, int gridState) {
+        int numDOFs = dofIndices.length;
+        double[] values = new double[numDOFs];
+        if (numDOFs == 0) return values;
+
+        int remaining = gridState;
+        for (int d = numDOFs - 1; d >= 0; d--) {
+            int gridPointIdx = remaining % gridSize;
+            remaining /= gridSize;
+            values[d] = gridValues[dofIndices[d]][gridPointIdx];
+        }
+        return values;
     }
 
     // ========== Subtree DP cache support ==========
