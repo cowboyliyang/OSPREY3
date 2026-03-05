@@ -1,5 +1,7 @@
 package edu.duke.cs.osprey.minimization;
 
+import cern.colt.matrix.DoubleFactory1D;
+import cern.colt.matrix.DoubleMatrix1D;
 import edu.duke.cs.osprey.astar.conf.ConfAStarTree;
 import edu.duke.cs.osprey.astar.conf.RCs;
 import edu.duke.cs.osprey.confspace.ConfSearch.ScoredConf;
@@ -200,6 +202,15 @@ public class BenchmarkGridDPvsCCD {
         double[] gridDPEnergies = new double[n];
         double[] hybridEnergies = new double[n];
         double[] multiWarmEnergies = new double[n];
+        double[] gridDPForcefieldEnergies = new double[n];
+        double[] hybridForcefieldEnergies = new double[n];
+        double[] multiWarmForcefieldEnergies = new double[n];
+        for (int i = 0; i < n; i++) {
+            gridDPForcefieldEnergies[i] = Double.NaN;
+            hybridForcefieldEnergies[i] = Double.NaN;
+            multiWarmForcefieldEnergies[i] = Double.NaN;
+        }
+        boolean compareMLPtoForcefield = surrogateCfg.enabled && surrogateCfg.modelType == SurrogateModelType.MLP;
 
         // Compute rigid energies
         for (int i = 0; i < n; i++) {
@@ -261,6 +272,11 @@ public class BenchmarkGridDPvsCCD {
             RCTuple tuple = new RCTuple(conf);
             GridDPMinimizer.Result gridResult = gridDPForHybrid.minimize(conf);
             gridDPEnergies[i] = gridResult.energy;
+            if (compareMLPtoForcefield && gridResult.bestDOFValues != null) {
+                gridDPForcefieldEnergies[i] = evaluateForcefieldEnergyAt(
+                        confSpace, confEcalcMinimized, ecalcContext, tuple, gridResult.bestDOFValues
+                );
+            }
             ObjectiveWithCleanup obj = makeObjectiveFunction(
                     confSpace, tuple, confEcalcMinimized, surrogateConfEcalc, mlpSurrogate,
                     surrogateCfg, ecalcContext
@@ -286,6 +302,11 @@ public class BenchmarkGridDPvsCCD {
             }
             Minimizer.Result ccdResult = ccd.minimizeFrom(startx);
             hybridEnergies[i] = ccdResult.energy;
+            if (compareMLPtoForcefield) {
+                hybridForcefieldEnergies[i] = evaluateForcefieldEnergyAt(
+                        confSpace, confEcalcMinimized, ecalcContext, tuple, ccdResult.dofValues
+                );
+            }
             ccd.close();
             obj.close();
         }
@@ -361,24 +382,33 @@ public class BenchmarkGridDPvsCCD {
 
             // Submit only minimizeFrom() to thread pool
             long t1 = System.nanoTime();
-            List<Future<Double>> ccdFutures = new ArrayList<>();
+            List<Future<Minimizer.Result>> ccdFutures = new ArrayList<>();
             for (int k = 0; k < nStarts; k++) {
                 final int kk = k;
                 ccdFutures.add(multiExecutor.submit(() -> {
-                    Minimizer.Result ccdResult = ccds[kk].minimizeFrom(startxs[kk]);
-                    return ccdResult.energy;
+                    return ccds[kk].minimizeFrom(startxs[kk]);
                 }));
             }
             double bestE = Double.POSITIVE_INFINITY;
-            for (Future<Double> f : ccdFutures) {
+            Minimizer.Result bestResult = null;
+            for (Future<Minimizer.Result> f : ccdFutures) {
                 try {
-                    double e = f.get();
-                    if (e < bestE) bestE = e;
+                    Minimizer.Result r = f.get();
+                    double e = r.energy;
+                    if (e < bestE) {
+                        bestE = e;
+                        bestResult = r;
+                    }
                 } catch (Exception ex) {
                     throw new RuntimeException("Multi warm start CCD failed", ex);
                 }
             }
             multiWarmEnergies[i] = bestE;
+            if (compareMLPtoForcefield && bestResult != null) {
+                multiWarmForcefieldEnergies[i] = evaluateForcefieldEnergyAt(
+                        confSpace, confEcalcMinimized, ecalcContext, tuple, bestResult.dofValues
+                );
+            }
             totalMWCCDMinNs += System.nanoTime() - t1;
             // Cleanup
             for (int k = 0; k < nStarts; k++) {
@@ -390,12 +420,19 @@ public class BenchmarkGridDPvsCCD {
         long multiWarmTotalNs = System.nanoTime() - multiWarmTotalStart;
 
         // 7. Print comparison table
-        System.out.println(String.format("%-5s| %11s | %11s | %11s | %11s | %8s | %8s | %8s | %8s",
-                "Conf", "CCD_E", "GridDP_E", "Hybrid_E", "MWarm_E", "CCD_drop", "GDP_rec%", "Hyb_rec%", "MW_rec%"));
+        if (compareMLPtoForcefield) {
+            System.out.println(String.format("%-5s| %11s | %11s | %11s | %11s | %8s | %8s | %8s | %8s | %8s | %8s | %8s",
+                    "Conf", "CCD_E", "GridDP_E", "Hybrid_E", "MWarm_E", "CCD_drop", "GDP_rec%", "Hyb_rec%", "MW_rec%",
+                    "GDP_dFF", "Hyb_dFF", "MW_dFF"));
+        } else {
+            System.out.println(String.format("%-5s| %11s | %11s | %11s | %11s | %8s | %8s | %8s | %8s",
+                    "Conf", "CCD_E", "GridDP_E", "Hybrid_E", "MWarm_E", "CCD_drop", "GDP_rec%", "Hyb_rec%", "MW_rec%"));
+        }
         System.out.println(new String(new char[105]).replace('\0', '-'));
 
         double sumGapGridDP = 0, sumGapHybrid = 0, sumGapMultiWarm = 0;
         double sumRecGridDP = 0, sumRecHybrid = 0, sumRecMultiWarm = 0;
+        double sumAbsGDPdFF = 0, sumAbsHybdFF = 0, sumAbsMWdFF = 0;
         for (int i = 0; i < n; i++) {
             double ccdDrop = rigidEnergies[i] - ccdEnergies[i];
             double gdpDrop = rigidEnergies[i] - gridDPEnergies[i];
@@ -409,9 +446,23 @@ public class BenchmarkGridDPvsCCD {
             sumGapMultiWarm += multiWarmEnergies[i] - ccdEnergies[i];
             sumRecGridDP += gdpRec; sumRecHybrid += hybRec; sumRecMultiWarm += mwRec;
 
-            System.out.println(String.format("%-5d| %11.4f | %11.4f | %11.4f | %11.4f | %8.4f | %7.1f%% | %7.1f%% | %7.1f%%",
-                    i, ccdEnergies[i], gridDPEnergies[i], hybridEnergies[i], multiWarmEnergies[i],
-                    ccdDrop, gdpRec, hybRec, mwRec));
+            if (compareMLPtoForcefield) {
+                double gdpdFF = gridDPEnergies[i] - gridDPForcefieldEnergies[i];
+                double hybdFF = hybridEnergies[i] - hybridForcefieldEnergies[i];
+                double mwdFF = multiWarmEnergies[i] - multiWarmForcefieldEnergies[i];
+                sumAbsGDPdFF += Math.abs(gdpdFF);
+                sumAbsHybdFF += Math.abs(hybdFF);
+                sumAbsMWdFF += Math.abs(mwdFF);
+                System.out.println(String.format(
+                        "%-5d| %11.4f | %11.4f | %11.4f | %11.4f | %8.4f | %7.1f%% | %7.1f%% | %7.1f%% | %8.4f | %8.4f | %8.4f",
+                        i, ccdEnergies[i], gridDPEnergies[i], hybridEnergies[i], multiWarmEnergies[i],
+                        ccdDrop, gdpRec, hybRec, mwRec, gdpdFF, hybdFF, mwdFF
+                ));
+            } else {
+                System.out.println(String.format("%-5d| %11.4f | %11.4f | %11.4f | %11.4f | %8.4f | %7.1f%% | %7.1f%% | %7.1f%%",
+                        i, ccdEnergies[i], gridDPEnergies[i], hybridEnergies[i], multiWarmEnergies[i],
+                        ccdDrop, gdpRec, hybRec, mwRec));
+            }
         }
         System.out.println(new String(new char[105]).replace('\0', '-'));
 
@@ -422,6 +473,11 @@ public class BenchmarkGridDPvsCCD {
         System.out.println(String.format("  Avg recovery GridDP:  %.1f%%", sumRecGridDP / n));
         System.out.println(String.format("  Avg recovery Hybrid:  %.1f%%", sumRecHybrid / n));
         System.out.println(String.format("  Avg recovery MWarm:   %.1f%%", sumRecMultiWarm / n));
+        if (compareMLPtoForcefield) {
+            System.out.println(String.format("  Avg |GridDP - FF|:    %.4f kcal/mol", sumAbsGDPdFF / n));
+            System.out.println(String.format("  Avg |Hybrid - FF|:    %.4f kcal/mol", sumAbsHybdFF / n));
+            System.out.println(String.format("  Avg |MWarm - FF|:     %.4f kcal/mol", sumAbsMWdFF / n));
+        }
 
         System.out.println(String.format("\nTiming Summary (%d confs, %d cores, top-%d starts):", n, numCores, multiN));
         System.out.println(String.format("  CCD total:          %10.1f ms", ccdTotalNs / 1e6));
@@ -2322,6 +2378,35 @@ public class BenchmarkGridDPvsCCD {
             );
         }
         throw new IllegalStateException("Unsupported surrogate model type: " + surrogateCfg.modelType);
+    }
+
+    private double evaluateForcefieldEnergyAt(
+            SimpleConfSpace confSpace,
+            ConfEnergyCalculator confEcalcMinimized,
+            EnergyCalculator.Type.Context ecalcContext,
+            RCTuple tuple,
+            DoubleMatrix1D x
+    ) {
+        ParametricMolecule pmol = confSpace.makeMolecule(tuple);
+        for (int d = 0; d < x.size(); d++) {
+            pmol.dofs.get(d).apply(x.get(d));
+        }
+        ResidueInteractions inters = confEcalcMinimized.makeFragInters(tuple);
+        try (EnergyFunction efunc = ecalcContext.efuncs.make(inters, pmol.mol)) {
+            return efunc.getEnergy();
+        }
+    }
+
+    private double evaluateForcefieldEnergyAt(
+            SimpleConfSpace confSpace,
+            ConfEnergyCalculator confEcalcMinimized,
+            EnergyCalculator.Type.Context ecalcContext,
+            RCTuple tuple,
+            double[] x
+    ) {
+        return evaluateForcefieldEnergyAt(
+                confSpace, confEcalcMinimized, ecalcContext, tuple, DoubleFactory1D.dense.make(x)
+        );
     }
 
     private static class ObjectiveWithCleanup {

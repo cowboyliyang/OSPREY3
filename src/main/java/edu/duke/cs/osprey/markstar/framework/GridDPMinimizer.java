@@ -673,7 +673,7 @@ public class GridDPMinimizer {
      * Default keeps current forcefield behavior.
      */
     protected double evalFinalOneBodyEnergy(ParametricMolecule mol, ResidueForcefieldEnergy efunc,
-                                            int pos, int rc, double erefOffset) {
+                                            int pos, int rc, double[] posDofValues, double erefOffset) {
         return efunc.getEnergy() + erefOffset;
     }
 
@@ -682,7 +682,8 @@ public class GridDPMinimizer {
      * Default keeps current forcefield behavior.
      */
     protected double evalFinalPairEnergy(ParametricMolecule mol, ResidueForcefieldEnergy efunc,
-                                         int pos1, int rc1, int pos2, int rc2) {
+                                         int pos1, int rc1, double[] pos1DofValues,
+                                         int pos2, int rc2, double[] pos2DofValues) {
         return efunc.getEnergy();
     }
 
@@ -989,6 +990,15 @@ public class GridDPMinimizer {
             int gridPointIdx = remaining % gridSize;
             remaining /= gridSize;
             values[d] = gridValues[dofIndices[d]][gridPointIdx];
+        }
+        return values;
+    }
+
+    private double[] extractPositionDofValuesFromAllDofs(int pos, double[] allDofs) {
+        int[] dofIndices = positionDOFIndices[pos];
+        double[] values = new double[dofIndices.length];
+        for (int d = 0; d < dofIndices.length; d++) {
+            values[d] = allDofs[dofIndices[d]];
         }
         return values;
     }
@@ -1884,14 +1894,21 @@ public class GridDPMinimizer {
                     .addIntra(pos).addShell(pos).make();
             ResidueForcefieldEnergy efunc = new ResidueForcefieldEnergy(resPairCache, inters, pmol.mol);
             double erefOffset = (eref != null) ? eref.getOffset(confSpace, pos, confAssignments[pos]) : 0;
-            trueEnergy += evalFinalOneBodyEnergy(pmol, efunc, pos, confAssignments[pos], erefOffset);
+            double[] posDofValues = extractPositionDofValuesFromAllDofs(pos, allDOFs);
+            trueEnergy += evalFinalOneBodyEnergy(
+                    pmol, efunc, pos, confAssignments[pos], posDofValues, erefOffset
+            );
         }
         for (int i = 0; i < numPositions; i++) {
             for (int j = i + 1; j < numPositions; j++) {
                 if (!interactionGraph.hasEdge(i, j)) continue;
                 ResidueInteractions inters = ResInterGen.of(confSpace).addInter(i, j).make();
                 ResidueForcefieldEnergy efunc = new ResidueForcefieldEnergy(resPairCache, inters, pmol.mol);
-                trueEnergy += evalFinalPairEnergy(pmol, efunc, i, confAssignments[i], j, confAssignments[j]);
+                double[] dofsI = extractPositionDofValuesFromAllDofs(i, allDOFs);
+                double[] dofsJ = extractPositionDofValuesFromAllDofs(j, allDOFs);
+                trueEnergy += evalFinalPairEnergy(
+                        pmol, efunc, i, confAssignments[i], dofsI, j, confAssignments[j], dofsJ
+                );
             }
         }
         long evalTimeNs = System.nanoTime() - t1;

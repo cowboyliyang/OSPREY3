@@ -94,6 +94,46 @@ public class ApproximatedGridDPMinimizer extends GridDPMinimizer {
         return approximator.getValue(x);
     }
 
+    @Override
+    protected double evalFinalOneBodyEnergy(ParametricMolecule mol, ResidueForcefieldEnergy efunc,
+                                            int pos, int rc, double[] posDofValues, double erefOffset) {
+        ApproximatedObjectiveFunction.Approximator.Addable approximator = getOneBodyApproximator(pos, rc);
+        if (approximator == null) {
+            return super.evalFinalOneBodyEnergy(mol, efunc, pos, rc, posDofValues, erefOffset);
+        }
+        if (approximator.numDofs() != posDofValues.length) {
+            if (fallbackToForcefield) {
+                return super.evalFinalOneBodyEnergy(mol, efunc, pos, rc, posDofValues, erefOffset);
+            }
+            throw new IllegalStateException(String.format(
+                    "Final one-body approximator DOF mismatch at pos=%d rc=%d: expected %d, got %d",
+                    pos, rc, approximator.numDofs(), posDofValues.length
+            ));
+        }
+        return approximator.getValue(DoubleFactory1D.dense.make(posDofValues)) + erefOffset;
+    }
+
+    @Override
+    protected double evalFinalPairEnergy(ParametricMolecule mol, ResidueForcefieldEnergy efunc,
+                                         int pos1, int rc1, double[] pos1DofValues,
+                                         int pos2, int rc2, double[] pos2DofValues) {
+        ApproximatedObjectiveFunction.Approximator.Addable approximator = getPairApproximator(pos1, rc1, pos2, rc2);
+        if (approximator == null) {
+            return super.evalFinalPairEnergy(mol, efunc, pos1, rc1, pos1DofValues, pos2, rc2, pos2DofValues);
+        }
+        double[] pairDofs = concat(pos1DofValues, pos2DofValues);
+        if (approximator.numDofs() != pairDofs.length) {
+            if (fallbackToForcefield) {
+                return super.evalFinalPairEnergy(mol, efunc, pos1, rc1, pos1DofValues, pos2, rc2, pos2DofValues);
+            }
+            throw new IllegalStateException(String.format(
+                    "Final pair approximator DOF mismatch at (%d,%d)-(%d,%d): expected %d, got %d",
+                    pos1, rc1, pos2, rc2, approximator.numDofs(), pairDofs.length
+            ));
+        }
+        return approximator.getValue(DoubleFactory1D.dense.make(pairDofs));
+    }
+
     private double fallbackOneBody(ParametricMolecule mol, ResidueForcefieldEnergy efunc,
                                    int pos, int rc, int gridState, double[] posDofValues,
                                    double erefOffset) {
@@ -143,4 +183,3 @@ public class ApproximatedGridDPMinimizer extends GridDPMinimizer {
         return out;
     }
 }
-

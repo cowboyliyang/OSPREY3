@@ -84,6 +84,52 @@ public class MLPApproximatedGridDPMinimizer extends GridDPMinimizer {
         return model.predict(in);
     }
 
+    @Override
+    protected double evalFinalOneBodyEnergy(ParametricMolecule mol, ResidueForcefieldEnergy efunc,
+                                            int pos, int rc, double[] posDofValues, double erefOffset) {
+        MLPEnergyModel model = surrogate == null ? null : surrogate.getOneBody(pos, rc);
+        if (model == null) {
+            return super.evalFinalOneBodyEnergy(mol, efunc, pos, rc, posDofValues, erefOffset);
+        }
+        if (model.numInputs() != posDofValues.length) {
+            if (fallbackToForcefield) {
+                return super.evalFinalOneBodyEnergy(mol, efunc, pos, rc, posDofValues, erefOffset);
+            }
+            throw new IllegalStateException(String.format(
+                    "MLP final one-body input mismatch at pos=%d rc=%d: model=%d dofs=%d",
+                    pos, rc, model.numInputs(), posDofValues.length
+            ));
+        }
+        return model.predict(posDofValues) + erefOffset;
+    }
+
+    @Override
+    protected double evalFinalPairEnergy(ParametricMolecule mol, ResidueForcefieldEnergy efunc,
+                                         int pos1, int rc1, double[] pos1DofValues,
+                                         int pos2, int rc2, double[] pos2DofValues) {
+        boolean swap = pos1 > pos2;
+        int aPos = swap ? pos2 : pos1;
+        int aRc = swap ? rc2 : rc1;
+        int bPos = swap ? pos1 : pos2;
+        int bRc = swap ? rc1 : rc2;
+
+        MLPEnergyModel model = surrogate == null ? null : surrogate.getPair(aPos, aRc, bPos, bRc);
+        if (model == null) {
+            return super.evalFinalPairEnergy(mol, efunc, pos1, rc1, pos1DofValues, pos2, rc2, pos2DofValues);
+        }
+        double[] in = swap ? concat(pos2DofValues, pos1DofValues) : concat(pos1DofValues, pos2DofValues);
+        if (model.numInputs() != in.length) {
+            if (fallbackToForcefield) {
+                return super.evalFinalPairEnergy(mol, efunc, pos1, rc1, pos1DofValues, pos2, rc2, pos2DofValues);
+            }
+            throw new IllegalStateException(String.format(
+                    "MLP final pair input mismatch at (%d,%d)-(%d,%d): model=%d dofs=%d",
+                    pos1, rc1, pos2, rc2, model.numInputs(), in.length
+            ));
+        }
+        return model.predict(in);
+    }
+
     private double fallbackOneBody(ParametricMolecule mol, ResidueForcefieldEnergy efunc,
                                    int pos, int rc, int gridState, double[] posDofValues,
                                    double erefOffset) {
@@ -103,4 +149,3 @@ public class MLPApproximatedGridDPMinimizer extends GridDPMinimizer {
         return out;
     }
 }
-
