@@ -304,7 +304,8 @@ public class ConfEnergyCalculator {
 		}
 
 		// Phase 2: Pass frag (RCTuple) to enable SubtreeDOFCache
-		return ecalc.calcEnergy(pmol, inters, approximator, frag);
+		// Phase 5: Pass confSpace to enable PartialStartCache
+		return ecalc.calcEnergy(pmol, inters, approximator, frag, confSpace);
 	}
 
 	/**

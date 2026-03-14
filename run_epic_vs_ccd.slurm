@@ -1,0 +1,79 @@
+#!/bin/bash
+#SBATCH --job-name=epic_vs_ccd
+#SBATCH --output=epic_vs_ccd_%j.out
+#SBATCH --error=epic_vs_ccd_%j.err
+#SBATCH --time=2:00:00
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64G
+#SBATCH --nodes=1
+#SBATCH --partition=grisman
+#SBATCH --account=grisman
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=lz280@duke.edu
+
+echo "=============================================="
+echo "EPIC vs CCD Benchmark (3 residues, no SAPE)"
+echo "=============================================="
+echo "Job ID: $SLURM_JOB_ID"
+echo "Node: $SLURM_NODELIST"
+echo "CPUs: $SLURM_CPUS_PER_TASK"
+echo "Memory: $SLURM_MEM_PER_NODE"
+echo "Start time: $(date)"
+echo "=============================================="
+
+cd /home/users/lz280/IdeaProjects/OSPREY3
+
+# Clean Gradle locks and daemons
+echo ""
+echo "Cleaning Gradle locks and daemons..."
+./gradlew --stop 2>/dev/null || true
+pkill -u $USER -f "GradleDaemon" 2>/dev/null || true
+rm -rf ~/.gradle/daemon/* 2>/dev/null || true
+find .gradle -name "*.lock" -delete 2>/dev/null || true
+
+# Compile
+echo ""
+echo "Compiling..."
+./gradlew compileJava compileTestJava --no-daemon 2>&1
+if [ $? -ne 0 ]; then
+    echo "COMPILATION FAILED"
+    exit 1
+fi
+echo "Compilation successful."
+
+# Run benchmark
+echo ""
+echo "=========================================="
+echo "Running benchmarkEPICvsCCD_3res"
+echo "=========================================="
+echo ""
+./gradlew test \
+    --tests "edu.duke.cs.osprey.minimization.BenchmarkEPICvsCCD.benchmarkEPICvsCCD_3res" \
+    --no-daemon \
+    -Dorg.gradle.jvmargs="-Xmx48g" \
+    --info 2>&1 | grep -v "^$" | grep -v "^w:" | grep -v "^>" | grep -v "^Note:" | grep -v "^warning:" | grep -v "Deprecated"
+
+# Extract results from XML report
+echo ""
+echo "=========================================="
+echo "Results from XML report:"
+echo "=========================================="
+XML=build/test-results/test/TEST-edu.duke.cs.osprey.minimization.BenchmarkEPICvsCCD.xml
+if [ -f "$XML" ]; then
+    python3 -c "
+import xml.etree.ElementTree as ET
+tree = ET.parse('$XML')
+root = tree.getroot()
+for so in root.iter('system-out'):
+    if so.text:
+        print(so.text)
+" 2>/dev/null || grep -oP '(?<=<!\[CDATA\[)[\s\S]*?(?=\]\]>)' "$XML"
+else
+    echo "No XML report found"
+fi
+
+echo ""
+echo "=============================================="
+echo "End time: $(date)"
+echo "=============================================="

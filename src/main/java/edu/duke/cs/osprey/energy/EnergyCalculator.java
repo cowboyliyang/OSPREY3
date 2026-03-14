@@ -42,6 +42,8 @@ import edu.duke.cs.osprey.confspace.MultiStateConfSpace;
 import edu.duke.cs.osprey.confspace.ParametricMolecule;
 import edu.duke.cs.osprey.confspace.RCTuple;
 import edu.duke.cs.osprey.confspace.SimpleConfSpace;
+import edu.duke.cs.osprey.ematrix.PartialStartCache;
+import edu.duke.cs.osprey.ematrix.PartialStartIntegration;
 import edu.duke.cs.osprey.ematrix.MinimizationCache;
 import edu.duke.cs.osprey.confspace.SimpleConfSpace.DofTypes;
 import edu.duke.cs.osprey.energy.approximation.ApproximatedObjectiveFunction;
@@ -645,7 +647,7 @@ public class EnergyCalculator implements AutoCleanable {
 	 * @return The calculated energy and the associated molecule pose
 	 */
 	public EnergiedParametricMolecule calcEnergy(ParametricMolecule pmol, ResidueInteractions inters, RCTuple conf) {
-		return calcEnergy(pmol, inters, null, conf);
+		return calcEnergy(pmol, inters, null, conf, null);
 	}
 
 	/**
@@ -659,6 +661,20 @@ public class EnergyCalculator implements AutoCleanable {
 	 * @return The calculated energy and the associated molecule pose
 	 */
 	public EnergiedParametricMolecule calcEnergy(ParametricMolecule pmol, ResidueInteractions inters, ResidueInteractionsApproximator approximator, RCTuple conf) {
+		return calcEnergy(pmol, inters, approximator, conf, null);
+	}
+
+	/**
+	 * Calculate the energy of a molecule with Phase 5 Partial Start Cache support.
+	 *
+	 * @param pmol The molecule
+	 * @param inters Residue interactions for the energy function
+	 * @param approximator An approximator to compute approximations to the energy function for certain residue interactions
+	 * @param conf The conformation (for Phase 2 DOF caching), can be null
+	 * @param confSpace The conformation space (for Phase 5 Partial Start Cache), can be null
+	 * @return The calculated energy and the associated molecule pose
+	 */
+	public EnergiedParametricMolecule calcEnergy(ParametricMolecule pmol, ResidueInteractions inters, ResidueInteractionsApproximator approximator, RCTuple conf, SimpleConfSpace confSpace) {
 		
 		// short circuit: no inters, no energy!
 		if (inters.size() <= 0) {
@@ -741,6 +757,22 @@ public class EnergyCalculator implements AutoCleanable {
 						System.out.flush();
 					}
 
+					// Phase 5: Try to get warm start from Partial Start Cache
+					if (PartialStartIntegration.ENABLE_PARTIALSTART_CACHE && confSpace != null && conf != null && conf.size() == 7) {
+						PartialStartCache.WarmStartResult wsResult =
+							PartialStartIntegration.getWarmStartWithInfo(confSpace, pmol, conf, x);
+
+						if (wsResult != null) {
+							// Set warm start DOF values
+							for (int i = 0; i < wsResult.dofValues.length && i < x.size(); i++) {
+								x.set(i, wsResult.dofValues[i]);
+							}
+
+							// Pass unmatched DOF indices to minimizer for priority optimization
+							SimpleCCDMinimizer.unmatchedDOFIndices.set(wsResult.unmatchedDOFIndices);
+						}
+					}
+
 					// Phase 2: Wrap with CachedMinimizer if enabled (pass ObjectiveFunction for TRUE subtree caching)
 					Minimizer actualMinimizer = wrapMinimizerIfNeeded(minimizer, conf, f);
 
@@ -757,6 +789,9 @@ public class EnergyCalculator implements AutoCleanable {
 						// Phase 2: A* search (cached) - timing handled in SubtreeDOFCache
 						result = actualMinimizer.minimizeFrom(x);
 					}
+
+					// Clean up ThreadLocal (just in case minimizer didn't clean up)
+					SimpleCCDMinimizer.unmatchedDOFIndices.remove();
 
 					// did we fall into an infinite energy well?
 					if (isInfiniteWell(result.energy)) {
@@ -782,6 +817,11 @@ public class EnergyCalculator implements AutoCleanable {
 						}
 
 						// we got out of the well, yay!
+					}
+
+					// Phase 5: Cache the minimization result for future warm starts
+					if (PartialStartIntegration.ENABLE_PARTIALSTART_CACHE && confSpace != null && conf != null && conf.size() == 7) {
+						PartialStartIntegration.cacheResult(confSpace, pmol, conf, result.dofValues);
 					}
 
 					return new EnergiedParametricMolecule(pmol, inters, result.dofValues, result.energy);

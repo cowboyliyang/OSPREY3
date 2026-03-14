@@ -269,8 +269,12 @@ public class GradientDescentMARKStarPfunc implements PartitionFunction.WithConfD
 
 			if (node.getLevel() < rcs.getNumPos()) {
 				MARKStarNode nextNode = drillDown(newNodes, curNode, node);
-				newNodes.remove(nextNode);
-				drillQueue.add(nextNode);
+				// Handle case where all children were pruned (bestChild is null)
+				if (nextNode != null) {
+					newNodes.remove(nextNode);
+					drillQueue.add(nextNode);
+				}
+				// If nextNode is null, all children were pruned - skip this node
 			}
 			else {
 				newNodes.add(curNode);

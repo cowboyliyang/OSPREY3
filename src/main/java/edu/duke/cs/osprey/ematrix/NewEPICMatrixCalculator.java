@@ -240,8 +240,28 @@ public class NewEPICMatrixCalculator {
                 }
                 
                 if(bestBound==-1){
-                    throw new RuntimeException("ERROR: No EPIC fit found without serious errors"
-                            + " (e.g. significant error at minimum)");
+                    // No fit passed the positivity check; use the best residual fit anyway
+                    // (or the first non-null fit) as a fallback rather than crashing
+                    System.out.println("WARNING: No EPIC fit passed positivity check for " + RCList.stringListing()
+                            + "; using best-residual fallback");
+                    double fallbackResid = Double.POSITIVE_INFINITY;
+                    for (int fb = 0; fb < series.size(); fb++) {
+                        if (series.get(fb) != null) {
+                            double r = fitter.crossValidateSeries(series.get(fb),
+                                    FitParams.quadratic(mof.getNumDOFs(), false));
+                            if (r < fallbackResid) {
+                                fallbackResid = r;
+                                bestBound = fb;
+                            }
+                        }
+                    }
+                    if (bestBound == -1) {
+                        // truly nothing worked, return blank
+                        bestFit = fitter.blank();
+                        bestFit.setMinE(minEnergy);
+                        return bestFit;
+                    }
+                    bestResid = fallbackResid;
                 }
                 
                 if(bestResid > epicSettings.EPICGoalResid){

@@ -606,7 +606,7 @@ public class LUTE {
 
 			// sort them by strongest interactions with pos1
 			final int fpos1 = pos1;
-			positions.sort(Comparator.comparing((Integer pos2) -> topPositionInteractions.get(fpos1, pos2)).reversed());
+			positions.sort(Comparator.comparing((Integer pos2) -> strongestInteractions.get(fpos1, pos2)).reversed());
 
 			// pick the top k
 			for (int i=0; i<numPairsPerPosition; i++) {

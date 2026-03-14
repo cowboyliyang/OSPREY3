@@ -63,7 +63,7 @@ public class MARKStarBoundFastQueues extends MARKStarBound {
         this.internalQueue = new PriorityQueue<>();
     }
     protected void tightenBoundInPhases() {
-        System.out.println(String.format("Current overall error bound: %12.10f, spread of [%12.6e, %12.6e]",epsilonBound, rootNode.getLowerBound(), rootNode.getUpperBound()));
+        // System.out.println(String.format("Current overall error bound: %12.10f, spread of [%12.6e, %12.6e]",epsilonBound, rootNode.getLowerBound(), rootNode.getUpperBound()));
         List<MARKStarNode> internalNodes = new ArrayList<>();
         List<MARKStarNode> leafNodes = new ArrayList<>();
         List<MARKStarNode> newNodes = Collections.synchronizedList(new ArrayList<>());
@@ -82,10 +82,11 @@ public class MARKStarBoundFastQueues extends MARKStarBound {
         debugPrint(String.format("After corrections, bounds are now [%12.6e,%12.6e]",rootNode.getLowerBound(),rootNode.getUpperBound()));
         internalZ = ZSums[0];// MathTools.bigDivide(ZSums[0], new BigDecimal(Math.max(1,internalTimeAverage*internalNodes.size())), PartitionFunction.decimalPrecision);
         leafZ = ZSums[1]; //MathTools.bigDivide(ZSums[1], new BigDecimal(Math.max(1,leafTimeAverage)), PartitionFunction.decimalPrecision);
-        System.out.println(String.format("Z Comparison: %12.6e, %12.6e", internalZ, leafZ));
+        // System.out.println(String.format("Z Comparison: %12.6e, %12.6e", internalZ, leafZ));
+        double epsilonBeforePhase = epsilonBound;
         if(MathTools.isLessThan(internalZ, leafZ)) {
             numNodes = leafNodes.size();
-            System.out.println("Processing "+numNodes+" leaf nodes...");
+            // System.out.println("Processing "+numNodes+" leaf nodes...");
             leafTime.reset();
             leafTime.start();
             for(MARKStarNode leafNode: leafNodes) {
@@ -96,14 +97,14 @@ public class MARKStarBoundFastQueues extends MARKStarBound {
             loopTasks.waitForFinish();
             leafTime.stop();
             leafTimeAverage = leafTime.getTimeS();
-            System.out.println("Processed "+numNodes+" leaves in "+leafTimeAverage+" seconds.");
+            // System.out.println("Processed "+numNodes+" leaves in "+leafTimeAverage+" seconds.");
             if(maxMinimizations < parallelism.numThreads)
                 maxMinimizations++;
             internalQueue.addAll(internalNodes);
         }
         else {
             numNodes = internalNodes.size();
-            System.out.println("Processing "+numNodes+" internal nodes...");
+            // System.out.println("Processing "+numNodes+" internal nodes...");
             internalTime.reset();
             internalTime.start();
             for (MARKStarNode internalNode : internalNodes) {
@@ -132,9 +133,30 @@ public class MARKStarBoundFastQueues extends MARKStarBound {
             numInternalNodesProcessed+=internalNodes.size();
             leafQueue.addAll(leafNodes);
         }
-        if (epsilonBound <= targetEpsilon)
+        // Record leaf vs internal statistics
+        if(MathTools.isLessThan(internalZ, leafZ)) {
+            totalLeafTime += leafTimeAverage;
+            totalLeafRounds++;
+        } else {
+            totalInternalTime += internalTimeSum;
+            totalInternalRounds++;
+        }
+        if (epsilonBound <= targetEpsilon) {
+            double epsilonReduction = Math.max(0, epsilonBeforePhase - epsilonBound);
+            if(MathTools.isLessThan(internalZ, leafZ)) {
+                totalLeafEpsilonReduction += epsilonReduction;
+            } else {
+                totalInternalEpsilonReduction += epsilonReduction;
+            }
             return;
+        }
         loopCleanup(newNodes, loopWatch, numNodes);
+        double epsilonReduction = Math.max(0, epsilonBeforePhase - epsilonBound);
+        if(MathTools.isLessThan(internalZ, leafZ)) {
+            totalLeafEpsilonReduction += epsilonReduction;
+        } else {
+            totalInternalEpsilonReduction += epsilonReduction;
+        }
     }
 
     @Override

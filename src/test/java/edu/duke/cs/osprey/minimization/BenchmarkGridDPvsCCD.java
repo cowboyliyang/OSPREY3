@@ -15,7 +15,11 @@ import edu.duke.cs.osprey.energy.ConfEnergyCalculator;
 import edu.duke.cs.osprey.energy.EnergyCalculator;
 import edu.duke.cs.osprey.energy.approximation.ConfSpaceSpecificSurrogateFactory;
 import edu.duke.cs.osprey.energy.approximation.MLPSurrogateMatrix;
+import edu.duke.cs.osprey.energy.approximation.TaskGlobalMLPSurrogate;
+import edu.duke.cs.osprey.energy.approximation.branch.GNNConfEnergyCalculator;
+import edu.duke.cs.osprey.energy.approximation.branch.GNNDataExporter;
 import edu.duke.cs.osprey.energy.forcefield.ForcefieldParams;
+import edu.duke.cs.osprey.lute.BranchResidualConfEnergyCalculator;
 import edu.duke.cs.osprey.markstar.framework.ApproximatedGridDPMinimizer;
 import edu.duke.cs.osprey.markstar.framework.GridDPMinimizer;
 import edu.duke.cs.osprey.markstar.framework.MLPApproximatedGridDPMinimizer;
@@ -44,7 +48,11 @@ import org.apache.commons.math3.optim.SimpleBounds;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.*;
 
 /**
@@ -64,29 +72,12 @@ public class BenchmarkGridDPvsCCD {
     public void benchmark1CC8() {
         long wallStart = System.nanoTime();
 
-        // 1. Build conf space: 1CC8, 20 flexible residues (2 mutable + 18 flexible)
+        // 1. Build conf space: 1CC8, 3 flexible residues
         ForcefieldParams ffparams = new ForcefieldParams();
         Strand strand = new Strand.Builder(PDBIO.readFile("examples/1CC8/1CC8.ss.pdb")).build();
         strand.flexibility.get("A39").setLibraryRotamers("ALA").setContinuous();
-        strand.flexibility.get("A43").setLibraryRotamers("ALA").setContinuous();
-        strand.flexibility.get("A33").setLibraryRotamers(Strand.WildType).setContinuous();
-        strand.flexibility.get("A34").setLibraryRotamers(Strand.WildType).setContinuous();
-        strand.flexibility.get("A35").setLibraryRotamers(Strand.WildType).setContinuous();
-        strand.flexibility.get("A36").setLibraryRotamers(Strand.WildType).setContinuous();
-        strand.flexibility.get("A37").setLibraryRotamers(Strand.WildType).setContinuous();
-        strand.flexibility.get("A38").setLibraryRotamers(Strand.WildType).setContinuous();
-        strand.flexibility.get("A40").setLibraryRotamers(Strand.WildType).setContinuous();
         strand.flexibility.get("A41").setLibraryRotamers(Strand.WildType).setContinuous();
-        strand.flexibility.get("A42").setLibraryRotamers(Strand.WildType).setContinuous();
-        strand.flexibility.get("A44").setLibraryRotamers(Strand.WildType).setContinuous();
-        strand.flexibility.get("A45").setLibraryRotamers(Strand.WildType).setContinuous();
-        strand.flexibility.get("A46").setLibraryRotamers(Strand.WildType).setContinuous();
-        strand.flexibility.get("A47").setLibraryRotamers(Strand.WildType).setContinuous();
-        strand.flexibility.get("A48").setLibraryRotamers(Strand.WildType).setContinuous();
-        strand.flexibility.get("A49").setLibraryRotamers(Strand.WildType).setContinuous();
-        strand.flexibility.get("A50").setLibraryRotamers(Strand.WildType).setContinuous();
-        strand.flexibility.get("A51").setLibraryRotamers(Strand.WildType).setContinuous();
-        strand.flexibility.get("A52").setLibraryRotamers(Strand.WildType).setContinuous();
+        strand.flexibility.get("A43").setLibraryRotamers("ALA").setContinuous();
         SimpleConfSpace confSpace = new SimpleConfSpace.Builder().addStrand(strand).build();
 
         System.out.println("Conf space: " + confSpace.positions.size() + " positions");
@@ -157,6 +148,8 @@ public class BenchmarkGridDPvsCCD {
         SurrogateRunConfig surrogateCfg = SurrogateRunConfig.fromSystemProperties();
         ConfEnergyCalculator surrogateConfEcalc = null;
         MLPSurrogateMatrix mlpSurrogate = null;
+        TaskGlobalMLPSurrogate globalMLPSurrogate = null;
+        BranchResidualConfEnergyCalculator branchResidualConfEcalc = null;
         if (surrogateCfg.enabled) {
             if (surrogateCfg.modelType == SurrogateModelType.Quadratic) {
                 surrogateConfEcalc = ConfSpaceSpecificSurrogateFactory.withTaskSpecificApproximator(
@@ -167,30 +160,85 @@ public class BenchmarkGridDPvsCCD {
                         surrogateCfg.errorBudget
                 );
             } else if (surrogateCfg.modelType == SurrogateModelType.MLP) {
-                mlpSurrogate = ConfSpaceSpecificSurrogateFactory.loadOrTrainTaskSpecificMLPSurrogate(
+                if (surrogateCfg.mlpSingleTaskModel) {
+                    globalMLPSurrogate = ConfSpaceSpecificSurrogateFactory.loadOrTrainTaskSpecificGlobalMLPSurrogate(
+                            confEcalcMinimized,
+                            surrogateCfg.cacheRoot,
+                            surrogateCfg.taskTag,
+                            surrogateCfg.mlpGlobalNumTuples,
+                            surrogateCfg.mlpGlobalSamplesPerTuple,
+                            surrogateCfg.mlpHidden1,
+                            surrogateCfg.mlpHidden2,
+                            surrogateCfg.mlpEpochs,
+                            surrogateCfg.mlpBatchSize,
+                            surrogateCfg.mlpLearningRate
+                    );
+                } else {
+                    mlpSurrogate = ConfSpaceSpecificSurrogateFactory.loadOrTrainTaskSpecificMLPSurrogate(
+                            confEcalcMinimized,
+                            surrogateCfg.cacheRoot,
+                            surrogateCfg.taskTag,
+                            surrogateCfg.samplesPerParam,
+                            surrogateCfg.mlpMinSamplesPerModel,
+                            surrogateCfg.mlpMaxSamplesPerModel,
+                            surrogateCfg.mlpHidden1,
+                            surrogateCfg.mlpHidden2,
+                            surrogateCfg.mlpEpochs,
+                            surrogateCfg.mlpBatchSize,
+                            surrogateCfg.mlpLearningRate
+                    );
+                }
+            } else if (surrogateCfg.modelType == SurrogateModelType.BranchResidual) {
+                ConfSpaceSpecificSurrogateFactory.BranchResidualRidgeConfig branchCfg =
+                        new ConfSpaceSpecificSurrogateFactory.BranchResidualRidgeConfig();
+                branchCfg.cacheRoot = surrogateCfg.cacheRoot;
+                branchCfg.taskTag = surrogateCfg.taskTag;
+                branchCfg.forceRetrain = surrogateCfg.forceRetrain;
+                branchCfg.featureHashDim = surrogateCfg.branchResidualFeatureHashDim;
+                branchCfg.samplerMode = surrogateCfg.branchResidualSamplerMode;
+                branchCfg.pretrainGridDPSamples = surrogateCfg.branchResidualPretrainGridDPSamples;
+                branchCfg.finetuneCCDSamples = surrogateCfg.branchResidualFineTuneCCDSamples;
+                branchCfg.lambdaPre = surrogateCfg.branchResidualLambdaPre;
+                branchCfg.lambdaFine = surrogateCfg.branchResidualLambdaFine;
+                branchCfg.pretrainUseForcefieldFinalEval = surrogateCfg.branchResidualPretrainUseFinalEval;
+                branchCfg.gridSize = surrogateCfg.branchResidualGridSize;
+                branchCfg.gridThreads = surrogateCfg.branchResidualGridThreads;
+                branchCfg.lowEnergyPoolLimit = surrogateCfg.branchResidualLowEnergyPoolLimit;
+                branchCfg.randomSeed = surrogateCfg.branchResidualRandomSeed;
+                branchCfg.ridgeMaxIterations = surrogateCfg.branchResidualRidgeMaxIter;
+                branchCfg.ridgeTolerance = surrogateCfg.branchResidualRidgeTolerance;
+                branchResidualConfEcalc = ConfSpaceSpecificSurrogateFactory.loadOrTrainTaskSpecificBranchResidualRidge(
                         confEcalcMinimized,
-                        surrogateCfg.cacheRoot,
-                        surrogateCfg.taskTag,
-                        surrogateCfg.samplesPerParam,
-                        surrogateCfg.mlpHidden1,
-                        surrogateCfg.mlpHidden2,
-                        surrogateCfg.mlpEpochs,
-                        surrogateCfg.mlpBatchSize,
-                        surrogateCfg.mlpLearningRate
+                        ematMinimized,
+                        ig,
+                        rootEdge,
+                        ffparams,
+                        eref,
+                        branchCfg
                 );
             }
             System.out.println(String.format(
-                    "Surrogate enabled: type=%s, taskTag=%s, cache=%s, samplesPerParam=%d, errorBudget=%g, requireFull=%s, fallback=%s, mlpHidden=%dx%d, mlpEpochs=%d",
+                    "Surrogate enabled: type=%s, taskTag=%s, cache=%s, samplesPerParam=%d, mlpMode=%s, mlpMinSamples=%d, mlpMaxSamples=%d, mlpGlobalTuples=%d, mlpGlobalSamplesPerTuple=%d, errorBudget=%g, requireFull=%s, fallback=%s, mlpHidden=%dx%d, mlpEpochs=%d, branchEnabled=%s, branchSampler=%s, branchPre=%d, branchFine=%d, branchHash=%d",
                     surrogateCfg.modelType,
                     surrogateCfg.taskTag,
                     surrogateCfg.cacheRoot.getAbsolutePath(),
                     surrogateCfg.samplesPerParam,
+                    surrogateCfg.mlpSingleTaskModel ? "single-task-global" : "decomposed",
+                    surrogateCfg.mlpMinSamplesPerModel,
+                    surrogateCfg.mlpMaxSamplesPerModel,
+                    surrogateCfg.mlpGlobalNumTuples,
+                    surrogateCfg.mlpGlobalSamplesPerTuple,
                     surrogateCfg.errorBudget,
                     surrogateCfg.requireFullApproximation,
                     surrogateCfg.gridDPFallbackToForcefield,
                     surrogateCfg.mlpHidden1,
                     surrogateCfg.mlpHidden2,
-                    surrogateCfg.mlpEpochs
+                    surrogateCfg.mlpEpochs,
+                    surrogateCfg.branchResidualEnabled,
+                    surrogateCfg.branchResidualSamplerMode,
+                    surrogateCfg.branchResidualPretrainGridDPSamples,
+                    surrogateCfg.branchResidualFineTuneCCDSamples,
+                    surrogateCfg.branchResidualFeatureHashDim
             ));
         }
 
@@ -211,6 +259,11 @@ public class BenchmarkGridDPvsCCD {
             multiWarmForcefieldEnergies[i] = Double.NaN;
         }
         boolean compareMLPtoForcefield = surrogateCfg.enabled && surrogateCfg.modelType == SurrogateModelType.MLP;
+        boolean compareBranchResidualToForcefield = surrogateCfg.enabled
+                && surrogateCfg.modelType == SurrogateModelType.BranchResidual
+                && branchResidualConfEcalc != null;
+        double[] branchResidualPredEnergies = new double[n];
+        Arrays.fill(branchResidualPredEnergies, Double.NaN);
 
         // Compute rigid energies
         for (int i = 0; i < n; i++) {
@@ -228,10 +281,12 @@ public class BenchmarkGridDPvsCCD {
                 RCTuple tuple = new RCTuple(warmConf);
                 var obj = makeObjectiveFunction(
                         confSpace, tuple, confEcalcMinimized, surrogateConfEcalc, mlpSurrogate,
-                        surrogateCfg, ecalcContext
+                        surrogateCfg, ecalcContext, globalMLPSurrogate
                 );
                 obj.objective.getValue(obj.objective.getDOFsCenter());
                 obj.close();
+            } else if (compareBranchResidualToForcefield) {
+                branchResidualConfEcalc.calcEnergy(warmConf);
             } else {
                 confEcalcMinimized.calcEnergy(new RCTuple(warmConf));
             }
@@ -248,7 +303,7 @@ public class BenchmarkGridDPvsCCD {
             if (surrogateCfg.enabled && surrogateCfg.modelType == SurrogateModelType.MLP) {
                 ObjectiveWithCleanup obj = makeObjectiveFunction(
                         confSpace, tuple, confEcalcMinimized, surrogateConfEcalc, mlpSurrogate,
-                        surrogateCfg, ecalcContext
+                        surrogateCfg, ecalcContext, globalMLPSurrogate
                 );
                 SimpleCCDMinimizer ccd = new SimpleCCDMinimizer();
                 ccd.init(obj.objective);
@@ -261,6 +316,13 @@ public class BenchmarkGridDPvsCCD {
             }
         }
         long ccdTotalNs = System.nanoTime() - ccdTotalStart;
+
+        if (compareBranchResidualToForcefield) {
+            for (int i = 0; i < n; i++) {
+                int[] conf = scoredConfs.get(i).getAssignments();
+                branchResidualPredEnergies[i] = branchResidualConfEcalc.calcEnergy(conf);
+            }
+        }
 
         // ===== Method 1: Hybrid GridDP + CCD =====
         long hybridTotalStart = System.nanoTime();
@@ -279,7 +341,7 @@ public class BenchmarkGridDPvsCCD {
             }
             ObjectiveWithCleanup obj = makeObjectiveFunction(
                     confSpace, tuple, confEcalcMinimized, surrogateConfEcalc, mlpSurrogate,
-                    surrogateCfg, ecalcContext
+                    surrogateCfg, ecalcContext, globalMLPSurrogate
             );
             edu.duke.cs.osprey.minimization.ObjectiveFunction objFunc = obj.objective;
             SimpleCCDMinimizer ccd = new SimpleCCDMinimizer((context) -> new QuadraticLineSearcher());
@@ -359,7 +421,7 @@ public class BenchmarkGridDPvsCCD {
             for (int k = 0; k < nStarts; k++) {
                 objHolders[k] = makeObjectiveFunction(
                         confSpace, tuple, confEcalcMinimized, surrogateConfEcalc, mlpSurrogate,
-                        surrogateCfg, ecalcContext
+                        surrogateCfg, ecalcContext, globalMLPSurrogate
                 );
                 objFuncs[k] = objHolders[k].objective;
                 ccds[k] = new SimpleCCDMinimizer((context) -> new QuadraticLineSearcher());
@@ -424,6 +486,10 @@ public class BenchmarkGridDPvsCCD {
             System.out.println(String.format("%-5s| %11s | %11s | %11s | %11s | %8s | %8s | %8s | %8s | %8s | %8s | %8s",
                     "Conf", "CCD_E", "GridDP_E", "Hybrid_E", "MWarm_E", "CCD_drop", "GDP_rec%", "Hyb_rec%", "MW_rec%",
                     "GDP_dFF", "Hyb_dFF", "MW_dFF"));
+        } else if (compareBranchResidualToForcefield) {
+            System.out.println(String.format("%-5s| %11s | %11s | %11s | %11s | %11s | %8s | %8s | %8s | %8s",
+                    "Conf", "CCD_E", "GridDP_E", "Hybrid_E", "MWarm_E", "Branch_E",
+                    "CCD_drop", "GDP_rec%", "Hyb_rec%", "MW_rec%"));
         } else {
             System.out.println(String.format("%-5s| %11s | %11s | %11s | %11s | %8s | %8s | %8s | %8s",
                     "Conf", "CCD_E", "GridDP_E", "Hybrid_E", "MWarm_E", "CCD_drop", "GDP_rec%", "Hyb_rec%", "MW_rec%"));
@@ -433,6 +499,7 @@ public class BenchmarkGridDPvsCCD {
         double sumGapGridDP = 0, sumGapHybrid = 0, sumGapMultiWarm = 0;
         double sumRecGridDP = 0, sumRecHybrid = 0, sumRecMultiWarm = 0;
         double sumAbsGDPdFF = 0, sumAbsHybdFF = 0, sumAbsMWdFF = 0;
+        double sumAbsBranchdFF = 0;
         for (int i = 0; i < n; i++) {
             double ccdDrop = rigidEnergies[i] - ccdEnergies[i];
             double gdpDrop = rigidEnergies[i] - gridDPEnergies[i];
@@ -458,6 +525,14 @@ public class BenchmarkGridDPvsCCD {
                         i, ccdEnergies[i], gridDPEnergies[i], hybridEnergies[i], multiWarmEnergies[i],
                         ccdDrop, gdpRec, hybRec, mwRec, gdpdFF, hybdFF, mwdFF
                 ));
+            } else if (compareBranchResidualToForcefield) {
+                double branchE = branchResidualPredEnergies[i];
+                sumAbsBranchdFF += Math.abs(branchE - ccdEnergies[i]);
+                System.out.println(String.format(
+                        "%-5d| %11.4f | %11.4f | %11.4f | %11.4f | %11.4f | %8.4f | %7.1f%% | %7.1f%% | %7.1f%%",
+                        i, ccdEnergies[i], gridDPEnergies[i], hybridEnergies[i], multiWarmEnergies[i], branchE,
+                        ccdDrop, gdpRec, hybRec, mwRec
+                ));
             } else {
                 System.out.println(String.format("%-5d| %11.4f | %11.4f | %11.4f | %11.4f | %8.4f | %7.1f%% | %7.1f%% | %7.1f%%",
                         i, ccdEnergies[i], gridDPEnergies[i], hybridEnergies[i], multiWarmEnergies[i],
@@ -477,6 +552,8 @@ public class BenchmarkGridDPvsCCD {
             System.out.println(String.format("  Avg |GridDP - FF|:    %.4f kcal/mol", sumAbsGDPdFF / n));
             System.out.println(String.format("  Avg |Hybrid - FF|:    %.4f kcal/mol", sumAbsHybdFF / n));
             System.out.println(String.format("  Avg |MWarm - FF|:     %.4f kcal/mol", sumAbsMWdFF / n));
+        } else if (compareBranchResidualToForcefield) {
+            System.out.println(String.format("  Avg |BranchPred - FF|: %.4f kcal/mol", sumAbsBranchdFF / n));
         }
 
         System.out.println(String.format("\nTiming Summary (%d confs, %d cores, top-%d starts):", n, numCores, multiN));
@@ -495,6 +572,255 @@ public class BenchmarkGridDPvsCCD {
 
         minimizingEcalc.close();
         rigidEcalc.close();
+    }
+
+    @Test
+    public void benchmark1CC8CCDOnlyMLPAccuracy() {
+        long wallStart = System.nanoTime();
+
+        ForcefieldParams ffparams = new ForcefieldParams();
+        Strand strand = new Strand.Builder(PDBIO.readFile("examples/1CC8/1CC8.ss.pdb")).build();
+        strand.flexibility.get("A39").setLibraryRotamers("ALA").setContinuous();
+        strand.flexibility.get("A41").setLibraryRotamers(Strand.WildType).setContinuous();
+        strand.flexibility.get("A43").setLibraryRotamers("ALA").setContinuous();
+        SimpleConfSpace confSpace = new SimpleConfSpace.Builder().addStrand(strand).build();
+
+        SurrogateRunConfig surrogateCfg = SurrogateRunConfig.fromSystemProperties();
+        boolean supportsThisBenchmark = surrogateCfg.modelType == SurrogateModelType.MLP
+                || surrogateCfg.modelType == SurrogateModelType.BranchResidual;
+        if (!surrogateCfg.enabled || !supportsThisBenchmark) {
+            throw new IllegalStateException(
+                    "benchmark1CC8CCDOnlyMLPAccuracy requires -Dosprey.bench.surrogate.enabled=true and -Dosprey.bench.surrogate.type=mlp|branchResidual"
+            );
+        }
+
+        int numConfs = Integer.parseInt(System.getProperty(SURROGATE_PROP_PREFIX + "ccdOnly.numConfs", "15"));
+        int ccdMaxIter = Integer.parseInt(System.getProperty(SURROGATE_PROP_PREFIX + "ccdOnly.maxIter", "30"));
+        int topK = Integer.parseInt(System.getProperty(SURROGATE_PROP_PREFIX + "ccdOnly.topK", "5"));
+
+        System.out.println("=== CCD-only surrogate accuracy benchmark ===");
+        System.out.println("Model type: " + surrogateCfg.modelType);
+        System.out.println("Conf space positions: " + confSpace.positions.size());
+        System.out.println("numConfs=" + numConfs + ", ccdMaxIter=" + ccdMaxIter + ", topK=" + topK);
+
+        Parallelism parallelism = Parallelism.makeCpu(1);
+        EnergyCalculator minimizingEcalc = new EnergyCalculator.Builder(confSpace, ffparams)
+                .setParallelism(parallelism)
+                .build();
+
+        SimpleReferenceEnergies eref = new SimplerEnergyMatrixCalculator.Builder(confSpace, minimizingEcalc)
+                .build()
+                .calcReferenceEnergies();
+        ConfEnergyCalculator confEcalcMinimized = new ConfEnergyCalculator.Builder(confSpace, minimizingEcalc)
+                .setReferenceEnergies(eref)
+                .build();
+
+        System.out.println("Computing energy matrix for A*...");
+        EnergyMatrix ematMinimized = new SimplerEnergyMatrixCalculator.Builder(confEcalcMinimized)
+                .build()
+                .calcEnergyMatrix();
+
+        EnergyCalculator rigidEcalc = null;
+        EnergyMatrix ematRigid = null;
+        if (surrogateCfg.modelType == SurrogateModelType.BranchResidual) {
+            rigidEcalc = new EnergyCalculator.Builder(confSpace, ffparams)
+                    .setParallelism(parallelism)
+                    .setIsMinimizing(false)
+                    .build();
+            ConfEnergyCalculator confEcalcRigid = new ConfEnergyCalculator(confEcalcMinimized, rigidEcalc);
+            ematRigid = new SimplerEnergyMatrixCalculator.Builder(confEcalcRigid)
+                    .build()
+                    .calcEnergyMatrix();
+        }
+
+        RCs rcs = new RCs(confSpace);
+        ConfAStarTree astar = new ConfAStarTree.Builder(ematMinimized, rcs)
+                .setTraditional()
+                .build();
+        List<ScoredConf> scoredConfs = new ArrayList<>();
+        for (int i = 0; i < numConfs; i++) {
+            ScoredConf sc = astar.nextConf();
+            if (sc == null) break;
+            scoredConfs.add(sc);
+        }
+        System.out.println("Got " + scoredConfs.size() + " conformations.");
+
+        MLPSurrogateMatrix mlpSurrogate = null;
+        TaskGlobalMLPSurrogate globalMLPSurrogate = null;
+        BranchResidualConfEnergyCalculator branchResidualConfEcalc = null;
+        if (surrogateCfg.modelType == SurrogateModelType.MLP) {
+            if (surrogateCfg.mlpSingleTaskModel) {
+                globalMLPSurrogate = ConfSpaceSpecificSurrogateFactory.loadOrTrainTaskSpecificGlobalMLPSurrogate(
+                        confEcalcMinimized,
+                        surrogateCfg.cacheRoot,
+                        surrogateCfg.taskTag,
+                        surrogateCfg.mlpGlobalNumTuples,
+                        surrogateCfg.mlpGlobalSamplesPerTuple,
+                        surrogateCfg.mlpHidden1,
+                        surrogateCfg.mlpHidden2,
+                        surrogateCfg.mlpEpochs,
+                        surrogateCfg.mlpBatchSize,
+                        surrogateCfg.mlpLearningRate
+                );
+                System.out.println(String.format(
+                        "Global MLP surrogate loaded/trained: taskTag=%s cache=%s tuples=%d samplesPerTuple=%d hidden=%dx%d epochs=%d",
+                        surrogateCfg.taskTag,
+                        surrogateCfg.cacheRoot.getAbsolutePath(),
+                        surrogateCfg.mlpGlobalNumTuples,
+                        surrogateCfg.mlpGlobalSamplesPerTuple,
+                        surrogateCfg.mlpHidden1,
+                        surrogateCfg.mlpHidden2,
+                        surrogateCfg.mlpEpochs
+                ));
+            } else {
+                mlpSurrogate = ConfSpaceSpecificSurrogateFactory.loadOrTrainTaskSpecificMLPSurrogate(
+                        confEcalcMinimized,
+                        surrogateCfg.cacheRoot,
+                        surrogateCfg.taskTag,
+                        surrogateCfg.samplesPerParam,
+                        surrogateCfg.mlpMinSamplesPerModel,
+                        surrogateCfg.mlpMaxSamplesPerModel,
+                        surrogateCfg.mlpHidden1,
+                        surrogateCfg.mlpHidden2,
+                        surrogateCfg.mlpEpochs,
+                        surrogateCfg.mlpBatchSize,
+                        surrogateCfg.mlpLearningRate
+                );
+                System.out.println(String.format(
+                        "MLP surrogate loaded/trained: taskTag=%s cache=%s samplesPerParam=%d minSamples=%d maxSamples=%d hidden=%dx%d epochs=%d",
+                        surrogateCfg.taskTag,
+                        surrogateCfg.cacheRoot.getAbsolutePath(),
+                        surrogateCfg.samplesPerParam,
+                        surrogateCfg.mlpMinSamplesPerModel,
+                        surrogateCfg.mlpMaxSamplesPerModel,
+                        surrogateCfg.mlpHidden1,
+                        surrogateCfg.mlpHidden2,
+                        surrogateCfg.mlpEpochs
+                ));
+            }
+        } else {
+            InteractionGraph ig = InteractionGraph.buildWithDualCutoff(
+                    confSpace, ematRigid, ematMinimized, rcs, DIST_CUTOFF, ENERGY_CUTOFF
+            );
+            BranchDecomposition bd = new BranchDecomposition(ig);
+            bd.compute();
+            RootedTreeNode rootedRoot = bd.rootBranchTree(rcs);
+            RootedTreeEdge.postOrderCompLlambda(rootedRoot);
+            RootedTreeEdge rootEdge = rootedRoot.getLeftChild().getChildOfEdge();
+            rootEdge.compactTree();
+
+            ConfSpaceSpecificSurrogateFactory.BranchResidualRidgeConfig branchCfg =
+                    new ConfSpaceSpecificSurrogateFactory.BranchResidualRidgeConfig();
+            branchCfg.cacheRoot = surrogateCfg.cacheRoot;
+            branchCfg.taskTag = surrogateCfg.taskTag;
+            branchCfg.forceRetrain = surrogateCfg.forceRetrain;
+            branchCfg.featureHashDim = surrogateCfg.branchResidualFeatureHashDim;
+            branchCfg.samplerMode = surrogateCfg.branchResidualSamplerMode;
+            branchCfg.pretrainGridDPSamples = surrogateCfg.branchResidualPretrainGridDPSamples;
+            branchCfg.finetuneCCDSamples = surrogateCfg.branchResidualFineTuneCCDSamples;
+            branchCfg.lambdaPre = surrogateCfg.branchResidualLambdaPre;
+            branchCfg.lambdaFine = surrogateCfg.branchResidualLambdaFine;
+            branchCfg.pretrainUseForcefieldFinalEval = surrogateCfg.branchResidualPretrainUseFinalEval;
+            branchCfg.gridSize = surrogateCfg.branchResidualGridSize;
+            branchCfg.gridThreads = surrogateCfg.branchResidualGridThreads;
+            branchCfg.lowEnergyPoolLimit = surrogateCfg.branchResidualLowEnergyPoolLimit;
+            branchCfg.randomSeed = surrogateCfg.branchResidualRandomSeed;
+            branchCfg.ridgeMaxIterations = surrogateCfg.branchResidualRidgeMaxIter;
+            branchCfg.ridgeTolerance = surrogateCfg.branchResidualRidgeTolerance;
+
+            branchResidualConfEcalc = ConfSpaceSpecificSurrogateFactory.loadOrTrainTaskSpecificBranchResidualRidge(
+                    confEcalcMinimized,
+                    ematMinimized,
+                    ig,
+                    rootEdge,
+                    ffparams,
+                    eref,
+                    branchCfg
+            );
+            System.out.println(String.format(
+                    "BranchResidual surrogate loaded/trained: taskTag=%s cache=%s hashDim=%d pre=%d fine=%d",
+                    surrogateCfg.taskTag,
+                    surrogateCfg.cacheRoot.getAbsolutePath(),
+                    surrogateCfg.branchResidualFeatureHashDim,
+                    surrogateCfg.branchResidualPretrainGridDPSamples,
+                    surrogateCfg.branchResidualFineTuneCCDSamples
+            ));
+        }
+
+        EnergyCalculator.Type.Context ecalcContext = minimizingEcalc.context;
+
+        double[] predEnergies = new double[scoredConfs.size()];
+        double[] ffEnergies = new double[scoredConfs.size()];
+        double sumAbs = 0.0;
+        double sumSq = 0.0;
+        double sumBias = 0.0;
+        double maxAbs = 0.0;
+
+        String predHeader = surrogateCfg.modelType == SurrogateModelType.MLP ? "MLP_CCD_E" : "Branch_E";
+        System.out.println(String.format("%-5s| %11s | %11s | %11s | %8s",
+                "Conf", predHeader, "FF_final_E", "Delta", "AbsDelta"));
+        System.out.println("-".repeat(66));
+
+        for (int i = 0; i < scoredConfs.size(); i++) {
+            RCTuple tuple = new RCTuple(scoredConfs.get(i).getAssignments());
+            double predEnergy;
+            double ffEnergy;
+            if (surrogateCfg.modelType == SurrogateModelType.MLP) {
+                ObjectiveWithCleanup obj = makeObjectiveFunction(
+                        confSpace, tuple, confEcalcMinimized, null, mlpSurrogate,
+                        surrogateCfg, ecalcContext, globalMLPSurrogate
+                );
+                SimpleCCDMinimizer ccd = new SimpleCCDMinimizer();
+                ccd.init(obj.objective);
+                ccd.setMaxIterations(ccdMaxIter);
+                Minimizer.Result result = ccd.minimizeFromCenter();
+                predEnergy = result.energy;
+                ffEnergy = evaluateForcefieldEnergyAt(
+                        confSpace, confEcalcMinimized, ecalcContext, tuple, result.dofValues
+                );
+                ccd.close();
+                obj.close();
+            } else {
+                predEnergy = branchResidualConfEcalc.calcEnergy(scoredConfs.get(i).getAssignments());
+                ffEnergy = confEcalcMinimized.calcEnergy(tuple).energy;
+            }
+
+            double delta = predEnergy - ffEnergy;
+            double absDelta = Math.abs(delta);
+
+            predEnergies[i] = predEnergy;
+            ffEnergies[i] = ffEnergy;
+            sumAbs += absDelta;
+            sumSq += delta * delta;
+            sumBias += delta;
+            maxAbs = Math.max(maxAbs, absDelta);
+
+            System.out.println(String.format("%-5d| %11.4f | %11.4f | %11.4f | %8.4f",
+                    i, predEnergy, ffEnergy, delta, absDelta));
+        }
+
+        int n = scoredConfs.size();
+        double mae = sumAbs / n;
+        double rmse = Math.sqrt(sumSq / n);
+        double bias = sumBias / n;
+        int k = Math.max(1, Math.min(topK, n));
+        double recallAtK = topKRecall(predEnergies, ffEnergies, k);
+        double rankCorr = spearman(predEnergies, ffEnergies);
+
+        System.out.println("-".repeat(66));
+        System.out.println("Surrogate vs Forcefield final-eval error summary:");
+        System.out.println(String.format("  MAE:   %.6f kcal/mol", mae));
+        System.out.println(String.format("  RMSE:  %.6f kcal/mol", rmse));
+        System.out.println(String.format("  Bias:  %.6f kcal/mol", bias));
+        System.out.println(String.format("  Max|d| %.6f kcal/mol", maxAbs));
+        System.out.println(String.format("  Top-%d recall: %.2f%%", k, recallAtK * 100.0));
+        System.out.println(String.format("  Spearman rho: %.4f", rankCorr));
+        System.out.println(String.format("  Total wall-clock time: %.2f s", (System.nanoTime() - wallStart) / 1e9));
+
+        minimizingEcalc.close();
+        if (rigidEcalc != null) {
+            rigidEcalc.close();
+        }
     }
 
     @Test
@@ -2328,7 +2654,7 @@ public class BenchmarkGridDPvsCCD {
             ConfEnergyCalculator surrogateConfEcalc,
             MLPSurrogateMatrix mlpSurrogate
     ) {
-        if (!surrogateCfg.enabled) {
+        if (!surrogateCfg.enabled || surrogateCfg.modelType == SurrogateModelType.BranchResidual) {
             return new GridDPMinimizer(confSpace, ig, rootEdge, 2, ffparams, eref, true);
         }
         if (surrogateCfg.modelType == SurrogateModelType.Quadratic) {
@@ -2338,6 +2664,11 @@ public class BenchmarkGridDPvsCCD {
             );
         }
         if (surrogateCfg.modelType == SurrogateModelType.MLP) {
+            if (surrogateCfg.mlpSingleTaskModel) {
+                throw new IllegalStateException(
+                        "Global single-task MLP is not supported for GridDP decomposition yet; use CCD-only benchmark"
+                );
+            }
             return new MLPApproximatedGridDPMinimizer(
                     confSpace, ig, rootEdge, 2, ffparams, eref, true,
                     mlpSurrogate, surrogateCfg.gridDPFallbackToForcefield
@@ -2353,9 +2684,10 @@ public class BenchmarkGridDPvsCCD {
             ConfEnergyCalculator surrogateConfEcalc,
             MLPSurrogateMatrix mlpSurrogate,
             SurrogateRunConfig surrogateCfg,
-            EnergyCalculator.Type.Context ecalcContext
+            EnergyCalculator.Type.Context ecalcContext,
+            TaskGlobalMLPSurrogate globalMLPSurrogate
     ) {
-        if (!surrogateCfg.enabled) {
+        if (!surrogateCfg.enabled || surrogateCfg.modelType == SurrogateModelType.BranchResidual) {
             ParametricMolecule pmol = confSpace.makeMolecule(tuple);
             ResidueInteractions inters = confEcalcMinimized.makeFragInters(tuple);
             EnergyFunction efunc = ecalcContext.efuncs.make(inters, pmol.mol);
@@ -2370,6 +2702,17 @@ public class BenchmarkGridDPvsCCD {
             );
         }
         if (surrogateCfg.modelType == SurrogateModelType.MLP) {
+            if (surrogateCfg.mlpSingleTaskModel) {
+                if (globalMLPSurrogate == null) {
+                    throw new IllegalStateException("Global MLP surrogate is not available");
+                }
+                return new ObjectiveWithCleanup(
+                        ConfSpaceSpecificSurrogateFactory.makeGlobalMLPSurrogateObjective(
+                                confEcalcMinimized, globalMLPSurrogate, tuple
+                        ),
+                        null
+                );
+            }
             return new ObjectiveWithCleanup(
                     ConfSpaceSpecificSurrogateFactory.makeMLPSurrogateObjective(
                             confEcalcMinimized, mlpSurrogate, tuple, surrogateCfg.requireFullApproximation
@@ -2409,6 +2752,72 @@ public class BenchmarkGridDPvsCCD {
         );
     }
 
+    private double topKRecall(double[] pred, double[] truth, int k) {
+        int[] predOrder = argsortAscending(pred);
+        int[] truthOrder = argsortAscending(truth);
+
+        Set<Integer> truthTopK = new HashSet<>();
+        for (int i = 0; i < k; i++) {
+            truthTopK.add(truthOrder[i]);
+        }
+
+        int hit = 0;
+        for (int i = 0; i < k; i++) {
+            if (truthTopK.contains(predOrder[i])) {
+                hit++;
+            }
+        }
+        return (double) hit / k;
+    }
+
+    private double spearman(double[] x, double[] y) {
+        if (x.length != y.length || x.length == 0) {
+            return Double.NaN;
+        }
+
+        int n = x.length;
+        int[] rankX = rankAscending(x);
+        int[] rankY = rankAscending(y);
+
+        double mean = (n - 1) / 2.0;
+        double cov = 0.0;
+        double varX = 0.0;
+        double varY = 0.0;
+        for (int i = 0; i < n; i++) {
+            double dx = rankX[i] - mean;
+            double dy = rankY[i] - mean;
+            cov += dx * dy;
+            varX += dx * dx;
+            varY += dy * dy;
+        }
+        if (varX <= 0 || varY <= 0) {
+            return 0.0;
+        }
+        return cov / Math.sqrt(varX * varY);
+    }
+
+    private int[] rankAscending(double[] arr) {
+        int[] order = argsortAscending(arr);
+        int[] rank = new int[arr.length];
+        for (int i = 0; i < order.length; i++) {
+            rank[order[i]] = i;
+        }
+        return rank;
+    }
+
+    private int[] argsortAscending(double[] arr) {
+        Integer[] idx = new Integer[arr.length];
+        for (int i = 0; i < arr.length; i++) {
+            idx[i] = i;
+        }
+        Arrays.sort(idx, Comparator.comparingDouble(i -> arr[i]));
+        int[] out = new int[arr.length];
+        for (int i = 0; i < arr.length; i++) {
+            out[i] = idx[i];
+        }
+        return out;
+    }
+
     private static class ObjectiveWithCleanup {
         final edu.duke.cs.osprey.minimization.ObjectiveFunction objective;
         final EnergyFunction efunc;
@@ -2427,12 +2836,17 @@ public class BenchmarkGridDPvsCCD {
 
     private enum SurrogateModelType {
         Quadratic,
-        MLP;
+        MLP,
+        BranchResidual;
 
         static SurrogateModelType fromString(String s) {
             String normalized = s == null ? "" : s.trim().toLowerCase();
             if (normalized.equals("mlp")) {
                 return MLP;
+            }
+            if (normalized.equals("branchresidual") || normalized.equals("branch-residual")
+                    || normalized.equals("branch_ridge") || normalized.equals("branch")) {
+                return BranchResidual;
             }
             return Quadratic;
         }
@@ -2440,6 +2854,7 @@ public class BenchmarkGridDPvsCCD {
 
     private static class SurrogateRunConfig {
         final boolean enabled;
+        final boolean forceRetrain;
         final File cacheRoot;
         final String taskTag;
         final SurrogateModelType modelType;
@@ -2449,15 +2864,45 @@ public class BenchmarkGridDPvsCCD {
         final boolean gridDPFallbackToForcefield;
         final int mlpHidden1;
         final int mlpHidden2;
+        final boolean mlpSingleTaskModel;
+        final int mlpMinSamplesPerModel;
+        final int mlpMaxSamplesPerModel;
+        final int mlpGlobalNumTuples;
+        final int mlpGlobalSamplesPerTuple;
         final int mlpEpochs;
         final int mlpBatchSize;
         final double mlpLearningRate;
+        final boolean branchResidualEnabled;
+        final String branchResidualSamplerMode;
+        final int branchResidualPretrainGridDPSamples;
+        final int branchResidualFineTuneCCDSamples;
+        final double branchResidualLambdaPre;
+        final double branchResidualLambdaFine;
+        final int branchResidualFeatureHashDim;
+        final boolean branchResidualPretrainUseFinalEval;
+        final int branchResidualGridSize;
+        final int branchResidualGridThreads;
+        final int branchResidualLowEnergyPoolLimit;
+        final int branchResidualRandomSeed;
+        final int branchResidualRidgeMaxIter;
+        final double branchResidualRidgeTolerance;
 
-        private SurrogateRunConfig(boolean enabled, File cacheRoot, String taskTag, SurrogateModelType modelType, int samplesPerParam,
+        private SurrogateRunConfig(boolean enabled, boolean forceRetrain, File cacheRoot, String taskTag, SurrogateModelType modelType, int samplesPerParam,
                                    double errorBudget, boolean requireFullApproximation,
                                    boolean gridDPFallbackToForcefield,
-                                   int mlpHidden1, int mlpHidden2, int mlpEpochs, int mlpBatchSize, double mlpLearningRate) {
+                                   int mlpHidden1, int mlpHidden2, boolean mlpSingleTaskModel,
+                                   int mlpMinSamplesPerModel, int mlpMaxSamplesPerModel,
+                                   int mlpGlobalNumTuples, int mlpGlobalSamplesPerTuple,
+                                   int mlpEpochs, int mlpBatchSize, double mlpLearningRate,
+                                   boolean branchResidualEnabled, String branchResidualSamplerMode,
+                                   int branchResidualPretrainGridDPSamples, int branchResidualFineTuneCCDSamples,
+                                   double branchResidualLambdaPre, double branchResidualLambdaFine,
+                                   int branchResidualFeatureHashDim, boolean branchResidualPretrainUseFinalEval,
+                                   int branchResidualGridSize, int branchResidualGridThreads,
+                                   int branchResidualLowEnergyPoolLimit, int branchResidualRandomSeed,
+                                   int branchResidualRidgeMaxIter, double branchResidualRidgeTolerance) {
             this.enabled = enabled;
+            this.forceRetrain = forceRetrain;
             this.cacheRoot = cacheRoot;
             this.taskTag = taskTag;
             this.modelType = modelType;
@@ -2467,13 +2912,33 @@ public class BenchmarkGridDPvsCCD {
             this.gridDPFallbackToForcefield = gridDPFallbackToForcefield;
             this.mlpHidden1 = mlpHidden1;
             this.mlpHidden2 = mlpHidden2;
+            this.mlpSingleTaskModel = mlpSingleTaskModel;
+            this.mlpMinSamplesPerModel = mlpMinSamplesPerModel;
+            this.mlpMaxSamplesPerModel = mlpMaxSamplesPerModel;
+            this.mlpGlobalNumTuples = mlpGlobalNumTuples;
+            this.mlpGlobalSamplesPerTuple = mlpGlobalSamplesPerTuple;
             this.mlpEpochs = mlpEpochs;
             this.mlpBatchSize = mlpBatchSize;
             this.mlpLearningRate = mlpLearningRate;
+            this.branchResidualEnabled = branchResidualEnabled;
+            this.branchResidualSamplerMode = branchResidualSamplerMode;
+            this.branchResidualPretrainGridDPSamples = branchResidualPretrainGridDPSamples;
+            this.branchResidualFineTuneCCDSamples = branchResidualFineTuneCCDSamples;
+            this.branchResidualLambdaPre = branchResidualLambdaPre;
+            this.branchResidualLambdaFine = branchResidualLambdaFine;
+            this.branchResidualFeatureHashDim = branchResidualFeatureHashDim;
+            this.branchResidualPretrainUseFinalEval = branchResidualPretrainUseFinalEval;
+            this.branchResidualGridSize = branchResidualGridSize;
+            this.branchResidualGridThreads = branchResidualGridThreads;
+            this.branchResidualLowEnergyPoolLimit = branchResidualLowEnergyPoolLimit;
+            this.branchResidualRandomSeed = branchResidualRandomSeed;
+            this.branchResidualRidgeMaxIter = branchResidualRidgeMaxIter;
+            this.branchResidualRidgeTolerance = branchResidualRidgeTolerance;
         }
 
         static SurrogateRunConfig fromSystemProperties() {
             boolean enabled = Boolean.parseBoolean(System.getProperty(SURROGATE_PROP_PREFIX + "enabled", "false"));
+            boolean forceRetrain = Boolean.parseBoolean(System.getProperty(SURROGATE_PROP_PREFIX + "forceRetrain", "false"));
             String cacheRootPath = System.getProperty(SURROGATE_PROP_PREFIX + "cacheRoot", "/tmp/osprey-confspace-surrogate-cache");
             String taskTag = System.getProperty(SURROGATE_PROP_PREFIX + "taskTag", "benchmark-griddp-vs-ccd");
             SurrogateModelType modelType = SurrogateModelType.fromString(System.getProperty(SURROGATE_PROP_PREFIX + "type", "quadratic"));
@@ -2483,11 +2948,36 @@ public class BenchmarkGridDPvsCCD {
             boolean fallback = Boolean.parseBoolean(System.getProperty(SURROGATE_PROP_PREFIX + "gridDPFallbackToForcefield", "true"));
             int mlpHidden1 = Integer.parseInt(System.getProperty(SURROGATE_PROP_PREFIX + "mlp.hidden1", "32"));
             int mlpHidden2 = Integer.parseInt(System.getProperty(SURROGATE_PROP_PREFIX + "mlp.hidden2", "32"));
+            boolean mlpSingleTaskModel = Boolean.parseBoolean(System.getProperty(SURROGATE_PROP_PREFIX + "mlp.singleTaskModel", "false"));
+            int mlpMinSamplesPerModel = Integer.parseInt(System.getProperty(SURROGATE_PROP_PREFIX + "mlp.minSamplesPerModel", "64"));
+            int mlpMaxSamplesPerModel = Integer.parseInt(System.getProperty(SURROGATE_PROP_PREFIX + "mlp.maxSamplesPerModel", "4096"));
+            int mlpGlobalNumTuples = Integer.parseInt(System.getProperty(SURROGATE_PROP_PREFIX + "mlp.globalNumTuples", "256"));
+            int mlpGlobalSamplesPerTuple = Integer.parseInt(System.getProperty(SURROGATE_PROP_PREFIX + "mlp.globalSamplesPerTuple", "32"));
             int mlpEpochs = Integer.parseInt(System.getProperty(SURROGATE_PROP_PREFIX + "mlp.epochs", "300"));
             int mlpBatchSize = Integer.parseInt(System.getProperty(SURROGATE_PROP_PREFIX + "mlp.batchSize", "64"));
             double mlpLearningRate = Double.parseDouble(System.getProperty(SURROGATE_PROP_PREFIX + "mlp.learningRate", "0.001"));
+            boolean branchResidualEnabled = Boolean.parseBoolean(System.getProperty(SURROGATE_PROP_PREFIX + "branchResidual.enabled", "false"));
+            String branchResidualSamplerMode = System.getProperty(SURROGATE_PROP_PREFIX + "branchResidual.samplerMode", "sparse");
+            int branchResidualPretrainGridDPSamples = Integer.parseInt(System.getProperty(SURROGATE_PROP_PREFIX + "branchResidual.pretrain.griddpSamples", "20000"));
+            int branchResidualFineTuneCCDSamples = Integer.parseInt(System.getProperty(SURROGATE_PROP_PREFIX + "branchResidual.finetune.ccdSamples", "2000"));
+            double branchResidualLambdaPre = Double.parseDouble(System.getProperty(SURROGATE_PROP_PREFIX + "branchResidual.ridge.lambdaPre", "0.01"));
+            double branchResidualLambdaFine = Double.parseDouble(System.getProperty(SURROGATE_PROP_PREFIX + "branchResidual.ridge.lambdaFine", "0.1"));
+            int branchResidualFeatureHashDim = Integer.parseInt(System.getProperty(SURROGATE_PROP_PREFIX + "branchResidual.feature.hashDim", "65536"));
+            boolean branchResidualPretrainUseFinalEval = Boolean.parseBoolean(System.getProperty(SURROGATE_PROP_PREFIX + "branchResidual.pretrain.useFinalEval", "true"));
+            int branchResidualGridSize = Integer.parseInt(System.getProperty(SURROGATE_PROP_PREFIX + "branchResidual.gridSize", "2"));
+            int branchResidualGridThreads = Integer.parseInt(System.getProperty(SURROGATE_PROP_PREFIX + "branchResidual.gridThreads", "1"));
+            int branchResidualLowEnergyPoolLimit = Integer.parseInt(System.getProperty(SURROGATE_PROP_PREFIX + "branchResidual.lowEnergyPoolLimit", "4096"));
+            int branchResidualRandomSeed = Integer.parseInt(System.getProperty(SURROGATE_PROP_PREFIX + "branchResidual.randomSeed", "12345"));
+            int branchResidualRidgeMaxIter = Integer.parseInt(System.getProperty(SURROGATE_PROP_PREFIX + "branchResidual.ridge.maxIter", "256"));
+            double branchResidualRidgeTolerance = Double.parseDouble(System.getProperty(SURROGATE_PROP_PREFIX + "branchResidual.ridge.tol", "1.0e-6"));
+
+            if (branchResidualEnabled && modelType != SurrogateModelType.BranchResidual) {
+                modelType = SurrogateModelType.BranchResidual;
+                enabled = true;
+            }
             return new SurrogateRunConfig(
                     enabled,
+                    forceRetrain,
                     new File(cacheRootPath),
                     taskTag,
                     modelType,
@@ -2497,11 +2987,561 @@ public class BenchmarkGridDPvsCCD {
                     fallback,
                     mlpHidden1,
                     mlpHidden2,
+                    mlpSingleTaskModel,
+                    mlpMinSamplesPerModel,
+                    mlpMaxSamplesPerModel,
+                    mlpGlobalNumTuples,
+                    mlpGlobalSamplesPerTuple,
                     mlpEpochs,
                     mlpBatchSize,
-                    mlpLearningRate
+                    mlpLearningRate,
+                    branchResidualEnabled,
+                    branchResidualSamplerMode,
+                    branchResidualPretrainGridDPSamples,
+                    branchResidualFineTuneCCDSamples,
+                    branchResidualLambdaPre,
+                    branchResidualLambdaFine,
+                    branchResidualFeatureHashDim,
+                    branchResidualPretrainUseFinalEval,
+                    branchResidualGridSize,
+                    branchResidualGridThreads,
+                    branchResidualLowEnergyPoolLimit,
+                    branchResidualRandomSeed,
+                    branchResidualRidgeMaxIter,
+                    branchResidualRidgeTolerance
             );
         }
+    }
+
+    /**
+     * Benchmark: CCD vs GNN on 1CC8 with 8 flexible residues.
+     *
+     * Loads a pre-trained GNN ONNX model and compares its energy predictions
+     * against CCD ground truth. Reports MAE, RMSE, bias, max error, Spearman
+     * correlation, top-K recall, and timing.
+     *
+     * Requires: gnn_data/1CC8_8res/model/gnn_model.onnx (run exportGNNData1CC8_8res + train.py first)
+     *
+     * System properties:
+     *   -Dosprey.gnn.eval.numConfs=100   number of conformations to evaluate
+     *   -Dosprey.gnn.eval.topK=10        top-K recall parameter
+     *   -Dosprey.gnn.eval.modelPath=...  path to ONNX model (default: gnn_data/1CC8_8res/model/gnn_model.onnx)
+     */
+    @Test
+    public void benchmarkCCDvsGNN1CC8_8res() {
+        long wallStart = System.nanoTime();
+
+        // 1. Build conf space: 1CC8, 8 flexible residues (A38-A45)
+        ForcefieldParams ffparams = new ForcefieldParams();
+        Strand strand = new Strand.Builder(PDBIO.readFile("examples/1CC8/1CC8.ss.pdb")).build();
+        strand.flexibility.get("A38").setLibraryRotamers(Strand.WildType).setContinuous();
+        strand.flexibility.get("A39").setLibraryRotamers("ALA").setContinuous();
+        strand.flexibility.get("A40").setLibraryRotamers(Strand.WildType).setContinuous();
+        strand.flexibility.get("A41").setLibraryRotamers(Strand.WildType).setContinuous();
+        strand.flexibility.get("A42").setLibraryRotamers(Strand.WildType).setContinuous();
+        strand.flexibility.get("A43").setLibraryRotamers("ALA").setContinuous();
+        strand.flexibility.get("A44").setLibraryRotamers(Strand.WildType).setContinuous();
+        strand.flexibility.get("A45").setLibraryRotamers(Strand.WildType).setContinuous();
+        SimpleConfSpace confSpace = new SimpleConfSpace.Builder().addStrand(strand).build();
+
+        int numConfs = Integer.parseInt(System.getProperty("osprey.gnn.eval.numConfs", "100"));
+        int topK = Integer.parseInt(System.getProperty("osprey.gnn.eval.topK", "10"));
+        String modelPath = System.getProperty("osprey.gnn.eval.modelPath",
+                "gnn_data/1CC8_8res/model/gnn_model.onnx");
+
+        System.out.println("=== CCD vs GNN Benchmark: 1CC8, 8 flexible residues ===");
+        System.out.println("Positions: " + confSpace.positions.size());
+        for (int i = 0; i < confSpace.positions.size(); i++) {
+            SimpleConfSpace.Position pos = confSpace.positions.get(i);
+            System.out.println("  pos " + i + " (" + pos.resNum + "): " + pos.resConfs.size() + " RCs");
+        }
+        System.out.println("numConfs=" + numConfs + ", topK=" + topK);
+        System.out.println("Model: " + modelPath);
+
+        // 2. Compute energy matrices
+        Parallelism parallelism = Parallelism.makeCpu(1);  // single thread for fair CCD timing
+        EnergyCalculator minimizingEcalc = new EnergyCalculator.Builder(confSpace, ffparams)
+                .setParallelism(parallelism)
+                .build();
+
+        SimpleReferenceEnergies eref = new SimplerEnergyMatrixCalculator.Builder(confSpace, minimizingEcalc)
+                .build()
+                .calcReferenceEnergies();
+        ConfEnergyCalculator confEcalcMinimized = new ConfEnergyCalculator.Builder(confSpace, minimizingEcalc)
+                .setReferenceEnergies(eref)
+                .build();
+
+        System.out.println("Computing energy matrix...");
+        EnergyMatrix ematMinimized = new SimplerEnergyMatrixCalculator.Builder(confEcalcMinimized)
+                .build().calcEnergyMatrix();
+
+        // 3. Enumerate conformations via A*
+        RCs rcs = new RCs(confSpace);
+        ConfAStarTree astar = new ConfAStarTree.Builder(ematMinimized, rcs)
+                .setTraditional()
+                .build();
+        List<ScoredConf> scoredConfs = new ArrayList<>();
+        for (int i = 0; i < numConfs; i++) {
+            ScoredConf sc = astar.nextConf();
+            if (sc == null) break;
+            scoredConfs.add(sc);
+        }
+        int n = scoredConfs.size();
+        System.out.println("Got " + n + " conformations.\n");
+
+        // 4. Load GNN model
+        File onnxFile = new File(modelPath);
+        if (!onnxFile.exists()) {
+            throw new IllegalStateException("ONNX model not found: " + onnxFile.getAbsolutePath()
+                    + "\nRun exportGNNData1CC8_8res + gnn/train.py first.");
+        }
+        GNNConfEnergyCalculator gnnCalc = new GNNConfEnergyCalculator(
+                onnxFile, ematMinimized, confSpace.positions.size());
+
+        // 5. Warm up: one CCD + one GNN call
+        if (n > 0) {
+            int[] warmConf = scoredConfs.get(0).getAssignments();
+            confEcalcMinimized.calcEnergy(new RCTuple(warmConf));
+            gnnCalc.calcEnergy(warmConf);
+        }
+
+        // 6. CCD energies
+        double[] ccdEnergies = new double[n];
+        long ccdStart = System.nanoTime();
+        for (int i = 0; i < n; i++) {
+            RCTuple tuple = new RCTuple(scoredConfs.get(i).getAssignments());
+            ccdEnergies[i] = confEcalcMinimized.calcEnergy(tuple).energy;
+        }
+        long ccdNs = System.nanoTime() - ccdStart;
+
+        // 7. GNN energies
+        double[] gnnEnergies = new double[n];
+        long gnnStart = System.nanoTime();
+        for (int i = 0; i < n; i++) {
+            int[] conf = scoredConfs.get(i).getAssignments();
+            gnnEnergies[i] = gnnCalc.calcEnergy(conf);
+        }
+        long gnnNs = System.nanoTime() - gnnStart;
+
+        // 8. emat baseline energies
+        double[] ematEnergies = new double[n];
+        for (int i = 0; i < n; i++) {
+            int[] conf = scoredConfs.get(i).getAssignments();
+            ematEnergies[i] = ematMinimized.confE(conf);
+        }
+
+        // 9. Per-conf comparison table
+        System.out.println(String.format("%-5s| %11s | %11s | %11s | %8s | %8s",
+                "Conf", "CCD_E", "GNN_E", "emat_E", "GNN_err", "emat_err"));
+        System.out.println("-".repeat(70));
+
+        double sumAbsGNN = 0, sumSqGNN = 0, sumBiasGNN = 0, maxAbsGNN = 0;
+        double sumAbsEmat = 0, sumSqEmat = 0, sumBiasEmat = 0, maxAbsEmat = 0;
+
+        for (int i = 0; i < n; i++) {
+            double gnnErr = gnnEnergies[i] - ccdEnergies[i];
+            double ematErr = ematEnergies[i] - ccdEnergies[i];
+            sumAbsGNN += Math.abs(gnnErr);
+            sumSqGNN += gnnErr * gnnErr;
+            sumBiasGNN += gnnErr;
+            maxAbsGNN = Math.max(maxAbsGNN, Math.abs(gnnErr));
+            sumAbsEmat += Math.abs(ematErr);
+            sumSqEmat += ematErr * ematErr;
+            sumBiasEmat += ematErr;
+            maxAbsEmat = Math.max(maxAbsEmat, Math.abs(ematErr));
+
+            System.out.println(String.format("%-5d| %11.4f | %11.4f | %11.4f | %8.4f | %8.4f",
+                    i, ccdEnergies[i], gnnEnergies[i], ematEnergies[i], gnnErr, ematErr));
+        }
+        System.out.println("-".repeat(70));
+
+        // 10. Summary statistics
+        double maeGNN = sumAbsGNN / n;
+        double rmseGNN = Math.sqrt(sumSqGNN / n);
+        double biasGNN = sumBiasGNN / n;
+        double maeEmat = sumAbsEmat / n;
+        double rmseEmat = Math.sqrt(sumSqEmat / n);
+        double biasEmat = sumBiasEmat / n;
+
+        int k = Math.max(1, Math.min(topK, n));
+        double gnnRecall5 = topKRecall(gnnEnergies, ccdEnergies, Math.min(5, n));
+        double gnnRecall10 = topKRecall(gnnEnergies, ccdEnergies, Math.min(10, n));
+        double gnnRecall20 = topKRecall(gnnEnergies, ccdEnergies, Math.min(20, n));
+        double gnnRecallK = topKRecall(gnnEnergies, ccdEnergies, k);
+        double ematRecallK = topKRecall(ematEnergies, ccdEnergies, k);
+        double gnnSpearman = spearman(gnnEnergies, ccdEnergies);
+        double ematSpearman = spearman(ematEnergies, ccdEnergies);
+
+        System.out.println("\n======================================================================");
+        System.out.println("GNN vs CCD  (N=" + n + ")");
+        System.out.println("======================================================================");
+        System.out.println(String.format("  MAE:      %.6f kcal/mol", maeGNN));
+        System.out.println(String.format("  RMSE:     %.6f kcal/mol", rmseGNN));
+        System.out.println(String.format("  Bias:     %.6f kcal/mol", biasGNN));
+        System.out.println(String.format("  Max|d|:   %.6f kcal/mol", maxAbsGNN));
+        System.out.println(String.format("  Spearman: %.4f", gnnSpearman));
+        System.out.println(String.format("  Top-5  recall: %.1f%%", gnnRecall5 * 100.0));
+        System.out.println(String.format("  Top-10 recall: %.1f%%", gnnRecall10 * 100.0));
+        System.out.println(String.format("  Top-20 recall: %.1f%%", gnnRecall20 * 100.0));
+        System.out.println(String.format("  Top-%d recall: %.1f%%", k, gnnRecallK * 100.0));
+
+        System.out.println("\n======================================================================");
+        System.out.println("emat vs CCD  (baseline, N=" + n + ")");
+        System.out.println("======================================================================");
+        System.out.println(String.format("  MAE:      %.6f kcal/mol", maeEmat));
+        System.out.println(String.format("  RMSE:     %.6f kcal/mol", rmseEmat));
+        System.out.println(String.format("  Bias:     %.6f kcal/mol", biasEmat));
+        System.out.println(String.format("  Max|d|:   %.6f kcal/mol", maxAbsEmat));
+        System.out.println(String.format("  Spearman: %.4f", ematSpearman));
+        System.out.println(String.format("  Top-%d recall: %.1f%%", k, ematRecallK * 100.0));
+
+        System.out.println("\n======================================================================");
+        System.out.println("Improvement: GNN over emat baseline");
+        System.out.println("======================================================================");
+        System.out.println(String.format("  MAE  reduction: %.1f%%", (1.0 - maeGNN / maeEmat) * 100.0));
+        System.out.println(String.format("  RMSE reduction: %.1f%%", (1.0 - rmseGNN / rmseEmat) * 100.0));
+
+        System.out.println("\n======================================================================");
+        System.out.println("Timing");
+        System.out.println("======================================================================");
+        System.out.println(String.format("  CCD total:  %10.1f ms  (%.2f ms/conf)", ccdNs / 1e6, ccdNs / 1e6 / n));
+        System.out.println(String.format("  GNN total:  %10.1f ms  (%.2f ms/conf)", gnnNs / 1e6, gnnNs / 1e6 / n));
+        System.out.println(String.format("  Speedup:    %.1fx", (double) ccdNs / gnnNs));
+
+        System.out.println(String.format("\n  Total wall-clock time: %.2f s", (System.nanoTime() - wallStart) / 1e9));
+
+        gnnCalc.close();
+        minimizingEcalc.close();
+    }
+
+    /**
+     * Export GNN training data for 1CC8 with 8 flexible residues.
+     * Parallel CCD generates ground-truth energies; also reports emat vs CCD accuracy baseline.
+     */
+    @Test
+    public void exportGNNData1CC8_8res() {
+        long wallStart = System.nanoTime();
+
+        // 1CC8 with 8 flexible residues (A38-A45)
+        ForcefieldParams ffparams = new ForcefieldParams();
+        Strand strand = new Strand.Builder(PDBIO.readFile("examples/1CC8/1CC8.ss.pdb")).build();
+        strand.flexibility.get("A38").setLibraryRotamers(Strand.WildType).setContinuous();
+        strand.flexibility.get("A39").setLibraryRotamers("ALA").setContinuous();
+        strand.flexibility.get("A40").setLibraryRotamers(Strand.WildType).setContinuous();
+        strand.flexibility.get("A41").setLibraryRotamers(Strand.WildType).setContinuous();
+        strand.flexibility.get("A42").setLibraryRotamers(Strand.WildType).setContinuous();
+        strand.flexibility.get("A43").setLibraryRotamers("ALA").setContinuous();
+        strand.flexibility.get("A44").setLibraryRotamers(Strand.WildType).setContinuous();
+        strand.flexibility.get("A45").setLibraryRotamers(Strand.WildType).setContinuous();
+        SimpleConfSpace confSpace = new SimpleConfSpace.Builder().addStrand(strand).build();
+
+        System.out.println("=== GNN Data Export: 1CC8, 8 flexible residues ===");
+        System.out.println("Positions: " + confSpace.positions.size());
+        for (int i = 0; i < confSpace.positions.size(); i++) {
+            SimpleConfSpace.Position pos = confSpace.positions.get(i);
+            System.out.println("  pos " + i + " (" + pos.resNum + "): " + pos.resConfs.size() + " RCs");
+        }
+
+        int numCPUs = Runtime.getRuntime().availableProcessors();
+        System.out.println("Available CPUs: " + numCPUs);
+        Parallelism parallelism = Parallelism.makeCpu(numCPUs);
+
+        EnergyCalculator minimizingEcalc = new EnergyCalculator.Builder(confSpace, ffparams)
+                .setParallelism(parallelism)
+                .build();
+        EnergyCalculator rigidEcalc = new EnergyCalculator.Builder(confSpace, ffparams)
+                .setParallelism(parallelism)
+                .setIsMinimizing(false)
+                .build();
+
+        SimpleReferenceEnergies eref = new SimplerEnergyMatrixCalculator.Builder(confSpace, minimizingEcalc)
+                .build()
+                .calcReferenceEnergies();
+        ConfEnergyCalculator confEcalcMinimized = new ConfEnergyCalculator.Builder(confSpace, minimizingEcalc)
+                .setReferenceEnergies(eref)
+                .build();
+        ConfEnergyCalculator confEcalcRigid = new ConfEnergyCalculator(confEcalcMinimized, rigidEcalc);
+
+        System.out.println("Computing energy matrices...");
+        EnergyMatrix ematMinimized = new SimplerEnergyMatrixCalculator.Builder(confEcalcMinimized)
+                .build().calcEnergyMatrix();
+        EnergyMatrix ematRigid = new SimplerEnergyMatrixCalculator.Builder(confEcalcRigid)
+                .build().calcEnergyMatrix();
+
+        RCs rcs = new RCs(confSpace);
+        InteractionGraph ig = InteractionGraph.buildWithDualCutoff(
+                confSpace, ematRigid, ematMinimized, rcs, DIST_CUTOFF, ENERGY_CUTOFF);
+
+        int numSamples = Integer.parseInt(System.getProperty(
+                "osprey.gnn.numSamples", "10000"));
+        File outputDir = new File(System.getProperty(
+                "osprey.gnn.outputDir", "gnn_data/1CC8_8res"));
+
+        System.out.println("Enumerating " + numSamples + " conformations via A*...");
+        System.out.println("Output dir: " + outputDir.getAbsolutePath());
+
+        try {
+            GNNDataExporter exporter = new GNNDataExporter(
+                    confEcalcMinimized, ematMinimized, ig, rcs);
+            exporter.export(numSamples, outputDir);
+        } catch (Exception e) {
+            throw new RuntimeException("GNN data export failed", e);
+        }
+
+        System.out.println(String.format("Total wall-clock time: %.2f s",
+                (System.nanoTime() - wallStart) / 1e9));
+
+        minimizingEcalc.close();
+        rigidEcalc.close();
+    }
+
+    /**
+     * Export GNN training data for 1CC8 with 25 flexible residues (A26-A50).
+     */
+    @Test
+    public void exportGNNData1CC8_25res() {
+        long wallStart = System.nanoTime();
+
+        ForcefieldParams ffparams = new ForcefieldParams();
+        Strand strand = new Strand.Builder(PDBIO.readFile("examples/1CC8/1CC8.ss.pdb")).build();
+        for (int r = 26; r <= 50; r++) {
+            strand.flexibility.get("A" + r).setLibraryRotamers(Strand.WildType).setContinuous();
+        }
+        SimpleConfSpace confSpace = new SimpleConfSpace.Builder().addStrand(strand).build();
+
+        System.out.println("=== GNN Data Export: 1CC8, 25 flexible residues (A26-A50) ===");
+        System.out.println("Positions: " + confSpace.positions.size());
+        for (int i = 0; i < confSpace.positions.size(); i++) {
+            SimpleConfSpace.Position pos = confSpace.positions.get(i);
+            System.out.println("  pos " + i + " (" + pos.resNum + "): " + pos.resConfs.size() + " RCs");
+        }
+
+        int numCPUs = Runtime.getRuntime().availableProcessors();
+        System.out.println("Available CPUs: " + numCPUs);
+        Parallelism parallelism = Parallelism.makeCpu(numCPUs);
+
+        EnergyCalculator minimizingEcalc = new EnergyCalculator.Builder(confSpace, ffparams)
+                .setParallelism(parallelism)
+                .build();
+        EnergyCalculator rigidEcalc = new EnergyCalculator.Builder(confSpace, ffparams)
+                .setParallelism(parallelism)
+                .setIsMinimizing(false)
+                .build();
+
+        SimpleReferenceEnergies eref = new SimplerEnergyMatrixCalculator.Builder(confSpace, minimizingEcalc)
+                .build()
+                .calcReferenceEnergies();
+        ConfEnergyCalculator confEcalcMinimized = new ConfEnergyCalculator.Builder(confSpace, minimizingEcalc)
+                .setReferenceEnergies(eref)
+                .build();
+        ConfEnergyCalculator confEcalcRigid = new ConfEnergyCalculator(confEcalcMinimized, rigidEcalc);
+
+        System.out.println("Computing energy matrices...");
+        EnergyMatrix ematMinimized = new SimplerEnergyMatrixCalculator.Builder(confEcalcMinimized)
+                .build().calcEnergyMatrix();
+        EnergyMatrix ematRigid = new SimplerEnergyMatrixCalculator.Builder(confEcalcRigid)
+                .build().calcEnergyMatrix();
+
+        RCs rcs = new RCs(confSpace);
+        InteractionGraph ig = InteractionGraph.buildWithDualCutoff(
+                confSpace, ematRigid, ematMinimized, rcs, DIST_CUTOFF, ENERGY_CUTOFF);
+
+        int numSamples = Integer.parseInt(System.getProperty(
+                "osprey.gnn.numSamples", "50000"));
+        File outputDir = new File(System.getProperty(
+                "osprey.gnn.outputDir", "gnn_data/1CC8_25res"));
+
+        System.out.println("Enumerating " + numSamples + " conformations via A*...");
+        System.out.println("Output dir: " + outputDir.getAbsolutePath());
+
+        try {
+            GNNDataExporter exporter = new GNNDataExporter(
+                    confEcalcMinimized, ematMinimized, ig, rcs);
+            exporter.export(numSamples, outputDir);
+        } catch (Exception e) {
+            throw new RuntimeException("GNN data export failed", e);
+        }
+
+        System.out.println(String.format("Total wall-clock time: %.2f s",
+                (System.nanoTime() - wallStart) / 1e9));
+
+        minimizingEcalc.close();
+        rigidEcalc.close();
+    }
+
+    /**
+     * Benchmark: CCD vs GNN on 1CC8 with 25 flexible residues (A26-A50).
+     */
+    @Test
+    public void benchmarkCCDvsGNN1CC8_25res() {
+        long wallStart = System.nanoTime();
+
+        ForcefieldParams ffparams = new ForcefieldParams();
+        Strand strand = new Strand.Builder(PDBIO.readFile("examples/1CC8/1CC8.ss.pdb")).build();
+        for (int r = 26; r <= 50; r++) {
+            strand.flexibility.get("A" + r).setLibraryRotamers(Strand.WildType).setContinuous();
+        }
+        SimpleConfSpace confSpace = new SimpleConfSpace.Builder().addStrand(strand).build();
+
+        int numConfs = Integer.parseInt(System.getProperty("osprey.gnn.eval.numConfs", "200"));
+        int topK = Integer.parseInt(System.getProperty("osprey.gnn.eval.topK", "10"));
+        String modelPath = System.getProperty("osprey.gnn.eval.modelPath",
+                "gnn_data/1CC8_25res/model/gnn_model.onnx");
+
+        System.out.println("=== CCD vs GNN Benchmark: 1CC8, 25 flexible residues (A26-A50) ===");
+        System.out.println("Positions: " + confSpace.positions.size());
+        for (int i = 0; i < confSpace.positions.size(); i++) {
+            SimpleConfSpace.Position pos = confSpace.positions.get(i);
+            System.out.println("  pos " + i + " (" + pos.resNum + "): " + pos.resConfs.size() + " RCs");
+        }
+        System.out.println("numConfs=" + numConfs + ", topK=" + topK);
+        System.out.println("Model: " + modelPath);
+
+        Parallelism parallelism = Parallelism.makeCpu(1);
+        EnergyCalculator minimizingEcalc = new EnergyCalculator.Builder(confSpace, ffparams)
+                .setParallelism(parallelism)
+                .build();
+
+        SimpleReferenceEnergies eref = new SimplerEnergyMatrixCalculator.Builder(confSpace, minimizingEcalc)
+                .build()
+                .calcReferenceEnergies();
+        ConfEnergyCalculator confEcalcMinimized = new ConfEnergyCalculator.Builder(confSpace, minimizingEcalc)
+                .setReferenceEnergies(eref)
+                .build();
+
+        System.out.println("Computing energy matrix...");
+        EnergyMatrix ematMinimized = new SimplerEnergyMatrixCalculator.Builder(confEcalcMinimized)
+                .build().calcEnergyMatrix();
+
+        RCs rcs = new RCs(confSpace);
+        ConfAStarTree astar = new ConfAStarTree.Builder(ematMinimized, rcs)
+                .setTraditional()
+                .build();
+        List<ScoredConf> scoredConfs = new ArrayList<>();
+        for (int i = 0; i < numConfs; i++) {
+            ScoredConf sc = astar.nextConf();
+            if (sc == null) break;
+            scoredConfs.add(sc);
+        }
+        int n = scoredConfs.size();
+        System.out.println("Got " + n + " conformations.\n");
+
+        File onnxFile = new File(modelPath);
+        if (!onnxFile.exists()) {
+            throw new IllegalStateException("ONNX model not found: " + onnxFile.getAbsolutePath()
+                    + "\nRun exportGNNData1CC8_25res + gnn/train.py first.");
+        }
+        GNNConfEnergyCalculator gnnCalc = new GNNConfEnergyCalculator(
+                onnxFile, ematMinimized, confSpace.positions.size());
+
+        if (n > 0) {
+            int[] warmConf = scoredConfs.get(0).getAssignments();
+            confEcalcMinimized.calcEnergy(new RCTuple(warmConf));
+            gnnCalc.calcEnergy(warmConf);
+        }
+
+        double[] ccdEnergies = new double[n];
+        long ccdStart = System.nanoTime();
+        for (int i = 0; i < n; i++) {
+            RCTuple tuple = new RCTuple(scoredConfs.get(i).getAssignments());
+            ccdEnergies[i] = confEcalcMinimized.calcEnergy(tuple).energy;
+        }
+        long ccdNs = System.nanoTime() - ccdStart;
+
+        double[] gnnEnergies = new double[n];
+        long gnnStart = System.nanoTime();
+        for (int i = 0; i < n; i++) {
+            int[] conf = scoredConfs.get(i).getAssignments();
+            gnnEnergies[i] = gnnCalc.calcEnergy(conf);
+        }
+        long gnnNs = System.nanoTime() - gnnStart;
+
+        double[] ematEnergies = new double[n];
+        for (int i = 0; i < n; i++) {
+            int[] conf = scoredConfs.get(i).getAssignments();
+            ematEnergies[i] = ematMinimized.confE(conf);
+        }
+
+        System.out.println(String.format("%-5s| %11s | %11s | %11s | %8s | %8s",
+                "Conf", "CCD_E", "GNN_E", "emat_E", "GNN_err", "emat_err"));
+        System.out.println("-".repeat(70));
+
+        double sumAbsGNN = 0, sumSqGNN = 0, sumBiasGNN = 0, maxAbsGNN = 0;
+        double sumAbsEmat = 0, sumSqEmat = 0, sumBiasEmat = 0, maxAbsEmat = 0;
+
+        for (int i = 0; i < n; i++) {
+            double gnnErr = gnnEnergies[i] - ccdEnergies[i];
+            double ematErr = ematEnergies[i] - ccdEnergies[i];
+            sumAbsGNN += Math.abs(gnnErr);
+            sumSqGNN += gnnErr * gnnErr;
+            sumBiasGNN += gnnErr;
+            maxAbsGNN = Math.max(maxAbsGNN, Math.abs(gnnErr));
+            sumAbsEmat += Math.abs(ematErr);
+            sumSqEmat += ematErr * ematErr;
+            sumBiasEmat += ematErr;
+            maxAbsEmat = Math.max(maxAbsEmat, Math.abs(ematErr));
+
+            System.out.println(String.format("%-5d| %11.4f | %11.4f | %11.4f | %8.4f | %8.4f",
+                    i, ccdEnergies[i], gnnEnergies[i], ematEnergies[i], gnnErr, ematErr));
+        }
+        System.out.println("-".repeat(70));
+
+        double maeGNN = sumAbsGNN / n;
+        double rmseGNN = Math.sqrt(sumSqGNN / n);
+        double biasGNN = sumBiasGNN / n;
+        double maeEmat = sumAbsEmat / n;
+        double rmseEmat = Math.sqrt(sumSqEmat / n);
+        double biasEmat = sumBiasEmat / n;
+
+        int k = Math.max(1, Math.min(topK, n));
+        double gnnRecall5 = topKRecall(gnnEnergies, ccdEnergies, Math.min(5, n));
+        double gnnRecall10 = topKRecall(gnnEnergies, ccdEnergies, Math.min(10, n));
+        double gnnRecall20 = topKRecall(gnnEnergies, ccdEnergies, Math.min(20, n));
+        double gnnRecallK = topKRecall(gnnEnergies, ccdEnergies, k);
+        double ematRecallK = topKRecall(ematEnergies, ccdEnergies, k);
+        double gnnSpearman = spearman(gnnEnergies, ccdEnergies);
+        double ematSpearman = spearman(ematEnergies, ccdEnergies);
+
+        System.out.println("\n======================================================================");
+        System.out.println("GNN vs CCD  (N=" + n + ", 25 residues)");
+        System.out.println("======================================================================");
+        System.out.println(String.format("  MAE:      %.6f kcal/mol", maeGNN));
+        System.out.println(String.format("  RMSE:     %.6f kcal/mol", rmseGNN));
+        System.out.println(String.format("  Bias:     %.6f kcal/mol", biasGNN));
+        System.out.println(String.format("  Max|d|:   %.6f kcal/mol", maxAbsGNN));
+        System.out.println(String.format("  Spearman: %.4f", gnnSpearman));
+        System.out.println(String.format("  Top-5  recall: %.1f%%", gnnRecall5 * 100.0));
+        System.out.println(String.format("  Top-10 recall: %.1f%%", gnnRecall10 * 100.0));
+        System.out.println(String.format("  Top-20 recall: %.1f%%", gnnRecall20 * 100.0));
+        System.out.println(String.format("  Top-%d recall: %.1f%%", k, gnnRecallK * 100.0));
+
+        System.out.println("\n======================================================================");
+        System.out.println("emat vs CCD  (baseline, N=" + n + ", 25 residues)");
+        System.out.println("======================================================================");
+        System.out.println(String.format("  MAE:      %.6f kcal/mol", maeEmat));
+        System.out.println(String.format("  RMSE:     %.6f kcal/mol", rmseEmat));
+        System.out.println(String.format("  Bias:     %.6f kcal/mol", biasEmat));
+        System.out.println(String.format("  Max|d|:   %.6f kcal/mol", maxAbsEmat));
+        System.out.println(String.format("  Spearman: %.4f", ematSpearman));
+        System.out.println(String.format("  Top-%d recall: %.1f%%", k, ematRecallK * 100.0));
+
+        System.out.println("\n======================================================================");
+        System.out.println("Improvement: GNN over emat baseline");
+        System.out.println("======================================================================");
+        System.out.println(String.format("  MAE  reduction: %.1f%%", (1.0 - maeGNN / maeEmat) * 100.0));
+        System.out.println(String.format("  RMSE reduction: %.1f%%", (1.0 - rmseGNN / rmseEmat) * 100.0));
+
+        System.out.println("\n======================================================================");
+        System.out.println("Timing");
+        System.out.println("======================================================================");
+        System.out.println(String.format("  CCD total:  %10.1f ms  (%.2f ms/conf)", ccdNs / 1e6, ccdNs / 1e6 / n));
+        System.out.println(String.format("  GNN total:  %10.1f ms  (%.2f ms/conf)", gnnNs / 1e6, gnnNs / 1e6 / n));
+        System.out.println(String.format("  Speedup:    %.1fx", (double) ccdNs / gnnNs));
+
+        System.out.println(String.format("\n  Total wall-clock time: %.2f s", (System.nanoTime() - wallStart) / 1e9));
+
+        gnnCalc.close();
+        minimizingEcalc.close();
     }
 
     private int countEdges(InteractionGraph ig) {

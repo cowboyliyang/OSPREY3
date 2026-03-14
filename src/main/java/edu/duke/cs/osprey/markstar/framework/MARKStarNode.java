@@ -228,9 +228,9 @@ public class MARKStarNode implements Comparable<MARKStarNode> {
             if(gscore+hscore - confSearchNode.getConfLowerBound() > 1e-5) {
                 double previousLower = confSearchNode.getConfLowerBound();
                 confSearchNode.setBoundsFromConfLowerAndUpper(gscore + hscore, confSearchNode.confUpperBound);
-                if(gscore+hscore < -10)
-                    System.out.println("Correcting "+toTuple().stringListing()+" down to "+(gscore+hscore)+" from "+previousLower
-                    +", reducing it by "+(gscore+hscore - previousLower));
+                // if(gscore+hscore < -10)
+                //     System.out.println("Correcting "+toTuple().stringListing()+" down to "+(gscore+hscore)+" from "+previousLower
+                //     +", reducing it by "+(gscore+hscore - previousLower));
                 return gscore+hscore - previousLower;
             }
         }
@@ -240,8 +240,8 @@ public class MARKStarNode implements Comparable<MARKStarNode> {
                 sum += child.updateAndReportConfBoundChange(index, rcs, gscorer, hScorer);
             }
         }
-        if(sum > 0 && level == 0)
-            System.out.println("Children corrected "+sum);
+        // if(sum > 0 && level == 0)
+        //     System.out.println("Children corrected "+sum);
         return sum;
     }
     private void debugChecks(BigDecimal lastUpper, BigDecimal lastLower, double epsilonBound) {

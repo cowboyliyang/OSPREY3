@@ -46,6 +46,8 @@ import edu.duke.cs.osprey.kstar.KStarScore;
 import edu.duke.cs.osprey.kstar.KStarScoreWriter;
 import edu.duke.cs.osprey.kstar.pfunc.BoltzmannCalculator;
 import edu.duke.cs.osprey.kstar.pfunc.PartitionFunction;
+import edu.duke.cs.osprey.markstar.framework.BranchMARKStarBound;
+import edu.duke.cs.osprey.markstar.framework.BranchMARKStarBound.ComputeMode;
 import edu.duke.cs.osprey.markstar.framework.MARKStarBound;
 import edu.duke.cs.osprey.markstar.framework.MARKStarBoundFastQueues;
 import edu.duke.cs.osprey.markstar.framework.MARKStarBoundRigid;
@@ -135,6 +137,9 @@ public class MARKStar {
 			private Parallelism parallelism = null;
 			private int maxNumConfs = -1;
 			private boolean reduceMinimizations = true;
+			private boolean useBranchDecomposition = false;
+			private ComputeMode computeMode = ComputeMode.FLAT_SUM;
+			private boolean useGridDP = false;
 
 			public Builder setEpsilon(double val) {
 				epsilon = val;
@@ -197,11 +202,27 @@ public class MARKStar {
 
 			public Settings build() {
 				return new Settings(epsilon, stabilityThreshold, maxSimultaneousMutations, scoreWriters,
-						showPfuncProgress, energyMatrixCachePattern, parallelism, maxNumConfs, reduceMinimizations);
+						showPfuncProgress, energyMatrixCachePattern, parallelism, maxNumConfs, reduceMinimizations,
+						useBranchDecomposition, computeMode, useGridDP);
 			}
 
 			public Builder setReduceMinimizations(boolean reudceMinimizations) {
 			    this.reduceMinimizations = reudceMinimizations;
+			    return this;
+			}
+
+			public Builder setUseBranchDecomposition(boolean val) {
+			    this.useBranchDecomposition = val;
+			    return this;
+			}
+
+			public Builder setComputeMode(ComputeMode val) {
+			    this.computeMode = val;
+			    return this;
+			}
+
+			public Builder setUseGridDP(boolean val) {
+			    this.useGridDP = val;
 			    return this;
 			}
 		}
@@ -215,10 +236,14 @@ public class MARKStar {
 		public final Parallelism parallelism;
 		public final int maxNumConfs;
 		public final boolean reduceMinimizations;
+		public final boolean useBranchDecomposition;
+		public final ComputeMode computeMode;
+		public final boolean useGridDP;
 
 		public Settings(double epsilon, Double stabilityThreshold, int maxSimultaneousMutations,
 						KStarScoreWriter.Writers scoreWriters, boolean dumpPfuncConfs, String energyMatrixCachePattern,
-						Parallelism parallelism, int maxNumConfs, boolean reduceMinimizations) {
+						Parallelism parallelism, int maxNumConfs, boolean reduceMinimizations,
+						boolean useBranchDecomposition, ComputeMode computeMode, boolean useGridDP) {
 			this.epsilon = epsilon;
 			this.stabilityThreshold = stabilityThreshold;
 			this.maxSimultaneousMutations = maxSimultaneousMutations;
@@ -228,6 +253,9 @@ public class MARKStar {
 			this.parallelism = parallelism;
 			this.maxNumConfs = maxNumConfs;
 			this.reduceMinimizations = reduceMinimizations;
+			this.useBranchDecomposition = useBranchDecomposition;
+			this.computeMode = computeMode;
+			this.useGridDP = useGridDP;
 		}
 
 		public String applyEnergyMatrixCachePattern(String type) {
@@ -285,6 +313,7 @@ public class MARKStar {
 
 		public EnergyMatrix rigidEmat = null;
 		public EnergyMatrix minimizingEmat = null;
+		public edu.duke.cs.osprey.energy.approximation.branch.GNNConfEnergyCalculator gnnCalc = null;
 		public final Map<Sequence,PartitionFunction.Result> pfuncResults = new HashMap<>();
 
 		public ConfSpaceInfo(ConfSpaceType type, SimpleConfSpace confSpace, ConfEnergyCalculator rigidConfEcalc, ConfEnergyCalculator minimizingConfEcalc) {
@@ -337,9 +366,14 @@ public class MARKStar {
 			// cache miss, need to compute the partition function
 
 			// make the partition function
-			MARKStarBoundFastQueues pfunc = new MARKStarBoundFastQueues(confSpace, rigidEmat, minimizingEmat, minimizingConfEcalc, sequence.makeRCs(confSpace),
-			//MARKStarBoundRigid pfunc = new MARKStarBoundRigid(confSpace, rigidEmat, minimizingEmat, minimizingConfEcalc, sequence.makeRCs(confSpace),
-					settings.parallelism);
+			MARKStarBound pfunc;
+			if (settings.useBranchDecomposition) {
+				pfunc = new BranchMARKStarBound(confSpace, rigidEmat, minimizingEmat, minimizingConfEcalc,
+						sequence.makeRCs(confSpace), settings.parallelism, settings.computeMode);
+			} else {
+				pfunc = new MARKStarBoundFastQueues(confSpace, rigidEmat, minimizingEmat, minimizingConfEcalc,
+						sequence.makeRCs(confSpace), settings.parallelism);
+			}
 			confSearchFactory = (emat, rcs) -> {
 				ConfAStarTree.Builder builder = new ConfAStarTree.Builder(emat, rcs)
 						.setTraditional();
@@ -355,6 +389,11 @@ public class MARKStar {
 			pfunc.setReportProgress(settings.showPfuncProgress);
 
 			pfunc.setCorrections(correctionEmat);
+
+			// GNN energy surrogate (optional)
+			if (gnnCalc != null) {
+				pfunc.setGNNCalculator(gnnCalc);
+			}
 
 			// NEW: Set Triple DOF Cache if enabled
 			if (edu.duke.cs.osprey.ematrix.SubtreeDOFCache.ENABLE_TRIPLE_DOF_CACHE) {
@@ -374,9 +413,10 @@ public class MARKStar {
 				}
 			}
 
-			// if (settings.showPfuncProgress == true){
-			// 	System.out.println("Computing "+type+":");
-			// }
+			// Phase 7: Grid DP upper bound
+			if (settings.useGridDP) {
+				pfunc.setUseGridDP(true);
+			}
 
 			// compute it
 			pfunc.init(settings.epsilon);

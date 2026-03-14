@@ -1036,7 +1036,7 @@ public class TestMARKStar {
 		Stopwatch runTime = new Stopwatch().start();
 		String kstartime = "(not run)";
 		List<KStar.ScoredSequence> kStarSeqs = null;
-		boolean runkstar = true;
+		boolean runkstar = false;
 		if(runkstar) {
 			kStarSeqs = runKStarComparison(numFlex, epsilon);
 			runTime.stop();

@@ -317,6 +317,9 @@ public class MathTools {
 	}
 
 	public static boolean isZero(BigDecimal d) {
+		if (d == null) {
+			return false;
+		}
 		return d == BigDecimal.ZERO || (isFinite(d) && d.compareTo(BigDecimal.ZERO) == 0);
 	}
 

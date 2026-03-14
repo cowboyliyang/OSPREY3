@@ -36,6 +36,7 @@ import edu.duke.cs.osprey.astar.conf.RCs;
 import edu.duke.cs.osprey.confspace.*;
 import edu.duke.cs.osprey.energy.ConfEnergyCalculator;
 import edu.duke.cs.osprey.kstar.pfunc.*;
+import edu.duke.cs.osprey.markstar.framework.branch.BranchDPScorer;
 import edu.duke.cs.osprey.parallelism.Cluster;
 import edu.duke.cs.osprey.parallelism.TaskExecutor;
 import edu.duke.cs.osprey.tools.AutoCloseableNoEx;
@@ -118,6 +119,9 @@ public class BBKStar {
 		public ConfSearchFactory confSearchFactoryRigid = null;
 
 		public KStar.PfuncFactory pfuncFactory = null;
+
+		// === BranchMARK* DP scoring (optional, null = use original 1000-conf scoring) ===
+		public BranchDPScorer branchDPScorer = null;
 
 		public File confDBFile = null;
 		private ConfDB confDB = null;
@@ -282,6 +286,16 @@ public class BBKStar {
 		@Override
 		public void estimateScore() {
 
+			// === NEW: BranchMARK* DP scoring path ===
+			// If any confspace has a BranchDPScorer configured, use DP Z bounds
+			// instead of 1000-conf sampling for that confspace.
+			if (protein.branchDPScorer != null || ligand.branchDPScorer != null || complex.branchDPScorer != null) {
+				estimateScoreWithDP();
+				return;
+			}
+
+			// === ORIGINAL: 1000-conf scoring (unchanged) ===
+
 			// TODO: expose setting?
 			// NOTE: for the correctness of the bounds, the number of confs must be the same for every node
 			// meaning, it might not be sound to do epsilon-based iterative approximations here
@@ -339,6 +353,95 @@ public class BBKStar {
 				PartitionFunction.decimalPrecision
 			));
 			isUnboundUnstable = false;
+		}
+
+		/**
+		 * Estimate K* upper bound score using branch decomposition DP Z bounds.
+		 * K* upper bound = Z_complex_upper / (Z_protein_lower × Z_ligand_lower)
+		 *
+		 * For confspaces without a BranchDPScorer, falls back to original 1000-conf scoring.
+		 */
+		private void estimateScoreWithDP() {
+			final int numConfs = 1000; // fallback for confspaces without DP scorer
+
+			// --- Protein lower bound ---
+			BigDecimal proteinLowerBound;
+			if (protein.branchDPScorer != null && protein.branchDPScorer.isUsable()) {
+				RCs rcs = sequence.makeRCs(protein.confSpace);
+				double[] bounds = protein.branchDPScorer.computeZBounds(rcs);
+				proteinLowerBound = logToPositiveBigDecimal(bounds[0]); // logZLower → Z_lower
+			} else {
+				if (protein.stabilityThreshold != null) {
+					BigDecimal proteinUpperBound = calcUpperBound(protein, sequence, numConfs);
+					if (MathTools.isLessThan(proteinUpperBound, protein.stabilityThreshold)) {
+						score = Double.NEGATIVE_INFINITY;
+						isUnboundUnstable = true;
+						return;
+					}
+				}
+				proteinLowerBound = calcLowerBound(protein, sequence, numConfs);
+			}
+
+			if (MathTools.isZero(proteinLowerBound)) {
+				score = Double.POSITIVE_INFINITY;
+				isUnboundUnstable = false;
+				return;
+			}
+
+			// --- Ligand lower bound ---
+			BigDecimal ligandLowerBound;
+			if (ligand.branchDPScorer != null && ligand.branchDPScorer.isUsable()) {
+				RCs rcs = sequence.makeRCs(ligand.confSpace);
+				double[] bounds = ligand.branchDPScorer.computeZBounds(rcs);
+				ligandLowerBound = logToPositiveBigDecimal(bounds[0]); // logZLower → Z_lower
+			} else {
+				if (ligand.stabilityThreshold != null) {
+					BigDecimal ligandUpperBound = calcUpperBound(ligand, sequence, numConfs);
+					if (MathTools.isLessThan(ligandUpperBound, ligand.stabilityThreshold)) {
+						score = Double.NEGATIVE_INFINITY;
+						isUnboundUnstable = true;
+						return;
+					}
+				}
+				ligandLowerBound = calcLowerBound(ligand, sequence, numConfs);
+			}
+
+			if (MathTools.isZero(ligandLowerBound)) {
+				score = Double.POSITIVE_INFINITY;
+				isUnboundUnstable = false;
+				return;
+			}
+
+			// --- Complex upper bound ---
+			BigDecimal complexUpperBound;
+			if (complex.branchDPScorer != null && complex.branchDPScorer.isUsable()) {
+				RCs rcs = sequence.makeRCs(complex.confSpace);
+				double[] bounds = complex.branchDPScorer.computeZBounds(rcs);
+				complexUpperBound = logToPositiveBigDecimal(bounds[1]); // logZUpper → Z_upper
+			} else {
+				complexUpperBound = calcUpperBound(complex, sequence, numConfs);
+			}
+
+			// compute the node score: K* upper bound
+			score = exp.log10(MathTools.bigDivideDivide(
+				complexUpperBound,
+				proteinLowerBound,
+				ligandLowerBound,
+				PartitionFunction.decimalPrecision
+			));
+			isUnboundUnstable = false;
+		}
+
+		/** Convert log-space value to BigDecimal, handling overflow/underflow. */
+		private static BigDecimal logToPositiveBigDecimal(double logVal) {
+			if (logVal == Double.NEGATIVE_INFINITY) return BigDecimal.ZERO;
+			if (logVal > 709) {
+				double logBase = logVal / Math.log(10);
+				int exponent = (int) Math.floor(logBase);
+				double mantissa = Math.pow(10, logBase - exponent);
+				return BigDecimal.valueOf(mantissa).scaleByPowerOfTen(exponent);
+			}
+			return BigDecimal.valueOf(Math.exp(logVal));
 		}
 
 		private BigDecimal calcLowerBound(ConfSpaceInfo info, Sequence sequence, int numConfs) {

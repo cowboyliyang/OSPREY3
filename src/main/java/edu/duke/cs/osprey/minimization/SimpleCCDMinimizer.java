@@ -40,7 +40,8 @@ import edu.duke.cs.osprey.tools.Factory;
 
 public class SimpleCCDMinimizer implements Minimizer.NeedsCleanup, Minimizer.Reusable {
 
-	private static final double MaxIterations = 30; // same as CCDMinimizer
+	public static final int DefaultMaxIterations = 30; // same as CCDMinimizer
+	private int maxIterations = DefaultMaxIterations;
 	private static final double ConvergenceThreshold = 0.001; // same as CCDMinimizer
 
 	// DOF value logging configuration
@@ -49,12 +50,16 @@ public class SimpleCCDMinimizer implements Minimizer.NeedsCleanup, Minimizer.Reu
 	// ThreadLocal to pass RC tuple information from EnergyCalculator to SimpleCCDMinimizer
 	public static ThreadLocal<String> currentRCTuple = new ThreadLocal<>();
 
+	// ThreadLocal to pass unmatched DOF indices (for warm start priority optimization)
+	public static ThreadLocal<int[]> unmatchedDOFIndices = new ThreadLocal<>();
+
 	// Lock for thread-safe logging (prevent interleaved output from multiple threads)
 	private static final Object LOG_LOCK = new Object();
 
 	private Factory<LineSearcher,Void> lineSearcherFactory;
 	private ObjectiveFunction f;
 	private List<LineSearcher> lineSearchers;
+	private int lastIterations = 0;
 
 	public SimpleCCDMinimizer() {
 		this((context) -> new SurfingLineSearcher());
@@ -67,8 +72,12 @@ public class SimpleCCDMinimizer implements Minimizer.NeedsCleanup, Minimizer.Reu
 	
 	public SimpleCCDMinimizer(Factory<LineSearcher,Void> lineSearcherFactory) {
 		this.lineSearcherFactory = lineSearcherFactory;
-		
+
 		lineSearchers = new ArrayList<>();
+	}
+
+	public void setMaxIterations(int val) {
+		this.maxIterations = val;
 	}
 
 	@Override
@@ -108,7 +117,27 @@ public class SimpleCCDMinimizer implements Minimizer.NeedsCleanup, Minimizer.Reu
 		String dofBeforeStr = (rcTuple != null) ? formatDOFs(startx) : null;
 		int numDOFs = f.getNumDOFs();
 
+		// Get unmatched DOF indices for warm start priority optimization
+		int[] unmatchedDOFs = unmatchedDOFIndices.get();
+
+		// Build priority DOF order: unmatched DOFs first, then the rest
+		// This reorders but does NOT skip any DOFs
 		int n = f.getNumDOFs();
+		int[] dofOrder = buildDOFOrder(n, unmatchedDOFs);
+
+		// Boost step size for unmatched DOFs so they explore more aggressively
+		// Unmatched DOFs start from voxel center and need to adapt to cached DOFs
+		if (unmatchedDOFs != null && unmatchedDOFs.length > 0) {
+			for (int dofIdx : unmatchedDOFs) {
+				if (dofIdx >= 0 && dofIdx < n) {
+					LineSearcher ls = lineSearchers.get(dofIdx);
+					if (ls instanceof SurfingLineSearcher) {
+						((SurfingLineSearcher) ls).setStepScale(8.0);
+					}
+				}
+			}
+		}
+
 		DoubleMatrix1D herex = startx.copy();
 		DoubleMatrix1D nextx = startx.copy();
 
@@ -120,16 +149,15 @@ public class SimpleCCDMinimizer implements Minimizer.NeedsCleanup, Minimizer.Reu
 		double herefx = f.getValue(herex);
 
 		int actualIterations = 0; // Track actual number of iterations
-		for (int iter=0; iter<MaxIterations; iter++) {
+		for (int iter=0; iter<maxIterations; iter++) {
 			actualIterations = iter + 1;
 
 			// update all the dofs using line search
-			for (int d=0; d<n; d++) {
-
+			// dofOrder puts unmatched DOFs first so they adapt before matched DOFs
+			for (int di=0; di<n; di++) {
+				int d = dofOrder[di];
 				LineSearcher lineSearcher = lineSearchers.get(d);
 				if (lineSearcher != null) {
-
-					// get the next x value for this dof
 					double xd = nextx.get(d);
 					xd = lineSearcher.search(xd);
 					nextx.set(d, xd);
@@ -157,12 +185,16 @@ public class SimpleCCDMinimizer implements Minimizer.NeedsCleanup, Minimizer.Reu
 
 		// update the protein conf, one last time
 		f.setDOFs(herex);
+		lastIterations = actualIterations;
+
+		// Clean up ThreadLocal to prevent memory leaks
+		if (unmatchedDOFs != null) {
+			unmatchedDOFIndices.remove();
+		}
 
 		// Log complete minimization record atomically (thread-safe)
-		// Only log if we have RC tuple information (i.e., this is a full 7-residue conformation, not a fragment)
-		// Don't check ENABLE_DOF_VALUE_LOGGING here because it may be modified by other threads
-		// The presence of rcTuple is sufficient to determine if we should log
-		if (rcTuple != null && dofBeforeStr != null) {
+		// Only log when ENABLE_DOF_VALUE_LOGGING is explicitly turned on
+		if (ENABLE_DOF_VALUE_LOGGING && rcTuple != null && dofBeforeStr != null) {
 			synchronized (LOG_LOCK) {
 				String rcInfo = " RC=" + rcTuple;
 				System.out.println("\n============ SimpleCCDMinimizer: DOF LOGGING ============");
@@ -177,6 +209,53 @@ public class SimpleCCDMinimizer implements Minimizer.NeedsCleanup, Minimizer.Reu
 		return new Minimizer.Result(herex, herefx);
 	}
 	
+	/**
+	 * Build DOF traversal order: unmatched DOFs first, then remaining DOFs.
+	 * All DOFs are included exactly once - only the order changes.
+	 */
+	private static int[] buildDOFOrder(int n, int[] unmatchedDOFs) {
+		if (unmatchedDOFs == null || unmatchedDOFs.length == 0) {
+			// No priority info: default sequential order
+			int[] order = new int[n];
+			for (int i = 0; i < n; i++) order[i] = i;
+			return order;
+		}
+
+		// Build set of unmatched indices for fast lookup
+		boolean[] isUnmatched = new boolean[n];
+		int validCount = 0;
+		for (int dofIdx : unmatchedDOFs) {
+			if (dofIdx >= 0 && dofIdx < n) {
+				isUnmatched[dofIdx] = true;
+				validCount++;
+			}
+		}
+
+		int[] order = new int[n];
+		int idx = 0;
+
+		// First: unmatched DOFs (these need to adapt to cached values)
+		for (int dofIdx : unmatchedDOFs) {
+			if (dofIdx >= 0 && dofIdx < n) {
+				order[idx++] = dofIdx;
+			}
+		}
+
+		// Then: all other DOFs in original order
+		for (int d = 0; d < n; d++) {
+			if (!isUnmatched[d]) {
+				order[idx++] = d;
+			}
+		}
+
+		return order;
+	}
+
+	/** Return the number of iterations used in the last minimizeFrom() call. */
+	public int getLastIterations() {
+		return lastIterations;
+	}
+
 	@Override
 	public void clean() {
 		for (LineSearcher lineSearcher : lineSearchers) {

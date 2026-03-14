@@ -74,6 +74,12 @@ import edu.duke.cs.osprey.tools.MathTools;
 import edu.duke.cs.osprey.tools.ObjectPool;
 import edu.duke.cs.osprey.tools.Stopwatch;
 import edu.duke.cs.osprey.tools.TimeTools;
+import edu.duke.cs.osprey.energy.forcefield.ForcefieldParams;
+import edu.duke.cs.osprey.ematrix.SimpleReferenceEnergies;
+import edu.duke.cs.osprey.markstar.framework.branch.InteractionGraph;
+import edu.duke.cs.osprey.markstar.framework.branch.BranchDecomposition;
+import edu.duke.cs.osprey.markstar.framework.branch.RootedTreeNode;
+import edu.duke.cs.osprey.markstar.framework.branch.RootedTreeEdge;
 
 public class MARKStarBound implements PartitionFunction.WithConfDB {
 
@@ -112,6 +118,19 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
     private boolean nonZeroLower;
     protected static TaskExecutor loopTasks;
 
+    // Global statistics across all pfuncs: leaf vs internal rounds
+    protected static double totalLeafTime = 0;
+    protected static double totalInternalTime = 0;
+    protected static double totalLeafEpsilonReduction = 0;
+    protected static double totalInternalEpsilonReduction = 0;
+    protected static int totalLeafRounds = 0;
+    protected static int totalInternalRounds = 0;
+
+    // Global statistics: minimization upper vs lower bound tightening
+    protected static double totalMinLowerTightening = 0;
+    protected static double totalMinUpperTightening = 0;
+    protected static int totalMinCount = 0;
+
     private ConfDB confDB;
     private ConfDB.Key confDBKey;
 
@@ -147,7 +166,7 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
     }
 
     public void setReportProgress(boolean showPfuncProgress) {
-        this.printMinimizedConfs = true;
+        this.printMinimizedConfs = showPfuncProgress;
     }
 
     @Override
@@ -192,7 +211,10 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
     }
 
 
-    @Override
+    protected void setStatus(Status s) {
+        this.status = s;
+    }
+
     public Status getStatus() {
         return status;
     }
@@ -230,14 +252,6 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
         if(!nonZeroLower) {
             runUntilNonZero();
             updateBound();
-            // DEBUG OUTPUT DISABLED
-            // System.out.println("========== MARK* After runUntilNonZero ==========");
-            // System.out.println("  epsilonBound:     " + epsilonBound);
-            // System.out.println("  targetEpsilon:    " + targetEpsilon);
-            // System.out.println("  lower bound:      " + rootNode.getLowerBound());
-            // System.out.println("  upper bound:      " + rootNode.getUpperBound());
-            // System.out.println("  Will enter while loop? " + (epsilonBound > targetEpsilon));
-            // System.out.println("==================================================");
         }
         while (epsilonBound > targetEpsilon &&
                 workDone()-previousConfCount < maxNumConfs
@@ -275,6 +289,39 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
             }
             //rootNode.printTree(stateName, minimizingEcalc.confSpace);
         }
+        // Print leaf vs internal statistics for this pfunc and cumulative
+        printPhaseStatistics();
+    }
+
+    protected static void printPhaseStatistics() {
+        double totalTime = totalLeafTime + totalInternalTime;
+        double totalReduction = totalLeafEpsilonReduction + totalInternalEpsilonReduction;
+        int totalRounds = totalLeafRounds + totalInternalRounds;
+        System.out.println("=== Leaf vs Internal Statistics (Cumulative across all PFuncs) ===");
+        System.out.println(String.format("  Leaf:     rounds=%4d, time=%8.2fs (%5.1f%%), epsilon reduction=%.6f (%5.1f%%)",
+                totalLeafRounds,
+                totalLeafTime,
+                totalTime > 0 ? 100.0 * totalLeafTime / totalTime : 0,
+                totalLeafEpsilonReduction,
+                totalReduction > 0 ? 100.0 * totalLeafEpsilonReduction / totalReduction : 0));
+        System.out.println(String.format("  Internal: rounds=%4d, time=%8.2fs (%5.1f%%), epsilon reduction=%.6f (%5.1f%%)",
+                totalInternalRounds,
+                totalInternalTime,
+                totalTime > 0 ? 100.0 * totalInternalTime / totalTime : 0,
+                totalInternalEpsilonReduction,
+                totalReduction > 0 ? 100.0 * totalInternalEpsilonReduction / totalReduction : 0));
+        System.out.println(String.format("  Total:    rounds=%4d, time=%8.2fs", totalRounds, totalTime));
+        double totalTightening = totalMinLowerTightening + totalMinUpperTightening;
+        System.out.println(String.format("  Minimization bounds tightening (n=%d):", totalMinCount));
+        System.out.println(String.format("    Lower raised:  %10.4f kcal/mol (%5.1f%%), avg=%.4f",
+                totalMinLowerTightening,
+                totalTightening > 0 ? 100.0 * totalMinLowerTightening / totalTightening : 0,
+                totalMinCount > 0 ? totalMinLowerTightening / totalMinCount : 0));
+        System.out.println(String.format("    Upper lowered: %10.4f kcal/mol (%5.1f%%), avg=%.4f",
+                totalMinUpperTightening,
+                totalTightening > 0 ? 100.0 * totalMinUpperTightening / totalTightening : 0,
+                totalMinCount > 0 ? totalMinUpperTightening / totalMinCount : 0));
+        System.out.println("================================================================");
     }
 
     protected void debugPrint(String s) {
@@ -335,8 +382,15 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
     EnergyMatrix rigidEmat;
     UpdatingEnergyMatrix correctionMatrix;
     ConfEnergyCalculator minimizingEcalc;
+    private edu.duke.cs.osprey.energy.approximation.branch.GNNConfEnergyCalculator gnnCalc; // GNN surrogate (optional)
     private edu.duke.cs.osprey.ematrix.SubtreeDOFCache tripleDOFCache; // For storing triple DOF values
     private edu.duke.cs.osprey.ematrix.PartialFixCache partialFixCache; // PartialFixCache (Phase 4): L-set/M-set caching
+    // Phase 7: Grid DP upper bound
+    private GridDPMinimizer gridDPMinimizer;
+    private boolean useGridDP = false;
+    private static final int GRIDDP_GRID_SIZE = 2;
+    private static final double GRIDDP_DIST_CUTOFF = 8.0;
+    private static final double GRIDDP_ENERGY_CUTOFF = 0.1;
     private Stopwatch stopwatch = new Stopwatch().start();
     // Variables for reporting pfunc reductions more accurately
     BigDecimal startUpperBound = null; //can't start with infinity
@@ -431,6 +485,59 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
         this.partialFixCache = cache;
     }
 
+    public void setGNNCalculator(edu.duke.cs.osprey.energy.approximation.branch.GNNConfEnergyCalculator gnn) {
+        this.gnnCalc = gnn;
+    }
+
+    public void setUseGridDP(boolean use) {
+        this.useGridDP = use;
+        if (use && this.gridDPMinimizer == null) {
+            initGridDP();
+        }
+        if (!use) {
+            this.gridDPMinimizer = null;
+        }
+    }
+
+    private void initGridDP() {
+        try {
+            SimpleConfSpace confSpace = minimizingEcalc.confSpace;
+            ForcefieldParams ffparams = minimizingEcalc.ecalc.resPairCache.ffparams;
+            SimpleReferenceEnergies eref = minimizingEcalc.eref;
+
+            // Build interaction graph
+            InteractionGraph ig = InteractionGraph.buildWithDualCutoff(
+                confSpace, rigidEmat, minimizingEmat, RCs,
+                GRIDDP_DIST_CUTOFF, GRIDDP_ENERGY_CUTOFF);
+
+            // Compute branch decomposition
+            BranchDecomposition bd = new BranchDecomposition(ig);
+            bd.compute();
+
+            // Root the tree
+            RootedTreeNode rootedRoot = bd.rootBranchTree(RCs);
+            if (rootedRoot == null) {
+                System.out.println("[Phase 7] Grid DP: empty tree, disabled.");
+                this.gridDPMinimizer = null;
+                return;
+            }
+            RootedTreeEdge.postOrderCompLlambda(rootedRoot);
+            RootedTreeEdge rootEdge = rootedRoot.getLeftChild().getChildOfEdge();
+            rootEdge.compactTree();
+
+            // Create GridDPMinimizer with cache enabled
+            this.gridDPMinimizer = new GridDPMinimizer(
+                confSpace, ig, rootEdge,
+                GRIDDP_GRID_SIZE, ffparams, eref, true);
+
+            System.out.println("[Phase 7] Grid DP minimizer initialized. Branchwidth="
+                + bd.getBranchwidth() + ", gridSize=" + GRIDDP_GRID_SIZE);
+        } catch (Exception e) {
+            System.err.println("[Phase 7] Grid DP init failed: " + e.getMessage());
+            this.gridDPMinimizer = null;
+        }
+    }
+
     public void setParallelism(Parallelism val) {
 
         if (val == null) {
@@ -481,8 +588,8 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
                 break;
             }
         }
-        if(match)
-            System.out.println("Matched "+SimpleConfSpace.formatConfRCs(conf));
+        // if(match)
+        //     System.out.println("Matched "+SimpleConfSpace.formatConfRCs(conf));
     }
 
     // We want to process internal nodes without worrying about the bound too much until we have
@@ -526,7 +633,7 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
         debugPrint(String.format("After corrections, bounds are now [%12.6e,%12.6e]",rootNode.getLowerBound(),rootNode.getUpperBound()));
         internalZ = ZSums[0];// MathTools.bigDivide(ZSums[0], new BigDecimal(Math.max(1,internalTimeAverage*internalNodes.size())), PartitionFunction.decimalPrecision);
         leafZ = ZSums[1]; //MathTools.bigDivide(ZSums[1], new BigDecimal(Math.max(1,leafTimeAverage)), PartitionFunction.decimalPrecision);
-        // System.out.println(String.format("Z Comparison: %12.6e, %12.6e", internalZ, leafZ));
+        double epsilonBeforePhase = epsilonBound;
         if(MathTools.isLessThan(internalZ, leafZ)) {
             numNodes = leafNodes.size();
             // System.out.println("Processing "+numNodes+" leaf nodes...");
@@ -576,9 +683,31 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
             queue.addAll(leafNodes);
             numInternalNodesProcessed+=internalNodes.size();
         }
-        if (epsilonBound <= targetEpsilon)
+        // Record leaf vs internal statistics (before potential early return)
+        if(MathTools.isLessThan(internalZ, leafZ)) {
+            totalLeafTime += leafTimeAverage;
+            totalLeafRounds++;
+        } else {
+            totalInternalTime += internalTimeSum;
+            totalInternalRounds++;
+        }
+        if (epsilonBound <= targetEpsilon) {
+            // Still record epsilon reduction on early return
+            double epsilonReduction = Math.max(0, epsilonBeforePhase - epsilonBound);
+            if(MathTools.isLessThan(internalZ, leafZ)) {
+                totalLeafEpsilonReduction += epsilonReduction;
+            } else {
+                totalInternalEpsilonReduction += epsilonReduction;
+            }
             return;
+        }
         loopCleanup(newNodes, loopWatch, numNodes);
+        double epsilonReduction = Math.max(0, epsilonBeforePhase - epsilonBound);
+        if(MathTools.isLessThan(internalZ, leafZ)) {
+            totalLeafEpsilonReduction += epsilonReduction;
+        } else {
+            totalInternalEpsilonReduction += epsilonReduction;
+        }
     }
 
     protected void debugHeap(Queue<MARKStarNode> queue) {
@@ -608,26 +737,8 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
         if(leafTimeAverage > 0)
             maxNodes = Math.max(maxNodes, (int)Math.floor(0.1*leafTimeAverage/internalTimeAverage));
 
-        // LOG: Priority queue state before popping
-        if (numConfsEnergied <= 5) {  // Only log for first few minimizations
-            System.out.println("[QUEUE_STATE] size=" + queue.size() + " internal_nodes=" + internalNodes.size() + " leaf_nodes=" + leafNodes.size());
-            List<MARKStarNode> peek = new ArrayList<>();
-            int count = 0;
-            while (!queue.isEmpty() && count < 10) {
-                MARKStarNode n = queue.poll();
-                peek.add(n);
-                Node nd = n.getConfSearchNode();
-                if (nd.getLevel() == RCs.getNumPos()) {  // leaf node
-                    System.out.println("  [QUEUE_LEAF] rank=" + (count+1)
-                        + " conf=" + SimpleConfSpace.formatConfRCs(nd.assignments)
-                        + " errorBound=" + String.format("%.6e", n.getErrorBound())
-                        + " confLower=" + String.format("%.6f", nd.getConfLowerBound())
-                        + " gscore=" + String.format("%.6f", nd.gscore));
-                }
-                count++;
-            }
-            queue.addAll(peek);
-        }
+        // LOG: Priority queue state (disabled for performance)
+        // if (numConfsEnergied <= 5) { ... }
 
         while(!queue.isEmpty() && internalNodes.size() < maxNodes){
             MARKStarNode curNode = queue.poll();
@@ -667,16 +778,7 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
                 internalZ = internalZ.add(diff);
             }
             else if(shouldMinimize(node) && !correctedNode(leftoverLeaves, curNode, node)) {
-                // LOG: Why this node will be minimized
-                if (numConfsEnergied <= 5) {
-                    System.out.println("[WILL_MINIMIZE] conf=" + SimpleConfSpace.formatConfRCs(node.assignments)
-                        + " confLower=" + String.format("%.6f", node.getConfLowerBound())
-                        + " confUpper=" + String.format("%.6f", node.getConfUpperBound())
-                        + " gscore=" + String.format("%.6f", node.gscore)
-                        + " rigidScore=" + String.format("%.6f", node.rigidScore)
-                        + " correctgscore=" + String.format("%.6f", correctgscore)
-                        + " confCorrection=" + String.format("%.6f", confCorrection)
-                        + " errorBound=" + String.format("%.6e", curNode.getErrorBound()));
+                if (false) {  // LOG disabled
                 }
                 if(leafNodes.size() < maxMinimizations) {
                     leafNodes.add(curNode);
@@ -862,8 +964,12 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
 
             if (node.getLevel() < RCs.getNumPos()) {
                 MARKStarNode nextNode = drillDown(newNodes, curNode, node);
-                newNodes.remove(nextNode);
-                drillQueue.add(nextNode);
+                // Handle case where all children were pruned (bestChild is null)
+                if (nextNode != null) {
+                    newNodes.remove(nextNode);
+                    drillQueue.add(nextNode);
+                }
+                // If nextNode is null, all children were pruned - skip this node
             }else if(RCs.getNumPos() == 0){
                 // weird case where there are no residues?
                 curNode.recomputeEpsilon();
@@ -877,7 +983,7 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
                 leafLoop.stop();
                 leafLoop.reset();
                 leafLoop.start();
-                System.out.println(String.format("Processed %d, %s so far. Bounds are now [%12.6e,%12.6e]",numNodes, overallLoop.getTime(2),rootNode.getLowerBound(),rootNode.getUpperBound()));
+                // System.out.println(String.format("Processed %d, %s so far. Bounds are now [%12.6e,%12.6e]",numNodes, overallLoop.getTime(2),rootNode.getLowerBound(),rootNode.getUpperBound()));
             }
         }
         generatedNodes.addAll(newNodes);
@@ -996,81 +1102,72 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
         double currentGscore = node.gscore;
         double currentUpper = node.getConfUpperBound();
 
-        // PartialFixCache (Phase 4): Calculate quick upper bound BEFORE making skip decision
-        double quickUpperBound = tryQuickUpperBound(node);
-
-        // Decision 1: Triple correction - skip if correction gives tighter lower bound
+        // Decision 1: Triple correction (free lookup) - skip if correction gives tighter lower bound
         boolean shouldSkipDueToLowerBound =
             (pairwiseLowerBound < confCorrection || currentGscore < confCorrection);
 
-        // Decision 2: PartialFixCache - skip if quick optimization gives tighter upper bound (symmetric to triple correction)
+        if (shouldSkipDueToLowerBound) {
+            // Triple correction alone is enough — skip without running Grid DP or PartialFixCache
+            double oldg = node.gscore;
+            node.gscore = confCorrection;
+            recordCorrection(oldg, confCorrection - oldg);
+            node.setBoundsFromConfLowerAndUpper(confCorrection, currentUpper);
+            curNode.markUpdated();
+            newNodes.add(curNode);
+            return;
+        }
+
+        // Decision 2 (Phase 7): Grid DP upper bound (~10ms cached) — DISABLED
+        // double gridDPUpper = tryGridDPUpperBound(node);
+        // boolean shouldSkipDueToGridDP =
+        //     (gridDPMinimizer != null && gridDPUpper < currentUpper);
+        //
+        // if (shouldSkipDueToGridDP) {
+        //     // Grid DP tightened upper bound enough — skip without running PartialFixCache or CCD
+        //     node.gscore = confCorrection;
+        //     node.setBoundsFromConfLowerAndUpper(confCorrection, gridDPUpper);
+        //     curNode.markUpdated();
+        //     newNodes.add(curNode);
+        //     return;
+        // }
+
+        // Decision 3: PartialFixCache (~50ms) - only if cheaper checks didn't skip
+        double quickUpperBound = tryQuickUpperBound(node);
         boolean shouldSkipDueToUpperBound =
             (partialFixCache != null && quickUpperBound < currentUpper);
 
-        // Decision 3: PartialFixCache - skip if bounds gap is already tight enough (cost-benefit analysis)
-        // TEMPORARILY DISABLED: First test cache functionality alone
-        double boundsGap = quickUpperBound - confCorrection;
-        boolean shouldSkipDueToTightGap = false;
-            // (partialFixCache != null && boundsGap >= 0 && boundsGap < PARTIALFIX_SKIP_THRESHOLD);
-
-        // LOG: Decision point - every time we consider minimizing a conformation
-        boolean hasCorrection = confCorrection > Double.NEGATIVE_INFINITY;
-        boolean willSkipMinimization = shouldSkipDueToLowerBound || shouldSkipDueToUpperBound || shouldSkipDueToTightGap;
-
-        String skipReason = "no_sufficient_correction";
-        if (shouldSkipDueToLowerBound && shouldSkipDueToUpperBound) {
-            skipReason = "both_bounds_tightened";
-        } else if (shouldSkipDueToLowerBound && shouldSkipDueToTightGap) {
-            skipReason = "lower_tightened_and_tight_gap";
-        } else if (shouldSkipDueToUpperBound && shouldSkipDueToTightGap) {
-            skipReason = "upper_tightened_and_tight_gap";
-        } else if (shouldSkipDueToLowerBound) {
-            skipReason = "triple_correction_lower";
-        } else if (shouldSkipDueToUpperBound) {
-            skipReason = "partialfix_upper";
-        } else if (shouldSkipDueToTightGap) {
-            skipReason = "tight_gap";
-        }
-
-        double upperImprovement = currentUpper - quickUpperBound;
-        double lowerImprovement = confCorrection - pairwiseLowerBound;
-
-        // System.out.println("[MINIMIZATION_DECISION] conf=" + SimpleConfSpace.formatConfRCs(node.assignments)
-        //     + " pairwise=" + String.format("%.6f", pairwiseLowerBound)
-        //     + " gscore=" + String.format("%.6f", currentGscore)
-        //     + " correction=" + (hasCorrection ? String.format("%.6f", confCorrection) : "NONE")
-        //     + " lowerImprove=" + String.format("%.6f", lowerImprovement)
-        //     + " currentUpper=" + String.format("%.6f", currentUpper)
-        //     + " quickUpper=" + String.format("%.6f", quickUpperBound)
-        //     + " upperImprove=" + String.format("%.6f", upperImprovement)
-        //     + " boundsGap=" + String.format("%.6f", boundsGap)
-        //     + " decision=" + (willSkipMinimization ? "SKIP" : "MINIMIZE")
-        //     + " reason=" + skipReason);
-
-        if(shouldSkipDueToLowerBound || shouldSkipDueToUpperBound || shouldSkipDueToTightGap) {
-            double oldg = node.gscore;
+        if (shouldSkipDueToUpperBound) {
             node.gscore = confCorrection;
-
-            if (shouldSkipDueToLowerBound) {
-                recordCorrection(oldg, confCorrection - oldg);
-            }
-
-            // PartialFixCache (Phase 4): Use quick upper bound (already calculated above)
             node.setBoundsFromConfLowerAndUpper(confCorrection, quickUpperBound);
             curNode.markUpdated();
             newNodes.add(curNode);
-
-            // LOG: Minimization skipped
-            double finalGap = quickUpperBound - confCorrection;
-            System.out.println("[SKIP_MINIMIZATION] conf=" + SimpleConfSpace.formatConfRCs(node.assignments)
-                + " reason=" + skipReason
-                + " lower: " + String.format("%.6f", pairwiseLowerBound) + " -> " + String.format("%.6f", confCorrection)
-                + " (+" + String.format("%.6f", confCorrection - pairwiseLowerBound) + ")"
-                + " upper: " + String.format("%.6f", currentUpper) + " -> " + String.format("%.6f", quickUpperBound)
-                + " (-" + String.format("%.6f", currentUpper - quickUpperBound) + ")"
-                + " finalGap=" + String.format("%.6f", finalGap));
             return;
         }
+
+        // GNN fast path: synchronous prediction for full conformation (replaces CCD)
+        if (gnnCalc != null) {
+            double energy = gnnCalc.calcEnergy(node.assignments);
+            double oldConfUpper = node.getConfUpperBound();
+            double oldConfLower = node.getConfLowerBound();
+            double newConfUpper = energy;
+            double newConfLower = energy;
+            if (newConfUpper > oldConfUpper) {
+                newConfUpper = oldConfUpper;
+                newConfLower = oldConfUpper;
+            }
+            curNode.setBoundsFromConfLowerAndUpper(newConfLower, newConfUpper);
+            node.gscore = newConfLower;
+            curNode.markUpdated();
+            synchronized(this) {
+                numConfsEnergied++;
+                minList.set(node.assignments.length-1, minList.get(node.assignments.length-1)+1);
+                recordReduction(oldConfLower, oldConfUpper, energy);
+            }
+            newNodes.add(curNode);
+            return;
+        }
+
+        // No skip triggered — proceed to full CCD minimization
         loopTasks.submit(() -> {
             try (ObjectPool.Checkout<ScoreContext> checkout = contexts.autoCheckout()) {
                 ScoreContext context = checkout.get();
@@ -1110,9 +1207,10 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
                 double oldConfLower = node.getConfLowerBound();
                 checkConfLowerBound(node, energy);
                 if (newConfUpper > oldConfUpper) {
-                    System.err.println("Upper bounds got worse after minimization:" + newConfUpper
+                    System.err.println("[ERROR] Upper bounds got worse after minimization: " + newConfUpper
                             + " > " + (oldConfUpper)+". Rejecting minimized energy.");
-                    System.err.println("Node info: "+node);
+                    System.err.println("  Tuple: " + edu.duke.cs.osprey.confspace.SimpleConfSpace.formatConfRCs(node.assignments));
+                    System.err.println("  Node info: "+node);
 
                     newConfUpper = oldConfUpper;
                     newConfLower = oldConfUpper;
@@ -1138,6 +1236,10 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
                     numConfsEnergied++;
                     minList.set(conf.getAssignments().length-1,minList.get(conf.getAssignments().length-1)+1);
                     recordReduction(oldConfLower, oldConfUpper, energy);
+                    // Track upper vs lower tightening from minimization
+                    totalMinLowerTightening += Math.max(0, newConfLower - oldConfLower);
+                    totalMinUpperTightening += Math.max(0, oldConfUpper - newConfUpper);
+                    totalMinCount++;
                     printMinimizationOutput(node, newConfLower, oldgscore);
 
                     // PRIORITY QUEUE DUMP: After first minimization
@@ -1335,6 +1437,12 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
         correctedTuples.add(tuple.stringListing());
         if(correctionMatrix.hasHigherOrderTermFor(tuple))
             return;
+
+        // GNN mode: skip tuple correction (GNN handles full conf energy directly)
+        if (gnnCalc != null) {
+            return;
+        }
+
         minimizingEcalc.calcEnergyAsync(tuple, (minimizedTuple) -> {
             double tripleEnergy = minimizedTuple.energy;
 
@@ -1430,6 +1538,12 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
         if(correctionMatrix.hasHigherOrderTermFor(overlap))
             return;
         double pairwiseLower = minimizingEmat.getInternalEnergy(overlap);
+
+        // GNN mode: skip overlap correction (GNN handles full conf energy directly)
+        if (gnnCalc != null) {
+            return;
+        }
+
         double partiallyMinimizedLower = ecalc.calcEnergy(overlap).energy;
         progress.reportPartialMinimization(1, epsilonBound);
         if(partiallyMinimizedLower > pairwiseLower)
@@ -1566,6 +1680,27 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
                 System.err.println("WARNING: PartialFixCache tryQuickUpperBound failed for conf "
                     + SimpleConfSpace.formatConfRCs(node.assignments) + ": " + e.getMessage());
                 e.printStackTrace();
+            }
+            return node.getConfUpperBound();
+        }
+    }
+
+    /**
+     * Phase 7: Try to get a tighter upper bound using Grid DP.
+     * Grid DP discretizes DOFs and uses branch decomposition DP to find
+     * optimal grid combination — result is a valid upper bound on minimized energy.
+     */
+    protected double tryGridDPUpperBound(Node node) {
+        if (gridDPMinimizer == null) {
+            return node.getConfUpperBound();
+        }
+        try {
+            GridDPMinimizer.Result result = gridDPMinimizer.minimize(node.assignments);
+            return result.energy;
+        } catch (Exception e) {
+            if (debug) {
+                System.err.println("WARNING: GridDP failed for conf "
+                    + SimpleConfSpace.formatConfRCs(node.assignments) + ": " + e.getMessage());
             }
             return node.getConfUpperBound();
         }

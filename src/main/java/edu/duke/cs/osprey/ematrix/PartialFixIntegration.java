@@ -11,7 +11,7 @@ import edu.duke.cs.osprey.confspace.SimpleConfSpace;
 public class PartialFixIntegration {
 
     // Feature flag for PartialFixCache
-    public static boolean ENABLE_PARTIALFIX_CACHE = true;
+    public static boolean ENABLE_PARTIALFIX_CACHE = false;
 
     // Global PartialFixCache instance (one per confSpace)
     private static java.util.Map<SimpleConfSpace, PartialFixCache> globalCaches =
@@ -32,18 +32,11 @@ public class PartialFixIntegration {
             // Optimization: If tree is single-leaf, PartialFixCache provides no benefit
             // Return null to avoid overhead of cache creation and queries
             if (branchDecomp.root.isLeaf) {
-                System.out.println("PartialFixCache SKIPPED for confSpace with " +
-                                 cs.positions.size() + " positions (tree is single-leaf, no caching benefit)");
                 return null;
             }
 
             // Create PartialFixCache
             PartialFixCache cache = new PartialFixCache(branchDecomp, cs);
-
-            System.out.println("PartialFixCache initialized for confSpace with " +
-                             cs.positions.size() + " positions");
-            System.out.println("  Branch width: " + branchDecomp.branchWidth);
-
             return cache;
         });
     }

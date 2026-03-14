@@ -44,11 +44,21 @@ public class SurfingLineSearcher implements LineSearcher {
 	private double firstStep;
 	private double lastStep;
 	private int iteration;
-	
+	private double stepScale;
+
 	public SurfingLineSearcher() {
 		firstStep = 1;
 		lastStep = 1;
 		iteration = 0;
+		stepScale = 1.0;
+	}
+
+	/**
+	 * Set a multiplier for the initial step size.
+	 * Values > 1 allow larger exploration range (useful for unmatched DOFs in warm start).
+	 */
+	public void setStepScale(double scale) {
+		this.stepScale = scale;
 	}
 	
 	@Override
@@ -69,9 +79,9 @@ public class SurfingLineSearcher implements LineSearcher {
 		// get the step size, try to make it adaptive (based on historical steps if possible; else on step #)
 		double step;
 		if (Math.abs(lastStep) > Tolerance && Math.abs(firstStep) > Tolerance) {
-			step = f.getInitialStepSize()*Math.abs(lastStep / firstStep);
+			step = f.getInitialStepSize() * stepScale * Math.abs(lastStep / firstStep);
 		} else {
-			step = f.getInitialStepSize()/Math.pow(iteration + 1, 3);
+			step = f.getInitialStepSize() * stepScale / Math.pow(iteration + 1, 3);
 		}
 		
 		// make sure the step isn't so big that the quadratic approximation is worthless

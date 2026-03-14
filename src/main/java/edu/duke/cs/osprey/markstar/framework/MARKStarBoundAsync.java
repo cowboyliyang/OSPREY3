@@ -135,7 +135,7 @@ public class MARKStarBoundAsync implements PartitionFunction {
     }
 
     public void setReportProgress(boolean showPfuncProgress) {
-        this.printMinimizedConfs = true;
+        this.printMinimizedConfs = showPfuncProgress;
     }
 
     @Override
@@ -399,7 +399,7 @@ public class MARKStarBoundAsync implements PartitionFunction {
     // a nonzero lower bound. We have to have a nonzero lower bound, so we have to have at least
     // one node with a negative conf upper bound.
     private void runUntilNonZero() {
-        System.out.println("Running until leaf is found...");
+        // System.out.println("Running until leaf is found...");
         double bestConfUpper = Double.POSITIVE_INFINITY;
 
         List<MARKStarNode> newNodes = new ArrayList<>();
@@ -413,13 +413,13 @@ public class MARKStarBoundAsync implements PartitionFunction {
 
 
         newNodes.clear();
-        System.out.println("Found a leaf!");
+        // System.out.println("Found a leaf!");
         nonZeroLower = true;
     }
 
 
     private void tightenBoundAsyncDirect() {
-        System.out.println(String.format("Current overall error bound: %12.10f, spread of [%12.6e, %12.6e]",epsilonBound, rootNode.getLowerBound(), rootNode.getUpperBound()));
+        // System.out.println(String.format("Current overall error bound: %12.10f, spread of [%12.6e, %12.6e]",epsilonBound, rootNode.getLowerBound(), rootNode.getUpperBound()));
         List<MARKStarNode> internalNodes = state.internalNodes;
         List<MARKStarNode> leafNodes = state.leafNodes;
         List<MARKStarNode> newNodes = new ArrayList<>();
@@ -473,17 +473,17 @@ public class MARKStarBoundAsync implements PartitionFunction {
         debugPrint(String.format("After corrections, bounds are now [%12.6e,%12.6e]",rootNode.getLowerBound(),rootNode.getUpperBound()));
         internalZ = state.internalZ.multiply(new BigDecimal(bias)); //MathTools.bigDivide(ZSums[0], new BigDecimal(Math.max(1,internalTimeAverage*internalNodes.size())), PartitionFunction.decimalPrecision);
         leafZ = state.leafZ; //MathTools.bigDivide(ZSums[1], new BigDecimal(Math.max(1,leafTimeAverage)), PartitionFunction.decimalPrecision);
-        System.out.println(String.format("Z Comparison: %12.6e, %12.6e, dscore %4.4e, denergy %4.4e", internalZ, leafZ, state.dScore, state.dEnergy));
-        System.out.println("Number of ongoing background corrections: "+state.correctingLeaves);
+        // System.out.println(String.format("Z Comparison: %12.6e, %12.6e, dscore %4.4e, denergy %4.4e", internalZ, leafZ, state.dScore, state.dEnergy));
+        // System.out.println("Number of ongoing background corrections: "+state.correctingLeaves);
         if((internalNodes.size() >= maxNodes && MathTools.isLessThan(internalZ, leafZ) && state.dScore > state.dEnergy)){
                 //&& state.correctingLeaves < 10000) {
             numNodes = leafNodes.size();
-            System.out.println("Processing "+numNodes+" leaf nodes...");
+            // System.out.println("Processing "+numNodes+" leaf nodes...");
             int maxLeaves = 1;
             int numLeaves = 0;
             for(MARKStarNode leafNode: leafNodes) {
                 if(correctedNodeAsync(leafNode, leafNode.getConfSearchNode())) {
-                    System.out.println("Corrected node. Not minimizing it this round.");
+                    // System.out.println("Corrected node. Not minimizing it this round.");
                     continue;
                 }
                 if(numLeaves >= maxLeaves) {
@@ -504,13 +504,13 @@ public class MARKStarBoundAsync implements PartitionFunction {
                 if (bias <1 )
                     bias = 1;
                 else bias *=2;
-                System.out.println("Biasing internal nodes by a factor of "+bias);
+                // System.out.println("Biasing internal nodes by a factor of "+bias);
             }
         }
         else {
             numNodes = internalNodes.size();
             if(internalNodes.size() >1) {
-                System.out.println("Processing " + numNodes + " internal nodes...");
+                // System.out.println("Processing " + numNodes + " internal nodes...");
                 for (MARKStarNode internalNode : internalNodes) {
                     Stopwatch internalTime = new Stopwatch();
                     if (!MathTools.isGreaterThan(internalNode.getLowerBound(), BigDecimal.ZERO) &&
@@ -556,7 +556,7 @@ public class MARKStarBoundAsync implements PartitionFunction {
                 if (bias >1 )
                     bias = 1;
                 else bias /=2;
-                System.out.println("Biasing internal nodes by a factor of "+bias);
+                // System.out.println("Biasing internal nodes by a factor of "+bias);
             }
             internalNodes.clear();
             state.internalZ = BigDecimal.ZERO;
@@ -595,7 +595,7 @@ public class MARKStarBoundAsync implements PartitionFunction {
             leafTimeSum += timeS;
             numLeavesScored++;
             leafTimeAverage = leafTimeSum/numLeavesScored;
-            System.out.println("Processed leaf in "+timeS+" seconds.");
+            // System.out.println("Processed leaf in "+timeS+" seconds.");
             profilePrint("Leaf time average is now "+leafTimeAverage);
             double delta = epsilonBound;
             updateBound();
@@ -603,7 +603,7 @@ public class MARKStarBoundAsync implements PartitionFunction {
             state.dEnergy = epsilonBound - delta;
             if(state.dEnergy == 0)
                 state.dEnergy = state.dScore/10;
-            System.out.println("dEnergy set to "+state.dEnergy);
+            // System.out.println("dEnergy set to "+state.dEnergy);
         }
     }
 
@@ -707,8 +707,12 @@ public class MARKStarBoundAsync implements PartitionFunction {
 
             if (node.getLevel() < RCs.getNumPos()) {
                 MARKStarNode nextNode = drillDown(newNodes, curNode, node);
-                newNodes.remove(nextNode);
-                drillQueue.add(nextNode);
+                // Handle case where all children were pruned (bestChild is null)
+                if (nextNode != null) {
+                    newNodes.remove(nextNode);
+                    drillQueue.add(nextNode);
+                }
+                // If nextNode is null, all children were pruned - skip this node
             }
             else
                 newNodes.add(curNode);
@@ -866,9 +870,10 @@ public class MARKStarBoundAsync implements PartitionFunction {
             double newConfLower = energy;
             checkConfLowerBound(node, energy);
             if (energy > node.getConfUpperBound()) {
-                System.err.println("Upper bounds got worse after minimization:" + energy
+                System.err.println("[ERROR] Upper bounds got worse after minimization: " + energy
                         + " > " + (node.getConfUpperBound())+". Rejecting minimized energy.");
-                System.err.println("Node info: "+node);
+                System.err.println("  Tuple: " + edu.duke.cs.osprey.confspace.SimpleConfSpace.formatConfRCs(node.assignments));
+                System.err.println("  Node info: "+node);
 
                 newConfUpper = node.getConfUpperBound();
                 newConfLower = node.getConfUpperBound();
@@ -1114,8 +1119,12 @@ public class MARKStarBoundAsync implements PartitionFunction {
 
             if (node.getLevel() < RCs.getNumPos()) {
                 MARKStarNode nextNode = drillDown(newNodes, curNode, node);
-                newNodes.remove(nextNode);
-                drillQueue.add(nextNode);
+                // Handle case where all children were pruned (bestChild is null)
+                if (nextNode != null) {
+                    newNodes.remove(nextNode);
+                    drillQueue.add(nextNode);
+                }
+                // If nextNode is null, all children were pruned - skip this node
             }
             else
                 newNodes.add(curNode);

@@ -135,7 +135,7 @@ public class MARKStarBoundRigid implements PartitionFunction {
     }
 
     public void setReportProgress(boolean showPfuncProgress) {
-        this.printMinimizedConfs = true;
+        this.printMinimizedConfs = showPfuncProgress;
     }
 
     @Override
@@ -410,7 +410,7 @@ public class MARKStarBoundRigid implements PartitionFunction {
     // a nonzero lower bound. We have to have a nonzero lower bound, so we have to have at least
     // one node with a negative conf upper bound.
     private void runUntilNonZero() {
-        System.out.println("Running until leaf is found...");
+        // System.out.println("Running until leaf is found...");
         double bestConfUpper = Double.POSITIVE_INFINITY;
 
         List<MARKStarNode> newNodes = new ArrayList<>();
@@ -423,7 +423,7 @@ public class MARKStarBoundRigid implements PartitionFunction {
 
 
         newNodes.clear();
-        System.out.println("Found a leaf!");
+        // System.out.println("Found a leaf!");
         nonZeroLower = true;
     }
 
@@ -631,8 +631,12 @@ public class MARKStarBoundRigid implements PartitionFunction {
 
             if (node.getLevel() < RCs.getNumPos()) {
                 MARKStarNode nextNode = drillDown(newNodes, curNode, node);
-                newNodes.remove(nextNode);
-                drillQueue.add(nextNode);
+                // Handle case where all children were pruned (bestChild is null)
+                if (nextNode != null) {
+                    newNodes.remove(nextNode);
+                    drillQueue.add(nextNode);
+                }
+                // If nextNode is null, all children were pruned - skip this node
             }
             else
                 newNodes.add(curNode);
