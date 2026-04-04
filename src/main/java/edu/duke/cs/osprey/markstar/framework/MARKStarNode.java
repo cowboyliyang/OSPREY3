@@ -228,9 +228,9 @@ public class MARKStarNode implements Comparable<MARKStarNode> {
             if(gscore+hscore - confSearchNode.getConfLowerBound() > 1e-5) {
                 double previousLower = confSearchNode.getConfLowerBound();
                 confSearchNode.setBoundsFromConfLowerAndUpper(gscore + hscore, confSearchNode.confUpperBound);
-                if(gscore+hscore < -10)
-                    System.out.println("Correcting "+toTuple().stringListing()+" down to "+(gscore+hscore)+" from "+previousLower
-                    +", reducing it by "+(gscore+hscore - previousLower));
+                // if(gscore+hscore < -10)
+                //     System.out.println("Correcting "+toTuple().stringListing()+" down to "+(gscore+hscore)+" from "+previousLower
+                //     +", reducing it by "+(gscore+hscore - previousLower));
                 return gscore+hscore - previousLower;
             }
         }
@@ -240,8 +240,8 @@ public class MARKStarNode implements Comparable<MARKStarNode> {
                 sum += child.updateAndReportConfBoundChange(index, rcs, gscorer, hScorer);
             }
         }
-        if(sum > 0 && level == 0)
-            System.out.println("Children corrected "+sum);
+        // if(sum > 0 && level == 0)
+        //     System.out.println("Children corrected "+sum);
         return sum;
     }
     private void debugChecks(BigDecimal lastUpper, BigDecimal lastLower, double epsilonBound) {
@@ -276,6 +276,37 @@ public class MARKStarNode implements Comparable<MARKStarNode> {
 
     public BigDecimal getLowerBound(){
         return confSearchNode.subtreeLowerBound;
+    }
+
+    /**
+     * Collapse this subtree: set both lower and upper bounds to the exact Z value.
+     * Used by GNN batch strategy when all conformations in a subtree are predicted.
+     * Clears children so updateSubtreeBounds() won't overwrite these values.
+     * Also directly sets nodeEpsilon=0 so computeEpsilonErrorBounds() returns 0.
+     */
+    public void setExactSubtreeZ(BigDecimal exactZ) {
+        confSearchNode.subtreeUpperBound = exactZ;
+        confSearchNode.subtreeLowerBound = exactZ;
+        children = null; // prevent updateSubtreeBounds from overwriting
+        nodeEpsilon = 0;
+        markUpdated();
+    }
+
+    /**
+     * Set subtree bounds directly (lower != upper).
+     * Used by Strategy 4 when we have a tight but non-exact bound.
+     */
+    public void setSubtreeBounds(BigDecimal lower, BigDecimal upper) {
+        confSearchNode.subtreeLowerBound = lower;
+        confSearchNode.subtreeUpperBound = upper;
+        children = null;
+        if (upper.compareTo(BigDecimal.ZERO) > 0) {
+            nodeEpsilon = upper.subtract(lower)
+                    .divide(upper, java.math.RoundingMode.HALF_UP).doubleValue();
+        } else {
+            nodeEpsilon = 0;
+        }
+        markUpdated();
     }
 
     public static BigDecimal setSigFigs(BigDecimal decimal, int numSigFigs) {
@@ -402,8 +433,11 @@ public class MARKStarNode implements Comparable<MARKStarNode> {
 		rootNode.index(confIndex);
 		rootNode.gscore = gScorer.calc(confIndex, rcs);
 		rootNode.rigidScore = rigidgScorer.calc(confIndex,rcs);
-        double confUpperBound = rigidgScorer.calc(confIndex,rcs)-negatedHScorer.calc(confIndex, rcs);
-        double confLowerBound = rootNode.gscore+hScorer.calc(confIndex, rcs);
+
+		// Calculate bounds
+        double confUpperBound = rigidgScorer.calc(confIndex, rcs) - negatedHScorer.calc(confIndex, rcs);
+        double confLowerBound = gScorer.calc(confIndex, rcs) + hScorer.calc(confIndex, rcs);
+
         rootNode.computeNumConformations(rcs);
         rootNode.setBoundsFromConfLowerAndUpper(confLowerBound, confUpperBound);
 		return new MARKStarNode(rootNode, null);

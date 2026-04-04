@@ -46,9 +46,13 @@ import edu.duke.cs.osprey.kstar.KStarScore;
 import edu.duke.cs.osprey.kstar.KStarScoreWriter;
 import edu.duke.cs.osprey.kstar.pfunc.BoltzmannCalculator;
 import edu.duke.cs.osprey.kstar.pfunc.PartitionFunction;
+import edu.duke.cs.osprey.markstar.framework.BranchMARKStarBound;
+import edu.duke.cs.osprey.markstar.framework.BranchMARKStarBound.ComputeMode;
 import edu.duke.cs.osprey.markstar.framework.MARKStarBound;
 import edu.duke.cs.osprey.markstar.framework.MARKStarBoundFastQueues;
 import edu.duke.cs.osprey.markstar.framework.MARKStarBoundRigid;
+import edu.duke.cs.osprey.markstar.framework.MARKStarBoundGNNBatch;
+import edu.duke.cs.osprey.markstar.framework.MARKStarBoundGNNS7;
 import edu.duke.cs.osprey.parallelism.Parallelism;
 import edu.duke.cs.osprey.tools.Stopwatch;
 
@@ -135,6 +139,9 @@ public class MARKStar {
 			private Parallelism parallelism = null;
 			private int maxNumConfs = -1;
 			private boolean reduceMinimizations = true;
+			private boolean useBranchDecomposition = false;
+			private ComputeMode computeMode = ComputeMode.FLAT_SUM;
+			private boolean useGridDP = false;
 
 			public Builder setEpsilon(double val) {
 				epsilon = val;
@@ -197,11 +204,27 @@ public class MARKStar {
 
 			public Settings build() {
 				return new Settings(epsilon, stabilityThreshold, maxSimultaneousMutations, scoreWriters,
-						showPfuncProgress, energyMatrixCachePattern, parallelism, maxNumConfs, reduceMinimizations);
+						showPfuncProgress, energyMatrixCachePattern, parallelism, maxNumConfs, reduceMinimizations,
+						useBranchDecomposition, computeMode, useGridDP);
 			}
 
 			public Builder setReduceMinimizations(boolean reudceMinimizations) {
 			    this.reduceMinimizations = reudceMinimizations;
+			    return this;
+			}
+
+			public Builder setUseBranchDecomposition(boolean val) {
+			    this.useBranchDecomposition = val;
+			    return this;
+			}
+
+			public Builder setComputeMode(ComputeMode val) {
+			    this.computeMode = val;
+			    return this;
+			}
+
+			public Builder setUseGridDP(boolean val) {
+			    this.useGridDP = val;
 			    return this;
 			}
 		}
@@ -215,10 +238,14 @@ public class MARKStar {
 		public final Parallelism parallelism;
 		public final int maxNumConfs;
 		public final boolean reduceMinimizations;
+		public final boolean useBranchDecomposition;
+		public final ComputeMode computeMode;
+		public final boolean useGridDP;
 
 		public Settings(double epsilon, Double stabilityThreshold, int maxSimultaneousMutations,
 						KStarScoreWriter.Writers scoreWriters, boolean dumpPfuncConfs, String energyMatrixCachePattern,
-						Parallelism parallelism, int maxNumConfs, boolean reduceMinimizations) {
+						Parallelism parallelism, int maxNumConfs, boolean reduceMinimizations,
+						boolean useBranchDecomposition, ComputeMode computeMode, boolean useGridDP) {
 			this.epsilon = epsilon;
 			this.stabilityThreshold = stabilityThreshold;
 			this.maxSimultaneousMutations = maxSimultaneousMutations;
@@ -228,6 +255,9 @@ public class MARKStar {
 			this.parallelism = parallelism;
 			this.maxNumConfs = maxNumConfs;
 			this.reduceMinimizations = reduceMinimizations;
+			this.useBranchDecomposition = useBranchDecomposition;
+			this.computeMode = computeMode;
+			this.useGridDP = useGridDP;
 		}
 
 		public String applyEnergyMatrixCachePattern(String type) {
@@ -285,6 +315,17 @@ public class MARKStar {
 
 		public EnergyMatrix rigidEmat = null;
 		public EnergyMatrix minimizingEmat = null;
+		public edu.duke.cs.osprey.energy.approximation.branch.GNNConfEnergyCalculator gnnCalc = null;
+		public edu.duke.cs.osprey.lute.LUTEConfEnergyCalculator luteCalc = null; // optional, for accuracy comparison
+		public MARKStarBoundGNNBatch.GNNStrategy gnnStrategy = null; // null = don't use batch GNN
+		// Strategy 6 (GNN_CP_POOL) Conformal Prediction parameters
+		// Calibrated from val set: protein q(α=0.001)=0.055, complex q(α=0.001)=0.058
+		public double cpAlpha = 0.001;    // per-prediction miscoverage rate
+		public double cpDelta = 0.1;      // total pfunc failure probability
+		public double cpQ = 0.06;         // CP quantile bound (kcal/mol) — max(protein,complex) rounded up
+		public int gnnMiniBatch = -1;     // GNN pool mini batch size (-1 = use default in MARKStarBoundGNNBatch)
+		public boolean useStrategy7 = false;  // Strategy 7: decoupled GNN pool
+		public int s7GPUBatchSize = 1000;     // GPU batch size for Strategy 7
 		public final Map<Sequence,PartitionFunction.Result> pfuncResults = new HashMap<>();
 
 		public ConfSpaceInfo(ConfSpaceType type, SimpleConfSpace confSpace, ConfEnergyCalculator rigidConfEcalc, ConfEnergyCalculator minimizingConfEcalc) {
@@ -337,9 +378,47 @@ public class MARKStar {
 			// cache miss, need to compute the partition function
 
 			// make the partition function
-			MARKStarBoundFastQueues pfunc = new MARKStarBoundFastQueues(confSpace, rigidEmat, minimizingEmat, minimizingConfEcalc, sequence.makeRCs(confSpace),
-			//MARKStarBoundRigid pfunc = new MARKStarBoundRigid(confSpace, rigidEmat, minimizingEmat, minimizingConfEcalc, sequence.makeRCs(confSpace),
-					settings.parallelism);
+			MARKStarBound pfunc;
+			if (settings.useBranchDecomposition && useStrategy7 && gnnCalc != null) {
+				// BranchMARK* + GNN (Strategy 7-style decoupled pool)
+				BranchMARKStarBound branchPfunc = new BranchMARKStarBound(
+						confSpace, rigidEmat, minimizingEmat, minimizingConfEcalc,
+						sequence.makeRCs(confSpace), settings.parallelism, settings.computeMode);
+				branchPfunc.setGNNBatchCalculator(gnnCalc);
+				branchPfunc.setCPParams(cpAlpha, cpDelta, cpQ);
+				branchPfunc.setGPUBatchSize(s7GPUBatchSize);
+				pfunc = branchPfunc;
+			} else if (useStrategy7 && gnnCalc != null) {
+				MARKStarBoundGNNS7 s7Pfunc = new MARKStarBoundGNNS7(
+						confSpace, rigidEmat, minimizingEmat, minimizingConfEcalc,
+						sequence.makeRCs(confSpace), settings.parallelism);
+				s7Pfunc.setGNNBatchCalculator(gnnCalc);
+				s7Pfunc.setCPParams(cpAlpha, cpDelta, cpQ);
+				s7Pfunc.setGPUBatchSize(s7GPUBatchSize);
+				pfunc = s7Pfunc;
+			} else if (gnnStrategy != null && gnnCalc != null) {
+				MARKStarBoundGNNBatch batchPfunc = new MARKStarBoundGNNBatch(
+						confSpace, rigidEmat, minimizingEmat, minimizingConfEcalc,
+						sequence.makeRCs(confSpace), settings.parallelism);
+				batchPfunc.setGNNStrategy(gnnStrategy);
+				batchPfunc.setGNNBatchCalculator(gnnCalc);
+				if (gnnStrategy == MARKStarBoundGNNBatch.GNNStrategy.GNN_CP_POOL) {
+					batchPfunc.setCPParams(cpAlpha, cpDelta, cpQ);
+					if (gnnMiniBatch > 0) {
+						batchPfunc.setGNNMiniBatch(gnnMiniBatch);
+					}
+				}
+				if (luteCalc != null) {
+					batchPfunc.setLUTECalculator(luteCalc);
+				}
+				pfunc = batchPfunc;
+			} else if (settings.useBranchDecomposition) {
+				pfunc = new BranchMARKStarBound(confSpace, rigidEmat, minimizingEmat, minimizingConfEcalc,
+						sequence.makeRCs(confSpace), settings.parallelism, settings.computeMode);
+			} else {
+				pfunc = new MARKStarBoundFastQueues(confSpace, rigidEmat, minimizingEmat, minimizingConfEcalc,
+						sequence.makeRCs(confSpace), settings.parallelism);
+			}
 			confSearchFactory = (emat, rcs) -> {
 				ConfAStarTree.Builder builder = new ConfAStarTree.Builder(emat, rcs)
 						.setTraditional();
@@ -356,8 +435,34 @@ public class MARKStar {
 
 			pfunc.setCorrections(correctionEmat);
 
-			if (settings.showPfuncProgress == true){
-				System.out.println("Computing "+type+":");
+			// GNN energy surrogate (optional) — only for non-batch strategies
+			// Strategy 6 uses gnnBatchCalc for CP bounds; gnnCalc single-conf predictions
+			// are inaccurate and corrupt bounds in processFullConfNode
+			if (gnnCalc != null && gnnStrategy == null) {
+				pfunc.setGNNCalculator(gnnCalc);
+			}
+
+			// NEW: Set Triple DOF Cache if enabled
+			if (edu.duke.cs.osprey.ematrix.SubtreeDOFCache.ENABLE_TRIPLE_DOF_CACHE) {
+				edu.duke.cs.osprey.ematrix.SubtreeDOFCache cache = edu.duke.cs.osprey.ematrix.CachedMinimizer.getGlobalCache(confSpace);
+				if (cache != null) {
+					pfunc.setTripleDOFCache(cache);
+				}
+			}
+
+			// PartialFixCache (Phase 4): Set BWM*-inspired L-set/M-set cache if enabled
+			if (edu.duke.cs.osprey.ematrix.PartialFixIntegration.ENABLE_PARTIALFIX_CACHE) {
+				edu.duke.cs.osprey.ematrix.PartialFixCache partialFixCache =
+					edu.duke.cs.osprey.ematrix.PartialFixIntegration.getOrCreateCache(confSpace);
+				if (partialFixCache != null) {
+					pfunc.setPartialFixCache(partialFixCache);
+					System.out.println("PartialFixCache (Phase 4) L-set/M-set caching enabled for " + type);
+				}
+			}
+
+			// Phase 7: Grid DP upper bound
+			if (settings.useGridDP) {
+				pfunc.setUseGridDP(true);
 			}
 
 			// compute it
@@ -365,7 +470,7 @@ public class MARKStar {
 			Stopwatch computeTimer = new Stopwatch().start();
 			pfunc.compute();
 			computeTimer.stop();
-			System.out.println("Computation for "+sequence.toString()+":"+computeTimer.getTime(2));
+			// System.out.println("Computation for "+sequence.toString("+":"+computeTimer.getTime(2));
 
 			// save the result
 			result = pfunc.makeResult();
@@ -480,8 +585,24 @@ public class MARKStar {
 			ligandStabilityThreshold = wildTypeScore.ligand.values.calcLowerBound().multiply(stabilityThresholdFactor);
 		}
 
+		// Sequence index filter: only compute specified sequences (for debugging)
+		java.util.Set<Integer> seqFilter = null;
+		String seqFilterProp = System.getProperty("osprey.seqFilter");
+		if (seqFilterProp != null && !seqFilterProp.isEmpty()) {
+			seqFilter = new java.util.HashSet<>();
+			for (String s : seqFilterProp.split(",")) {
+				seqFilter.add(Integer.parseInt(s.trim()));
+			}
+			System.out.println("[SEQ_FILTER] Only computing sequences: " + seqFilter);
+		}
+
 		// compute all the partition functions and K* scores for the rest of the sequences
 		for (int i=1; i<n; i++) {
+
+			// Skip sequences not in filter
+			if (seqFilter != null && !seqFilter.contains(i)) {
+				continue;
+			}
 
 			// get the pfuncs, with short circuits as needed
 			final PartitionFunction.Result proteinResult = protein.calcPfunc(i, proteinStabilityThreshold);
@@ -498,6 +619,12 @@ public class MARKStar {
 					complexResult = complex.calcPfunc(i, BigDecimal.ZERO);
 				}
 			}
+
+			// DEBUG: print pfunc details
+			System.out.println("[DEBUG seq " + i + "] seq=" + sequences.get(i).toString(Sequence.Renderer.ResType)
+				+ " protein: status=" + proteinResult.status + " qstar=" + proteinResult.values.qstar
+				+ " | ligand: status=" + ligandResult.status + " qstar=" + ligandResult.values.qstar
+				+ " | complex: status=" + complexResult.status + " qstar=" + complexResult.values.qstar);
 
 			scorer.score(i, proteinResult, ligandResult, complexResult);
 		}
