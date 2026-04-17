@@ -112,14 +112,9 @@ public class BranchMARKStarBound extends MARKStarBound {
 
     // ========== FLAT_SUM mode fields ==========
 
-    // Priority queue for decomposition-guided search
-    private PriorityQueue<DecompSearchNode> decompQueue;
-
-    // Running Z bounds (FLAT_SUM mode)
-    // Z_lower = sum of all nodes' subtreeLowerBound
-    // Z_upper = sum of all nodes' subtreeUpperBound
-    private BigDecimal flatSumZLower = BigDecimal.ZERO;
-    private BigDecimal flatSumZUpper = BigDecimal.ZERO;
+    // Priority queue for decomposition-guided search.
+    // Each queue node is a real BWM-style DP subproblem: one branch-decomposition edge at one M-state.
+    private PriorityQueue<BranchMARKStarNode> subproblemQueue;
 
     // Scorers for FLAT_SUM mode (created once, reused)
     private AStarScorer gScorerMin;
@@ -141,15 +136,9 @@ public class BranchMARKStarBound extends MARKStarBound {
     private double cpAlpha = 0.001;
     private double cpDelta = 0.10;
 
-    // GNN pool state (reset per pfunc via compute())
-    private final List<DecompSearchNode> gnnPool = new ArrayList<>();
-    private final Set<DecompSearchNode> gnnBoundedNodes = Collections.newSetFromMap(new IdentityHashMap<>());
-    private final Map<DecompSearchNode, Double> gnnPredictions = new IdentityHashMap<>();
-    private int gnnBudgetUsed = 0;
-
     // GNN statistics
     private int gnnBounded = 0;
-    private int gnnCCDFromGNN = 0;
+    private int gnnCCDFromBounds = 0;
     private int gnnCCDFromOriginal = 0;
     private double gnnTimeMs = 0;
     private int gnnOnnxCalls = 0;
@@ -268,34 +257,23 @@ public class BranchMARKStarBound extends MARKStarBound {
 
     /** Initialize FLAT_SUM mode: create scorers and root search node */
     private void initFlatSumMode(RCs rcs) {
-        int numPos = rcs.getNumPos();
-
-        // Create scorers (same types as parent MARKStarBound uses)
-        gScorerMin = new PairwiseGScorer(minimizingEmat);
-        hScorerMin = new MPLPPairwiseHScorer(new EdgeUpdater(), minimizingEmat, 1, 0.0001);
-        gScorerRigid = new PairwiseGScorer(rigidEmat);
-        hScorerNegRigid = new TraditionalPairwiseHScorer(
-                new NegatedEnergyMatrix(confSpace, rigidEmat), rcs);
-
-        // Create root search node
-        DecompSearchNode rootSearchNode = DecompSearchNode.makeRoot(
-                rootedRootEdge, numPos, rcs,
-                gScorerMin, hScorerMin, gScorerRigid, hScorerNegRigid, bc);
-
-        // Initialize priority queue
-        decompQueue = new PriorityQueue<>();
-        decompQueue.add(rootSearchNode);
-
-        // Initialize Z bounds from root node
-        flatSumZLower = rootSearchNode.subtreeLowerBound;
-        flatSumZUpper = rootSearchNode.subtreeUpperBound;
-
-        // Compute initial epsilon
+        // FLAT_SUM is the actual hybrid mode:
+        // - BWM supplies the DP subproblems (edge, m-state)
+        // - MARK* supplies the priority-queue tightening policy
+        // We start from loose incremental bounds on every branch edge, then let the queue decide
+        // which DP subproblem to refine next.
+        RootedTreeEdge.postOrderInitIncremental(rootedRoot, rigidEmat, minimizingEmat,
+                interactionGraph, RT);
+        allLambdaEdges = new ArrayList<>();
+        RootedTreeEdge.collectLambdaEdges(rootedRoot, allLambdaEdges);
+        rebuildSubproblemQueue();
+        refreshGlobalBounds();
         updateBound();
 
         System.out.println("BranchMARK* [FLAT_SUM]: Initialized. "
-                + "Root node: upper=" + String.format("%.4e", flatSumZUpper.doubleValue())
-                + ", lower=" + String.format("%.4e", flatSumZLower.doubleValue())
+                + "subproblems=" + subproblemQueue.size()
+                + ", rootUpper=" + String.format("%.4e", logToPositiveBigDecimal(logDpUpper).doubleValue())
+                + ", rootLower=" + String.format("%.4e", logToPositiveBigDecimal(logDpLower).doubleValue())
                 + ", epsilon=" + String.format("%.6f", epsilonBound));
     }
 
@@ -341,16 +319,6 @@ public class BranchMARKStarBound extends MARKStarBound {
         return Math.max(0.0, eps);
     }
 
-    /** Compute epsilon for FLAT_SUM mode */
-    private double computeFlatSumEpsilon() {
-        if (flatSumZUpper.signum() <= 0) return Double.POSITIVE_INFINITY;
-        if (flatSumZLower.signum() <= 0) return 1.0;
-
-        double eps = MathTools.bigDivide(flatSumZUpper.subtract(flatSumZLower), flatSumZUpper,
-                PartitionFunction.decimalPrecision).doubleValue();
-        return Math.max(0.0, eps);
-    }
-
     private void refreshGlobalBounds() {
         double[] rootLogZLower = rootedRootEdge.getLogZLower();
         double[] rootLogZUpper = rootedRootEdge.getLogZUpper();
@@ -382,293 +350,133 @@ public class BranchMARKStarBound extends MARKStarBound {
 
     /**
      * One round of the FLAT_SUM tighten loop.
-     * Mirrors MARK*'s tightenBoundInPhases: pull nodes, classify, decide, process.
+     * MARK*-style decision on top of BWM DP subproblems:
+     * either refine the highest-error DP subproblems, or spend work on a full-conformation leaf.
      */
     private void tightenFlatSum() {
         gnnRoundCounter++;
+        rebuildSubproblemQueue();
 
-        // Pull a batch of nodes from the queue
-        int batchSize = Math.max(1, Math.min(maxMinimizations, 100));
-        List<DecompSearchNode> internalNodes = new ArrayList<>();
-        List<DecompSearchNode> leafNodes = new ArrayList<>();
+        BigDecimal internalGap = estimateTopSubproblemGap(Math.max(1, Math.min(maxMinimizations, 100)));
+        BigDecimal leafGap = estimateHighErrorLeafGap();
 
-        BigDecimal internalZ = BigDecimal.ZERO;
-        BigDecimal leafZ = BigDecimal.ZERO;
-
-        int pulled = 0;
-        while (pulled < batchSize && !decompQueue.isEmpty()) {
-            DecompSearchNode node = decompQueue.poll();
-
-            // Skip nodes with negligible error
-            if (node.errorBound.signum() <= 0) continue;
-
-            if (node.isLeaf()) {
-                // Check correction matrix first (may skip minimization)
-                if (!node.minimized) {
-                    double confCorrection = correctionMatrix.confE(node.partialConf);
-                    double eMin = computeFullConfPairwiseEnergy(node.partialConf, minimizingEmat);
-                    if (confCorrection > eMin) {
-                        // Correction tightens the lower bound without full minimization
-                        applyCorrection(node, confCorrection);
-                        continue;
-                    }
-                }
-                leafNodes.add(node);
-                leafZ = leafZ.add(node.errorBound);
-            } else {
-                internalNodes.add(node);
-                internalZ = internalZ.add(node.errorBound);
-            }
-            pulled++;
-        }
-
-        // === GNN Pool: feed leaf nodes into pool, flush when full ===
-        if (gnnBatchCalc != null) {
-            for (DecompSearchNode leaf : leafNodes) {
-                if (!gnnBoundedNodes.contains(leaf)) {
-                    gnnPool.add(leaf);
-                }
-            }
-
-            // Fire GNN batch when pool is full
-            if (gnnPool.size() >= gpuBatchSize) {
-                long gnnStart = System.nanoTime();
-                flushGNNPool();
-                gnnTimeMs += (System.nanoTime() - gnnStart) / 1e6;
-
-                updateBound();
-                if (epsilonBound <= targetEpsilon) {
-                    // GNN alone converged — put everything back and return
-                    decompQueue.addAll(leafNodes);
-                    decompQueue.addAll(internalNodes);
-                    System.out.println(String.format("[BranchMARK*+GNN r%d] GNN converged eps=%.6f",
-                            gnnRoundCounter, epsilonBound));
-                    return;
-                }
-            }
-        }
-
-        // Decision: expand internals or minimize leaves?
-        if (MathTools.isLessThan(internalZ, leafZ)) {
-            // Minimize leaves (leaf error dominates)
-            for (DecompSearchNode leaf : leafNodes) {
-                minimizeDecompLeaf(leaf);
-            }
-            // Put internal nodes back
-            decompQueue.addAll(internalNodes);
+        if (MathTools.isGreaterThan(leafGap, internalGap)) {
+            tightenPhase2();
         } else {
-            // Expand internals (internal error dominates)
-            for (DecompSearchNode internal : internalNodes) {
-                expandDecompNode(internal);
-            }
-            // Put leaf nodes back
-            decompQueue.addAll(leafNodes);
+            tightenTopSubproblems(Math.max(1, Math.min(maxMinimizations, 100)));
         }
 
+        refreshGlobalBounds();
         updateBound();
     }
 
     /**
-     * Expand a decomposition search node: assign one pending edge's lambda-set.
-     * Creates children for each lambda-state and updates Z bounds.
+     * Rebuild the FLAT_SUM queue from current BWM DP bounds.
+     *
+     * Tightening one edge can change every ancestor via `propagateBoundsUp()`, so rebuilding the
+     * queue avoids stale priorities and keeps the scheduler faithful to the current error landscape.
      */
-    private void expandDecompNode(DecompSearchNode node) {
-        // Pick the pending edge to expand
-        int pendingIdx = node.pickHighestErrorPendingEdge();
-        DecompSearchNode.PendingEdge pe = node.pendingEdges.get(pendingIdx);
-        RootedTreeEdge edge = pe.edge;
-
-        // Remove parent's contribution from running Z totals
-        flatSumZLower = flatSumZLower.subtract(node.subtreeLowerBound);
-        flatSumZUpper = flatSumZUpper.subtract(node.subtreeUpperBound);
-
-        // Enumerate all lambda-states for this edge at its M-state
-        int numLambdaStates = edge.getTotalLambdaStates();
-        totalEnumerationSteps++;
-
-        for (int lambdaIdx = 0; lambdaIdx < numLambdaStates; lambdaIdx++) {
-            DecompSearchNode child = DecompSearchNode.makeChild(
-                    node, pendingIdx, lambdaIdx, RCs,
-                    gScorerMin, hScorerMin, gScorerRigid, hScorerNegRigid, bc);
-
-            // Add child's contribution to running Z totals
-            flatSumZLower = flatSumZLower.add(child.subtreeLowerBound);
-            flatSumZUpper = flatSumZUpper.add(child.subtreeUpperBound);
-
-            // Add to queue if it has meaningful error
-            if (child.errorBound.signum() > 0) {
-                decompQueue.add(child);
+    private void rebuildSubproblemQueue() {
+        subproblemQueue = new PriorityQueue<>();
+        for (RootedTreeEdge edge : allLambdaEdges) {
+            double[] lower = edge.getLogZLower();
+            if (lower == null) {
+                continue;
+            }
+            for (int mIdx = 0; mIdx < lower.length; mIdx++) {
+                if (!edge.canEnumerate(mIdx)) {
+                    continue;
+                }
+                BranchMARKStarNode node = new BranchMARKStarNode(edge, mIdx);
+                if (Double.isFinite(node.getErrorBound()) && node.getErrorBound() > 0) {
+                    subproblemQueue.add(node);
+                }
             }
         }
     }
 
     /**
-     * Minimize a leaf node (full conformation).
-     * Same pipeline as SUM_OF_PRODUCTS Phase 2: calcEnergy + triple corrections.
+     * Estimate the current partition-function gap mass contained in the top DP subproblems.
+     *
+     * MARK* decides whether to spend work on internal nodes or on leaves. In this branch-native
+     * hybrid, the "internal nodes" are branch-decomposition subproblems `(edge, m-state)`.
      */
-    private void minimizeDecompLeaf(DecompSearchNode leaf) {
-        int[] fullConf = leaf.partialConf;
+    private BigDecimal estimateTopSubproblemGap(int limit) {
+        if (subproblemQueue == null || subproblemQueue.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
 
-        // Check if already minimized
+        List<BranchMARKStarNode> nodes = new ArrayList<>(subproblemQueue);
+        Collections.sort(nodes);
+
+        BigDecimal gap = BigDecimal.ZERO;
+        for (int i = 0; i < Math.min(limit, nodes.size()); i++) {
+            BranchMARKStarNode node = nodes.get(i);
+            RootedTreeEdge edge = node.getEdge();
+            int mIdx = node.getMIdx();
+            BigDecimal lower = logToPositiveBigDecimal(edge.getLogZLower()[mIdx]);
+            BigDecimal upper = logToPositiveBigDecimal(edge.getLogZUpper()[mIdx]);
+            BigDecimal diff = upper.subtract(lower);
+            if (diff.signum() > 0) {
+                gap = gap.add(diff);
+            }
+        }
+        return gap;
+    }
+
+    /**
+     * Estimate the best immediate leaf-level gain by generating the current highest-error
+     * conformation implied by the DP bounds.
+     */
+    private BigDecimal estimateHighErrorLeafGap() {
+        int[] fullConf = generateHighErrorConformation();
+        if (fullConf == null) {
+            return BigDecimal.ZERO;
+        }
         String confKey = SimpleConfSpace.formatConfRCs(fullConf);
         if (minimizedConfs.contains(confKey)) {
-            // Put back with current bounds
-            decompQueue.add(leaf);
-            return;
-        }
-        minimizedConfs.add(confKey);
-
-        // Track GNN stats
-        if (gnnBoundedNodes.remove(leaf)) {
-            gnnBudgetUsed--;
-            gnnCCDFromGNN++;
-        } else {
-            gnnCCDFromOriginal++;
+            return BigDecimal.ZERO;
         }
 
         double eRigid = computeFullConfPairwiseEnergy(fullConf, rigidEmat);
         double eMin = computeFullConfPairwiseEnergy(fullConf, minimizingEmat);
-
-        // Full minimization
-        ConfSearch.ScoredConf scoredConf = new ConfSearch.ScoredConf(fullConf, eMin);
-        ConfAnalyzer.ConfAnalysis analysis = new ConfAnalyzer(minimizingEcalc).analyze(scoredConf);
-        double eTrue = analysis.epmol.energy;
-        totalMinimizations++;
-
-        // Compute triple corrections
-        computeTripleCorrections(analysis, scoredConf);
-
-        // Update Z bounds: remove old contribution, add new (exact) contribution
-        flatSumZLower = flatSumZLower.subtract(leaf.subtreeLowerBound);
-        flatSumZUpper = flatSumZUpper.subtract(leaf.subtreeUpperBound);
-
-        BigDecimal boltzTrue = bc.calc(eTrue);
-        // After minimization, both lower and upper for this conformation become exact
-        flatSumZLower = flatSumZLower.add(boltzTrue);
-        flatSumZUpper = flatSumZUpper.add(boltzTrue);
-
-        // Mark as minimized (don't re-add to queue — it's exact now)
-        leaf.minimized = true;
-        leaf.minimizedEnergy = eTrue;
-
-        if (totalMinimizations % 100 == 0) {
-            System.out.println("BranchMARK* [FLAT_SUM]: " + totalMinimizations
-                    + " minimizations, epsilon=" + String.format("%.6f", epsilonBound));
-        }
+        BigDecimal lower = bc.calc(eRigid);
+        BigDecimal upper = bc.calc(eMin);
+        BigDecimal diff = upper.subtract(lower);
+        return diff.signum() > 0 ? diff : BigDecimal.ZERO;
     }
 
     /**
-     * Apply a correction to a leaf node without full minimization.
-     * Similar to MARK*'s triple correction skip.
+     * Tighten the highest-priority BWM subproblems one lambda-state at a time.
+     *
+     * This is the core hybrid step: MARK*'s queue policy chooses the next BWM DP subproblem to
+     * refine, while RootedTreeEdge performs the actual lambda enumeration and ancestor propagation.
      */
-    private void applyCorrection(DecompSearchNode leaf, double correctionEnergy) {
-        // Remove old contribution
-        flatSumZLower = flatSumZLower.subtract(leaf.subtreeLowerBound);
-        flatSumZUpper = flatSumZUpper.subtract(leaf.subtreeUpperBound);
-
-        // Update lower bound: use correction energy instead of rigid
-        BigDecimal boltzCorr = bc.calc(correctionEnergy);
-        // Upper bound stays: minimizing emat bound is still valid
-        double eMin = computeFullConfPairwiseEnergy(leaf.partialConf, minimizingEmat);
-        BigDecimal boltzMin = bc.calc(eMin);
-
-        // New contribution
-        leaf.subtreeLowerBound = boltzCorr;
-        leaf.subtreeUpperBound = boltzMin;
-        leaf.errorBound = leaf.subtreeUpperBound.subtract(leaf.subtreeLowerBound);
-        if (leaf.errorBound.signum() < 0) leaf.errorBound = BigDecimal.ZERO;
-
-        flatSumZLower = flatSumZLower.add(leaf.subtreeLowerBound);
-        flatSumZUpper = flatSumZUpper.add(leaf.subtreeUpperBound);
-
-        // Put back in queue with updated bounds
-        if (leaf.errorBound.signum() > 0) {
-            decompQueue.add(leaf);
-        }
-    }
-
-    // ========== GNN Pool: batch inference + CP bounding ==========
-
-    /**
-     * Flush the GNN pool: one big ONNX batch call, then apply CP bounds
-     * to the lowest-energy predictions within the budget.
-     */
-    private void flushGNNPool() {
-        if (gnnPool.isEmpty()) return;
-
-        // Remove already-bounded nodes
-        List<DecompSearchNode> candidates = new ArrayList<>();
-        for (DecompSearchNode node : gnnPool) {
-            if (!gnnBoundedNodes.contains(node) && !node.minimized) {
-                candidates.add(node);
+    private void tightenTopSubproblems(int steps) {
+        for (int i = 0; i < steps; i++) {
+            rebuildSubproblemQueue();
+            if (subproblemQueue.isEmpty()) {
+                return;
             }
-        }
-        gnnPool.clear();
 
-        if (candidates.isEmpty()) return;
+            BranchMARKStarNode next = subproblemQueue.poll();
+            RootedTreeEdge edge = next.getEdge();
+            int mIdx = next.getMIdx();
 
-        // ONE big ONNX batch call
-        int[][] confs = new int[candidates.size()][];
-        for (int i = 0; i < candidates.size(); i++) {
-            confs[i] = candidates.get(i).partialConf;
-        }
-        double[] gnnEnergies = gnnBatchCalc.calcEnergies(confs);
-        gnnOnnxCalls++;
-
-        // Sort by energy ascending (lowest energy = most important for Z)
-        Integer[] indices = new Integer[candidates.size()];
-        for (int i = 0; i < indices.length; i++) indices[i] = i;
-        Arrays.sort(indices, (a, b) -> Double.compare(gnnEnergies[a], gnnEnergies[b]));
-
-        // Apply CP bounds to top budgetMax lowest-energy nodes
-        int bounded = 0, skipped = 0;
-        int slotsAvailable = gnnBudgetMax - gnnBudgetUsed;
-
-        for (int rank = 0; rank < indices.length && bounded < slotsAvailable; rank++) {
-            int idx = indices[rank];
-            DecompSearchNode leaf = candidates.get(idx);
-            double eGNN = gnnEnergies[idx];
-
-            // Compute current pairwise bounds for this conf
-            double eMin = computeFullConfPairwiseEnergy(leaf.partialConf, minimizingEmat);
-            double eRigid = computeFullConfPairwiseEnergy(leaf.partialConf, rigidEmat);
-
-            // CP bounds: [eGNN - cpQ, eGNN + cpQ] intersected with [eMin, eRigid]
-            double newLower = Math.max(eGNN - cpQ, eMin);
-            double newUpper = Math.min(eGNN + cpQ, eRigid);
-
-            if (newLower > newUpper) {
-                skipped++;
+            if (!edge.canEnumerate(mIdx)) {
                 continue;
             }
 
-            // Update Z bounds: remove old, add new tighter bounds
-            flatSumZLower = flatSumZLower.subtract(leaf.subtreeLowerBound);
-            flatSumZUpper = flatSumZUpper.subtract(leaf.subtreeUpperBound);
-
-            BigDecimal newBoltzLower = bc.calc(newUpper);  // higher energy → lower Boltzmann
-            BigDecimal newBoltzUpper = bc.calc(newLower);  // lower energy → higher Boltzmann
-            leaf.subtreeLowerBound = newBoltzLower;
-            leaf.subtreeUpperBound = newBoltzUpper;
-            leaf.errorBound = newBoltzUpper.subtract(newBoltzLower);
-
-            flatSumZLower = flatSumZLower.add(newBoltzLower);
-            flatSumZUpper = flatSumZUpper.add(newBoltzUpper);
-
-            // Re-add to queue with updated bounds
-            if (leaf.errorBound.signum() > 0) {
-                decompQueue.add(leaf);
+            if (edge.enumerateNextLambda(mIdx)) {
+                totalEnumerationSteps++;
+                edge.propagateBoundsUp();
+                refreshGlobalBounds();
+                updateBound();
+                if (epsilonBound <= targetEpsilon) {
+                    return;
+                }
             }
-
-            gnnBoundedNodes.add(leaf);
-            gnnPredictions.put(leaf, eGNN);
-            gnnBudgetUsed++;
-            gnnBounded++;
-            bounded++;
         }
-
-        System.out.println(String.format("[BranchMARK*+GNN r%d] GNN flush: candidates=%d bounded=%d skipped=%d budget=%d/%d",
-                gnnRoundCounter, candidates.size(), bounded, skipped, gnnBudgetUsed, gnnBudgetMax));
     }
 
     // ========== Phase 2: Full minimization with Z correction (SUM_OF_PRODUCTS) ==========
@@ -695,10 +503,35 @@ public class BranchMARKStarBound extends MARKStarBound {
                 continue;
             }
 
+            // If the branch+GNN path is active, use the calibrated prediction interval as a cheap
+            // bound tightening step before paying for CCD. This preserves the branch-markstar-gnn
+            // branch's intended workflow without requiring the unfinished old DecompSearchNode pool.
+            if (gnnBatchCalc != null) {
+                long gnnStart = System.nanoTime();
+                double eGNN = gnnBatchCalc.calcEnergy(fullConf);
+                gnnOnnxCalls++;
+                gnnTimeMs += (System.nanoTime() - gnnStart) / 1e6;
+
+                double boundedLower = Math.max(eMin, eGNN - cpQ);
+                double boundedUpper = Math.min(eRigid, eGNN + cpQ);
+                if (boundedLower <= boundedUpper) {
+                    BigDecimal boltzLower = bc.calc(boundedUpper);
+                    BigDecimal boltzUpper = bc.calc(boundedLower);
+                    BigDecimal boltzRigid = bc.calc(eRigid);
+                    BigDecimal boltzMin = bc.calc(eMin);
+                    corrLower = corrLower.add(boltzLower.subtract(boltzRigid));
+                    corrUpper = corrUpper.add(boltzUpper.subtract(boltzMin));
+                    gnnBounded++;
+                    gnnCCDFromBounds++;
+                    continue;
+                }
+            }
+
             ConfSearch.ScoredConf scoredConf = new ConfSearch.ScoredConf(fullConf, eMin);
             ConfAnalyzer.ConfAnalysis analysis = new ConfAnalyzer(minimizingEcalc).analyze(scoredConf);
             double eTrue = analysis.epmol.energy;
             totalMinimizations++;
+            gnnCCDFromOriginal++;
 
             computeTripleCorrections(analysis, scoredConf);
 
@@ -832,11 +665,6 @@ public class BranchMARKStarBound extends MARKStarBound {
 
     @Override
     protected void updateBound() {
-        if (computeMode == ComputeMode.FLAT_SUM && useBranchDecomposition) {
-            epsilonBound = computeFlatSumEpsilon();
-            return;
-        }
-
         if (!useBranchDecomposition || logDpUpper == Double.NEGATIVE_INFINITY) {
             super.updateBound();
             return;
@@ -855,40 +683,39 @@ public class BranchMARKStarBound extends MARKStarBound {
         double lastEps = 1.0;
 
         while (epsilonBound > targetEpsilon) {
+            int prevEnum = totalEnumerationSteps;
+            int prevMin = totalMinimizations;
+            double prevEps = epsilonBound;
             tightenBoundInPhases();
 
             if (lastEps < epsilonBound && epsilonBound - lastEps > 0.01) {
                 System.err.println("BranchMARK*: Warning - bounds got looser. eps=" + epsilonBound);
             }
             lastEps = epsilonBound;
-        }
 
-        // Flush remaining GNN pool at end of pfunc
-        if (gnnBatchCalc != null && !gnnPool.isEmpty()) {
-            long gnnStart = System.nanoTime();
-            flushGNNPool();
-            gnnTimeMs += (System.nanoTime() - gnnStart) / 1e6;
-            updateBound();
+            // Defensive stop: the branch-native FLAT_SUM loop should always either tighten a DP
+            // subproblem or minimize a leaf. If neither happens, continuing would hang forever.
+            if (prevEnum == totalEnumerationSteps
+                    && prevMin == totalMinimizations
+                    && Math.abs(prevEps - epsilonBound) < 1e-12) {
+                System.err.println("BranchMARK*: No further progress possible; stopping early.");
+                break;
+            }
         }
 
         // Print GNN stats if used
         if (gnnBatchCalc != null) {
             System.out.println("[BranchMARK*+GNN] Done. eps=" + String.format("%.6f", epsilonBound)
                     + ", GNNbounded=" + gnnBounded
-                    + ", CCD(fromGNN)=" + gnnCCDFromGNN
+                    + ", CCD(fromGNNBounds)=" + gnnCCDFromBounds
                     + ", CCD(fromOrig)=" + gnnCCDFromOriginal
-                    + ", budget=" + gnnBudgetUsed + "/" + gnnBudgetMax
                     + ", gnnTime=" + String.format("%.1fms", gnnTimeMs)
                     + ", onnxCalls=" + gnnOnnxCalls);
         }
 
         // Reset GNN per-pfunc state
-        gnnPool.clear();
-        gnnBoundedNodes.clear();
-        gnnPredictions.clear();
-        gnnBudgetUsed = 0;
         gnnBounded = 0;
-        gnnCCDFromGNN = 0;
+        gnnCCDFromBounds = 0;
         gnnCCDFromOriginal = 0;
         gnnTimeMs = 0;
         gnnOnnxCalls = 0;
@@ -900,17 +727,12 @@ public class BranchMARKStarBound extends MARKStarBound {
 
         // Set final partition function values
         PartitionFunction.Values vals = getValues();
-        if (computeMode == ComputeMode.FLAT_SUM) {
-            vals.qstar = flatSumZLower;
-            vals.pstar = flatSumZUpper;
+        if (corrLower.signum() == 0 && corrUpper.signum() == 0) {
+            vals.qstar = logToPositiveBigDecimal(logDpLower);
+            vals.pstar = logToPositiveBigDecimal(logDpUpper);
         } else {
-            if (corrLower.signum() == 0 && corrUpper.signum() == 0) {
-                vals.qstar = logToPositiveBigDecimal(logDpLower);
-                vals.pstar = logToPositiveBigDecimal(logDpUpper);
-            } else {
-                vals.qstar = logToPositiveBigDecimal(logDpLower).add(corrLower);
-                vals.pstar = logToPositiveBigDecimal(logDpUpper).add(corrUpper);
-            }
+            vals.qstar = logToPositiveBigDecimal(logDpLower).add(corrLower);
+            vals.pstar = logToPositiveBigDecimal(logDpUpper).add(corrUpper);
         }
         vals.qprime = vals.pstar.subtract(vals.qstar);
 

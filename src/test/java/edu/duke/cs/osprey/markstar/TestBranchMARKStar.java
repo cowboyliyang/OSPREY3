@@ -39,6 +39,8 @@ import org.junit.jupiter.api.Test;
 import java.io.File;
 import java.util.*;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 /**
  * Phase 6: BranchMARK* + BranchBBK* Correctness and Performance Tests
  *
@@ -251,6 +253,99 @@ public class TestBranchMARKStar {
         System.out.println("================================");
     }
 
+    /**
+     * Focused correctness test for the new hybrid path.
+     *
+     * The important question is not whether FLAT_SUM prints plausible progress, but whether it
+     * produces a sane partition-function interval on the same problem where branch-DP can already
+     * compute a valid answer in SUM_OF_PRODUCTS mode.
+     *
+     * This test keeps the problem small enough to be practical while still exercising the new
+     * branch-native scheduler. We require:
+     * - both branch modes return a score
+     * - both intervals are ordered correctly
+     * - the intervals overlap in log10(K*) space
+     */
+    @Test
+    public void testFlatSumAgreesWithSumOfProducts() {
+        int numFlexible = 5;
+        double epsilon = 0.90;
+
+        MARKStarResult flatSumResult = runMARKStarOnly(
+                numFlexible, epsilon, true, ComputeMode.FLAT_SUM, "BranchMARK*-FlatSum-Assert");
+        MARKStarResult sumOfProductsResult = runMARKStarOnly(
+                numFlexible, epsilon, true, ComputeMode.SUM_OF_PRODUCTS, "BranchMARK*-SumOfProducts-Assert");
+
+        KStarScore flatScore = getFirstScore(flatSumResult, "FLAT_SUM");
+        KStarScore dpScore = getFirstScore(sumOfProductsResult, "SUM_OF_PRODUCTS");
+
+        assertValidKStarInterval(flatScore, "FLAT_SUM");
+        assertValidKStarInterval(dpScore, "SUM_OF_PRODUCTS");
+        assertIntervalsOverlap(flatScore, dpScore);
+    }
+
+    /**
+     * Smoke test for the actual branch entry point used by the integration.
+     *
+     * This bypasses the larger MARK* orchestration so failures are easier to localize:
+     * initialization, branch decomposition, incremental bounds, and the new FLAT_SUM tighten loop
+     * are all exercised directly here.
+     */
+    @Test
+    public void testBranchMARKStarBoundFlatSumDirect() {
+        TestKStar.ConfSpaces confSpaces = buildWildTypeConfSpace(4);
+        Parallelism parallelism = Parallelism.makeCpu(NUM_CPUs);
+
+        try (
+                EnergyCalculator minimizingEcalc = new EnergyCalculator.Builder(confSpaces.complex, confSpaces.ffparams)
+                        .setParallelism(parallelism)
+                        .build();
+                EnergyCalculator rigidEcalc = new EnergyCalculator.Builder(confSpaces.complex, confSpaces.ffparams)
+                        .setParallelism(parallelism)
+                        .setIsMinimizing(false)
+                        .build()
+        ) {
+            SimpleConfSpace confSpace = confSpaces.complex;
+            ConfEnergyCalculator minimizingConfEcalc = new ConfEnergyCalculator.Builder(confSpace, minimizingEcalc)
+                    .setReferenceEnergies(new SimplerEnergyMatrixCalculator.Builder(confSpace, minimizingEcalc)
+                            .build()
+                            .calcReferenceEnergies()
+                    )
+                    .build();
+
+            ConfEnergyCalculator rigidConfEcalc = new ConfEnergyCalculator(minimizingConfEcalc, rigidEcalc);
+            EnergyMatrix minimizingEmat = new SimplerEnergyMatrixCalculator.Builder(minimizingConfEcalc)
+                    .build()
+                    .calcEnergyMatrix();
+            EnergyMatrix rigidEmat = new SimplerEnergyMatrixCalculator.Builder(rigidConfEcalc)
+                    .build()
+                    .calcEnergyMatrix();
+
+            BranchMARKStarBound pfunc = new BranchMARKStarBound(
+                    confSpace,
+                    rigidEmat,
+                    minimizingEmat,
+                    minimizingConfEcalc,
+                    new RCs(confSpace),
+                    parallelism,
+                    ComputeMode.FLAT_SUM
+            );
+            pfunc.setCorrections(new UpdatingEnergyMatrix(confSpace, minimizingEmat, minimizingConfEcalc));
+            pfunc.init(0.90);
+            pfunc.compute();
+
+            PartitionFunction.Values vals = pfunc.getValues();
+            assertNotNull(vals, "BranchMARK* should expose partition-function values after compute()");
+            assertNotNull(vals.qstar, "qstar should be populated");
+            assertNotNull(vals.pstar, "pstar should be populated");
+            assertTrue(vals.qstar.signum() >= 0, "qstar should be non-negative");
+            assertTrue(vals.pstar.signum() >= 0, "pstar should be non-negative");
+            assertTrue(vals.pstar.compareTo(vals.qstar) >= 0, "Upper bound should be >= lower bound");
+            assertEquals(PartitionFunction.Status.Estimated, pfunc.getStatus(),
+                    "Hybrid FLAT_SUM path should reach an estimated partition-function interval");
+        }
+    }
+
     // ========== BBK* runner ==========
 
     private static class BBKStarResult {
@@ -395,6 +490,40 @@ public class TestBranchMARKStar {
         String label;
         PartitionFunction.Status status;
         List<MARKStar.ScoredSequence> scores;
+    }
+
+    private KStarScore getFirstScore(MARKStarResult result, String label) {
+        assertNotNull(result, label + " result should not be null");
+        assertNotNull(result.scores, label + " scores should not be null");
+        assertFalse(result.scores.isEmpty(), label + " should return at least one scored sequence");
+        assertNotNull(result.scores.get(0).score, label + " first score should not be null");
+        return result.scores.get(0).score;
+    }
+
+    private void assertValidKStarInterval(KStarScore score, String label) {
+        double lower = score.lowerBoundLog10();
+        double upper = score.upperBoundLog10();
+
+        assertTrue(Double.isFinite(lower), label + " lower bound should be finite");
+        assertTrue(Double.isFinite(upper), label + " upper bound should be finite");
+        assertTrue(lower <= upper, label + " lower bound should not exceed upper bound");
+    }
+
+    private void assertIntervalsOverlap(KStarScore left, KStarScore right) {
+        double leftLower = left.lowerBoundLog10();
+        double leftUpper = left.upperBoundLog10();
+        double rightLower = right.lowerBoundLog10();
+        double rightUpper = right.upperBoundLog10();
+
+        boolean overlap = leftLower <= rightUpper && rightLower <= leftUpper;
+        assertTrue(
+                overlap,
+                String.format(
+                        Locale.US,
+                        "Expected overlapping K* intervals, got left=[%.6f, %.6f], right=[%.6f, %.6f]",
+                        leftLower, leftUpper, rightLower, rightUpper
+                )
+        );
     }
 
     private MARKStarResult runMARKStarOnly(int numFlexible, double epsilon,
