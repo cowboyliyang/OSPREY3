@@ -41,6 +41,10 @@ lute_bench/
 lute_bench_nodee/
 *.out
 *.err
+*.confdb
+*.conf.db
+/ligand.*.emat
+/protein.*.emat
 mark*_scripts/*.out
 mark*_scripts/*.err
 mark*_scripts/*.csv
@@ -54,3 +58,5 @@ build/install/osprey/lib/onnxruntime-*.jar
 build/install/osprey/lib/ort.tgz
 build/install/osprey/lib/onnxruntime.pdb
 transfer-tensor/
+*.confdb
+*.conf.db
