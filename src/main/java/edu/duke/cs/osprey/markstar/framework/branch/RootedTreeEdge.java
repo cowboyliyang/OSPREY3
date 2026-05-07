@@ -127,6 +127,7 @@ public class RootedTreeEdge {
     public int[] getLambdaPositionsSorted() { return lambdaPositionsSorted; }
     public LinkedHashSet<RootedTreeEdge> getFset() { return Fset; }
     public int getTotalLambdaStates() { return totalLambdaStates; }
+    public RCs getRCs() { return rcs; }
     public int getEnumeratedCount(int mIdx) { return enumeratedCount != null ? enumeratedCount[mIdx] : 0; }
 
     // ========== Log-space utility ==========
@@ -341,8 +342,12 @@ public class RootedTreeEdge {
         }
 
         long selfTESS = 1;
-        for (int pos : mPositionsSorted) selfTESS *= rcs.getNum(pos);
-        for (int pos : lambdaPositionsSorted) selfTESS *= rcs.getNum(pos);
+        if (mPositionsSorted != null) {
+            for (int pos : mPositionsSorted) selfTESS *= rcs.getNum(pos);
+        }
+        if (lambdaPositionsSorted != null) {
+            for (int pos : lambdaPositionsSorted) selfTESS *= rcs.getNum(pos);
+        }
 
         return leftTESS + rightTESS + selfTESS;
     }
@@ -370,8 +375,12 @@ public class RootedTreeEdge {
         }
 
         double logSelf = 0.0;
-        for (int pos : mPositionsSorted) logSelf += Math.log(rcs.getNum(pos));
-        for (int pos : lambdaPositionsSorted) logSelf += Math.log(rcs.getNum(pos));
+        if (mPositionsSorted != null) {
+            for (int pos : mPositionsSorted) logSelf += Math.log(rcs.getNum(pos));
+        }
+        if (lambdaPositionsSorted != null) {
+            for (int pos : lambdaPositionsSorted) logSelf += Math.log(rcs.getNum(pos));
+        }
         logTerms.add(logSelf);
     }
 

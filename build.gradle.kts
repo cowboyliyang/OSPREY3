@@ -102,7 +102,7 @@ dependencies {
 	implementation("org.slf4j:jul-to-slf4j:1.7.30")
 
 	// ONNX Runtime for GNN inference
-	implementation("com.microsoft.onnxruntime:onnxruntime:1.17.0")
+	implementation("com.microsoft.onnxruntime:onnxruntime:1.20.0")
 
 	// internal osprey libs
 	implementation("colt:colt:1.2.0")
@@ -200,8 +200,14 @@ distributions {
 	main {
 		contents {
 			from("src/main/julia") // add the resistor modules to the distribution
+			duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 		}
 	}
+}
+
+// Avoid build failures when multiple deps ship the same native lib (e.g. libonnxruntime.so)
+tasks.withType<Copy> {
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
 
@@ -223,11 +229,19 @@ tasks.withType<KotlinCompile> {
 
 tasks.withType<Test> {
 	// Increased for DP-MARKStar tests on real proteins
-	maxHeapSize = "8g"
+	// Allow override via: ./gradlew test -DtestMaxHeap=200g
+	maxHeapSize = System.getProperty("testMaxHeap") ?: "8g"
 	useJUnitPlatform()
     failFast = true
 	// method call appends additional arguments for the JVM
 	jvmArgs(Jvm.moduleArgs)
+
+	// Forward osprey.* system properties from gradle CLI (-Dosprey.xxx=yyy) to test JVM
+	System.getProperties().forEach { key, value ->
+		if (key.toString().startsWith("osprey.")) {
+			systemProperty(key.toString(), value.toString())
+		}
+	}
 
 	testLogging {
 		setExceptionFormat("full")
@@ -389,5 +403,16 @@ tasks.register("exportClasspath") {
 		val cp = sourceSets["main"].runtimeClasspath.asPath
 		file("loop_benchmark/runtime_classpath.txt").writeText(cp)
 		println("Classpath written to loop_benchmark/runtime_classpath.txt")
+	}
+}
+
+tasks.register("exportTestClasspath") {
+	description = "Export test runtime classpath for direct java invocation"
+	dependsOn("testClasses")
+	doLast {
+		val cp = sourceSets["test"].runtimeClasspath.asPath
+		file("bench_logs/test_classpath.txt").writeText(cp)
+		println("Test classpath written to bench_logs/test_classpath.txt")
+		println("Length: ${cp.length} chars, ${cp.split(":").size} entries")
 	}
 }

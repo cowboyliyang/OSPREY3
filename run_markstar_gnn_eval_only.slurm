@@ -30,7 +30,7 @@ export GRADLE_USER_HOME="/tmp/${USER}-gradle-${SLURM_JOB_ID}"
 PROJECT_CACHE_DIR="/tmp/osprey-project-cache-${SLURM_JOB_ID}"
 mkdir -p "$GRADLE_USER_HOME" "$PROJECT_CACHE_DIR"
 
-BASE_DIR="gnn_data/2RL0_markstar_8pos"
+BASE_DIR="gnn_data/2RL0_markstar_13pos"
 
 # Verify models exist
 ls -lh "$BASE_DIR/protein/model/gnn_model.onnx"

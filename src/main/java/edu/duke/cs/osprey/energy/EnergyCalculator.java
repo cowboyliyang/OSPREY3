@@ -42,9 +42,6 @@ import edu.duke.cs.osprey.confspace.MultiStateConfSpace;
 import edu.duke.cs.osprey.confspace.ParametricMolecule;
 import edu.duke.cs.osprey.confspace.RCTuple;
 import edu.duke.cs.osprey.confspace.SimpleConfSpace;
-import edu.duke.cs.osprey.ematrix.PartialStartCache;
-import edu.duke.cs.osprey.ematrix.PartialStartIntegration;
-import edu.duke.cs.osprey.ematrix.MinimizationCache;
 import edu.duke.cs.osprey.confspace.SimpleConfSpace.DofTypes;
 import edu.duke.cs.osprey.energy.approximation.ApproximatedObjectiveFunction;
 import edu.duke.cs.osprey.energy.approximation.ResidueInteractionsApproximator;
@@ -757,37 +754,15 @@ public class EnergyCalculator implements AutoCleanable {
 						System.out.flush();
 					}
 
-					// Phase 5: Try to get warm start from Partial Start Cache
-					if (PartialStartIntegration.ENABLE_PARTIALSTART_CACHE && confSpace != null && conf != null && conf.size() == 7) {
-						PartialStartCache.WarmStartResult wsResult =
-							PartialStartIntegration.getWarmStartWithInfo(confSpace, pmol, conf, x);
-
-						if (wsResult != null) {
-							// Set warm start DOF values
-							for (int i = 0; i < wsResult.dofValues.length && i < x.size(); i++) {
-								x.set(i, wsResult.dofValues[i]);
-							}
-
-							// Pass unmatched DOF indices to minimizer for priority optimization
-							SimpleCCDMinimizer.unmatchedDOFIndices.set(wsResult.unmatchedDOFIndices);
-						}
-					}
-
-					// Phase 2: Wrap with CachedMinimizer if enabled (pass ObjectiveFunction for TRUE subtree caching)
-					Minimizer actualMinimizer = wrapMinimizerIfNeeded(minimizer, conf, f);
-
-					// Track minimization time ONLY for Phase 1 (correction computation)
-					// Phase 2 timing is handled inside SubtreeDOFCache to avoid double-counting
+					// Track minimization time for correction computation
 					Minimizer.Result result;
 					if (conf == null) {
-						// Phase 1: Correction computation (not cached) - track time here
 						long minStartTime = System.nanoTime();
-						result = actualMinimizer.minimizeFrom(x);
+						result = minimizer.minimizeFrom(x);
 						long minEndTime = System.nanoTime();
 						edu.duke.cs.osprey.markstar.MinimizationTimer.recordPhase1Minimization(minEndTime - minStartTime);
 					} else {
-						// Phase 2: A* search (cached) - timing handled in SubtreeDOFCache
-						result = actualMinimizer.minimizeFrom(x);
+						result = minimizer.minimizeFrom(x);
 					}
 
 					// Clean up ThreadLocal (just in case minimizer didn't clean up)
@@ -819,11 +794,6 @@ public class EnergyCalculator implements AutoCleanable {
 						// we got out of the well, yay!
 					}
 
-					// Phase 5: Cache the minimization result for future warm starts
-					if (PartialStartIntegration.ENABLE_PARTIALSTART_CACHE && confSpace != null && conf != null && conf.size() == 7) {
-						PartialStartIntegration.cacheResult(confSpace, pmol, conf, result.dofValues);
-					}
-
 					return new EnergiedParametricMolecule(pmol, inters, result.dofValues, result.energy);
 				} finally {
 					// Restore DOF logging flag
@@ -846,17 +816,6 @@ public class EnergyCalculator implements AutoCleanable {
 
 	private boolean isInfiniteWell(double energy) {
 		return infiniteWellEnergy != null && energy <= infiniteWellEnergy;
-	}
-
-	/**
-	 * Phase 2: Wrap minimizer with CachedMinimizer if enabled
-	 * Now supports TRUE subtree caching by passing ObjectiveFunction
-	 */
-	private Minimizer wrapMinimizerIfNeeded(Minimizer minimizer, RCTuple conf, ObjectiveFunction objFunc) {
-		if (edu.duke.cs.osprey.ematrix.CachedMinimizer.ENABLE_SUBTREE_CACHE && conf != null) {
-			return new edu.duke.cs.osprey.ematrix.CachedMinimizer(minimizer, conf, objFunc);
-		}
-		return minimizer;
 	}
 
 	public EnergyFunction makeEnergyFunction(EnergiedParametricMolecule epmol) {

@@ -54,7 +54,14 @@ class ConfDataset(Dataset):
 
 def load_data(data_dir):
     """Load all exported CSV files."""
+    import time as _time
+    t0 = _time.time()
+
+    # Use numpy for the big file, pandas for small metadata files
+    print("Loading confs.csv ...", flush=True)
     confs_df = pd.read_csv(os.path.join(data_dir, "confs.csv"))
+    print(f"  confs.csv loaded in {_time.time() - t0:.1f}s", flush=True)
+
     graph_df = pd.read_csv(os.path.join(data_dir, "graph.csv"))
     meta_df = pd.read_csv(os.path.join(data_dir, "meta.csv"))
     rc_feat_df = pd.read_csv(os.path.join(data_dir, "rc_features.csv"))
@@ -68,68 +75,106 @@ def load_data(data_dir):
     residuals = confs_df["residual"].values.astype(np.float64)
     emat_energies = confs_df["E_emat"].values.astype(np.float64)
     ccd_energies = confs_df["E_CCD"].values.astype(np.float64)
+    has_rigid = "E_rigid" in confs_df.columns
+    rigid_energies = confs_df["E_rigid"].values.astype(np.float64) if has_rigid else None
 
-    # Filter extreme energies
+    # Free the big dataframe early
+    del confs_df
+
+    # Filter: emat pre-filter (consistent with sampling & inference)
     n_raw = len(confs)
-    energy_cap = np.percentile(np.abs(ccd_energies), 95)
-    energy_cap = max(energy_cap, 500.0)
-    mask = np.abs(ccd_energies) < energy_cap
+    mask = np.ones(n_raw, dtype=bool)
+
+    # 1. E_emat (minimizing) > -20 → skip
+    emat_cap = -20.0
+    mask_emat = emat_energies <= emat_cap
+    mask &= mask_emat
+
+    # 2. E_rigid > 0 → skip (if column exists)
+    if has_rigid:
+        rigid_cap = 0.0
+        mask_rigid = rigid_energies <= rigid_cap
+        mask &= mask_rigid
+
+    # 3. |residual| >= 100 → skip (training quality guard)
+    residual_cap = 100.0
+    mask_res = np.abs(residuals) < residual_cap
+    mask &= mask_res
+
     confs = confs[mask]
     residuals = residuals[mask]
     emat_energies = emat_energies[mask]
     ccd_energies = ccd_energies[mask]
-    print(f"Filtered: {n_raw} -> {len(confs)} conformations "
-          f"(removed {n_raw - len(confs)} with |E_CCD| >= {energy_cap:.1f})")
+    if has_rigid:
+        rigid_energies = rigid_energies[mask]
+
+    n_kept = len(confs)
+    print(f"Filtered: {n_raw} -> {n_kept} conformations (removed {n_raw - n_kept})")
+    print(f"  E_emat <= {emat_cap}: removed {int((~mask_emat).sum())}")
+    if has_rigid:
+        print(f"  E_rigid <= {rigid_cap}: removed {int((~mask_rigid).sum())}")
+    print(f"  |residual| < {residual_cap}: removed {int((~mask_res).sum())}")
 
     edge_index = torch.tensor(graph_df[["src", "dst"]].values.T, dtype=torch.long)
     num_rcs = meta_df["num_rcs"].values.tolist()
     max_rcs = max(num_rcs)
 
-    # RC features: build padded lookup tables
+    # RC features: build padded lookup tables (vectorized)
     aa_table = torch.zeros(num_pos, max_rcs, dtype=torch.long)
     chi_table = torch.zeros(num_pos, max_rcs, MAX_CHI, dtype=torch.float32)
 
+    rc_feat_df = rc_feat_df.sort_values(["pos", "rc"])
     for p in range(num_pos):
-        pos_df = rc_feat_df[rc_feat_df["pos"] == p].sort_values("rc")
-        n = len(pos_df)
-        aa_table[p, :n] = torch.tensor(pos_df["aa_type_idx"].values, dtype=torch.long)
-        chis = pos_df[["chi1", "chi2", "chi3", "chi4"]].fillna(0.0).values
+        pos_mask = rc_feat_df["pos"].values == p
+        pos_data = rc_feat_df[pos_mask]
+        n = len(pos_data)
+        aa_table[p, :n] = torch.tensor(pos_data["aa_type_idx"].values, dtype=torch.long)
+        chis = pos_data[["chi1", "chi2", "chi3", "chi4"]].fillna(0.0).values
         chi_table[p, :n] = torch.tensor(chis, dtype=torch.float32)
 
-    # Pairwise energy lookup: padded flat table per directed edge
+    # Pairwise energy lookup: vectorized build
     src_edges, dst_edges = edge_index
     num_edges = src_edges.shape[0]
     pair_table = torch.zeros(num_edges, max_rcs * max_rcs, dtype=torch.float32)
 
-    # Build dict from CSV
-    pair_dict = {}
-    for _, row in pair_df.iterrows():
-        p1, r1, p2, r2 = int(row["pos1"]), int(row["rc1"]), int(row["pos2"]), int(row["rc2"])
-        pair_dict[(p1, r1, p2, r2)] = row["E_pair_min"]
-
+    # Build edge-index map for fast lookup
+    edge_map = {}
     for e in range(num_edges):
-        s, d = src_edges[e].item(), dst_edges[e].item()
-        ns, nd = num_rcs[s], num_rcs[d]
-        for rs in range(ns):
-            for rd in range(nd):
-                key = (s, rs, d, rd) if (s, rs, d, rd) in pair_dict else (d, rd, s, rs)
-                if key in pair_dict:
-                    pair_table[e, rs * max_rcs + rd] = pair_dict[key]
+        edge_map[(src_edges[e].item(), dst_edges[e].item())] = e
 
-    # Cα distances per edge
+    # Vectorized: process entire pair_df at once
+    p1 = pair_df["pos1"].values
+    r1 = pair_df["rc1"].values
+    p2 = pair_df["pos2"].values
+    r2 = pair_df["rc2"].values
+    evals = pair_df["E_pair_min"].values
+
+    for i in range(len(evals)):
+        # Try both edge directions
+        e_idx = edge_map.get((p1[i], p2[i]))
+        if e_idx is not None:
+            pair_table[e_idx, r1[i] * max_rcs + r2[i]] = evals[i]
+        e_idx = edge_map.get((p2[i], p1[i]))
+        if e_idx is not None:
+            pair_table[e_idx, r2[i] * max_rcs + r1[i]] = evals[i]
+
+    # Cα distances per edge (vectorized)
+    ca_p1 = ca_dist_df["pos1"].values
+    ca_p2 = ca_dist_df["pos2"].values
+    ca_d = ca_dist_df["distance"].values
     ca_dist_map = {}
-    for _, row in ca_dist_df.iterrows():
-        p1, p2 = int(row["pos1"]), int(row["pos2"])
-        ca_dist_map[(p1, p2)] = row["distance"]
-        ca_dist_map[(p2, p1)] = row["distance"]
+    for i in range(len(ca_d)):
+        ca_dist_map[(ca_p1[i], ca_p2[i])] = ca_d[i]
+        ca_dist_map[(ca_p2[i], ca_p1[i])] = ca_d[i]
 
     ca_dist_vec = torch.zeros(num_edges, dtype=torch.float32)
     for e in range(num_edges):
         s, d = src_edges[e].item(), dst_edges[e].item()
         ca_dist_vec[e] = ca_dist_map.get((s, d), 0.0)
 
+    elapsed = _time.time() - t0
     print(f"Loaded {len(confs)} conformations, {num_pos} positions, "
-          f"{num_edges} directed edges, max_rcs={max_rcs}")
+          f"{num_edges} directed edges, max_rcs={max_rcs} in {elapsed:.1f}s")
     print(f"Residual stats: mean={residuals.mean():.4f}, std={residuals.std():.4f}, "
           f"min={residuals.min():.4f}, max={residuals.max():.4f}")
 
@@ -330,7 +375,8 @@ class InteractionGNNv2(nn.Module):
 
 def train(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Device: {device}")
+    num_gpus = torch.cuda.device_count()
+    print(f"Device: {device}, GPUs available: {num_gpus}")
 
     data = load_data(args.data_dir)
     confs = data["confs"]
@@ -371,30 +417,54 @@ def train(args):
     print(f"Model parameters: {num_params:,}")
     print(f"Buffer elements: {num_buffer_elems:,}")
 
+    if num_gpus > 1:
+        print(f"Using DataParallel on {num_gpus} GPUs")
+        model = nn.DataParallel(model)
+
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
 
     best_val_rmse = float("inf")
     best_state = None
+    start_epoch = 1
 
-    for epoch in range(1, args.epochs + 1):
+    # Resume from checkpoint
+    if args.resume:
+        print(f"Resuming from {args.resume}")
+        ckpt = torch.load(args.resume, map_location=device)
+        base = model.module if isinstance(model, nn.DataParallel) else model
+        base.load_state_dict(ckpt["model_state"])
+        if "optimizer_state" in ckpt:
+            optimizer.load_state_dict(ckpt["optimizer_state"])
+        if "scheduler_state" in ckpt:
+            scheduler.load_state_dict(ckpt["scheduler_state"])
+        if "epoch" in ckpt:
+            start_epoch = ckpt["epoch"] + 1
+        if "val_rmse" in ckpt:
+            best_val_rmse = ckpt["val_rmse"]
+            best_state = ckpt["model_state"]
+        print(f"Resumed at epoch {start_epoch}, best_val_rmse={best_val_rmse:.4f}")
+
+    for epoch in range(start_epoch, args.epochs + 1):
         model.train()
-        train_loss = 0.0
+        train_mse = 0.0
         for confs_batch, targets_batch, _ in train_loader:
             confs_batch = confs_batch.to(device)
             targets_batch = targets_batch.to(device)
 
             pred = model(confs_batch)
-            loss = nn.functional.mse_loss(pred, targets_batch)
+            if args.loss == "huber":
+                loss = nn.functional.huber_loss(pred, targets_batch, delta=args.huber_delta)
+            else:
+                loss = nn.functional.mse_loss(pred, targets_batch)
+            train_mse += nn.functional.mse_loss(pred, targets_batch).item() * len(confs_batch)
 
             optimizer.zero_grad()
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
 
-            train_loss += loss.item() * len(confs_batch)
-
-        train_rmse = (train_loss / len(train_ds)) ** 0.5
+        train_rmse = (train_mse / len(train_ds)) ** 0.5
         scheduler.step()
 
         model.eval()
@@ -409,16 +479,37 @@ def train(args):
 
         if val_rmse < best_val_rmse:
             best_val_rmse = val_rmse
-            best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+            # Strip 'module.' prefix from DataParallel for clean checkpoint
+            raw_sd = model.module.state_dict() if isinstance(model, nn.DataParallel) else model.state_dict()
+            best_state = {k: v.cpu().clone() for k, v in raw_sd.items()}
 
-        if epoch % args.log_every == 0 or epoch == 1:
+        if epoch % args.log_every == 0 or epoch == start_epoch:
             print(f"Epoch {epoch:4d}  train_rmse={train_rmse:.4f}  "
                   f"val_rmse={val_rmse:.4f}  best={best_val_rmse:.4f}  "
-                  f"lr={scheduler.get_last_lr()[0]:.2e}")
+                  f"lr={scheduler.get_last_lr()[0]:.2e}", flush=True)
 
-    # Restore best model
-    model.load_state_dict(best_state)
-    model.eval()
+        # Periodic checkpoint every 50 epochs
+        if epoch % 50 == 0:
+            ckpt_dir = os.path.join(args.data_dir, "model")
+            os.makedirs(ckpt_dir, exist_ok=True)
+            raw_sd = model.module.state_dict() if isinstance(model, nn.DataParallel) else model.state_dict()
+            torch.save({
+                "model_state": {k: v.cpu().clone() for k, v in raw_sd.items()},
+                "optimizer_state": optimizer.state_dict(),
+                "scheduler_state": scheduler.state_dict(),
+                "epoch": epoch,
+                "num_rcs": data["num_rcs"],
+                "num_pos": data["num_pos"],
+                "max_rcs": data["max_rcs"],
+                "args": vars(args),
+                "val_rmse": best_val_rmse,
+            }, os.path.join(ckpt_dir, "gnn_checkpoint.pt"))
+
+    # Restore best model (unwrap DataParallel for eval/export)
+    base_model = model.module if isinstance(model, nn.DataParallel) else model
+    base_model.load_state_dict(best_state)
+    base_model.eval()
+    model = base_model
 
     # Final evaluation
     all_preds, all_targets, all_emat = [], [], []
@@ -436,6 +527,30 @@ def train(args):
 
     evaluate_all(all_preds, all_targets, all_emat)
 
+    # ---- Conformal Prediction calibration on val set ----
+    # Compute nonconformity scores = |E_GNN - E_CCD| on val set
+    val_errors = np.abs(all_preds - all_targets)  # residual-space errors
+    n_cal = len(val_errors)
+    cp_stats = {}
+    for alpha in [0.20, 0.10, 0.05, 0.02, 0.01, 0.005, 0.001]:
+        # Finite-sample corrected quantile: ceil((1-α)(n+1)) / n
+        level = min(np.ceil((1 - alpha) * (n_cal + 1)) / n_cal, 1.0)
+        q = float(np.quantile(val_errors, level))
+        cp_stats[f"q_alpha_{alpha}"] = q
+        print(f"  CP calibration: α={alpha:.3f}  q={q:.6f} kcal/mol  "
+              f"(n_cal={n_cal}, coverage≥{1-alpha:.3f})")
+
+    # Also store raw percentiles for reference
+    for p in [50, 90, 95, 99, 99.5, 99.9]:
+        cp_stats[f"P{p}"] = float(np.percentile(val_errors, p))
+    cp_stats["max"] = float(np.max(val_errors))
+    cp_stats["n_cal"] = n_cal
+
+    print(f"\n  Val error percentiles:")
+    print(f"    P50={cp_stats['P50']:.6f}  P90={cp_stats['P90']:.6f}  "
+          f"P95={cp_stats['P95']:.6f}  P99={cp_stats['P99']:.6f}  "
+          f"Max={cp_stats['max']:.6f}")
+
     # Save
     out_dir = os.path.join(args.data_dir, "model")
     os.makedirs(out_dir, exist_ok=True)
@@ -447,6 +562,7 @@ def train(args):
         "max_rcs": data["max_rcs"],
         "args": vars(args),
         "val_rmse": best_val_rmse,
+        "cp_stats": cp_stats,
     }, os.path.join(out_dir, "gnn_checkpoint.pt"))
 
     try:
@@ -521,6 +637,8 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=256)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--wd", type=float, default=1e-4)
+    parser.add_argument("--loss", type=str, default="huber", choices=["mse", "huber"])
+    parser.add_argument("--huber_delta", type=float, default=1.0)
     parser.add_argument("--aa_embed_dim", type=int, default=16)
     parser.add_argument("--pos_embed_dim", type=int, default=8)
     parser.add_argument("--node_dim", type=int, default=32)
@@ -530,6 +648,8 @@ if __name__ == "__main__":
     parser.add_argument("--val_frac", type=float, default=0.15)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--log_every", type=int, default=10)
+    parser.add_argument("--resume", type=str, default=None,
+                        help="Path to checkpoint to resume from (e.g. gnn_data/.../model/gnn_checkpoint.pt)")
     args = parser.parse_args()
 
     train(args)

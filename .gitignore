@@ -27,3 +27,30 @@ nbbuild.xml
 # hugo things
 /doc/themes
 /doc/.hugo_build.lock
+
+# GNN 模型数据（本地保留，不推送）
+gnn_data/
+
+# 运行输出和日志（本地保留，不推送）
+bench_logs/
+loop_benchmark/
+loop_torsion_diff/
+kstar_logs/
+emat_cache/
+lute_bench/
+lute_bench_nodee/
+*.out
+*.err
+mark*_scripts/*.out
+mark*_scripts/*.err
+mark*_scripts/*.csv
+
+# CUDA/ONNX Runtime 二进制（本地保留，不推送）
+lib/ort-cuda12/
+lib/onnxruntime-*.jar
+src/main/resources/linux-x86-64/libCudaConfEcalc.so
+build/install/osprey/lib/libonnxruntime*
+build/install/osprey/lib/onnxruntime-*.jar
+build/install/osprey/lib/ort.tgz
+build/install/osprey/lib/onnxruntime.pdb
+transfer-tensor/

@@ -51,7 +51,7 @@ import java.util.*;
 public class MARKStarBoundFastQueues extends MARKStarBound {
 
     public String stateName = String.format("%4f",Math.random());
-    private Queue<MARKStarNode> leafQueue;
+    protected Queue<MARKStarNode> leafQueue;
     private Queue<MARKStarNode> internalQueue;
 
 

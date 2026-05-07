@@ -94,6 +94,23 @@ public class DecompSearchNode implements Comparable<DecompSearchNode> {
     public boolean minimized = false;
     public double minimizedEnergy = Double.NaN;
 
+    // ========== Aggregate node fields ==========
+    // An aggregate node represents all un-enumerated lambda-states of a pending edge.
+    // It holds a LambdaAStar to lazily produce more states on demand.
+
+    /** True if this is an aggregate node (represents remaining lambda-states). */
+    public boolean isAggregate = false;
+
+    /** The LambdaAStar instance for producing more lambda-states (only set on aggregate nodes). */
+    public LambdaAStar lambdaAStar = null;
+
+    /** The parent DecompSearchNode that was being expanded when this aggregate was created.
+     *  Used to create new children when popping from the aggregate. */
+    public DecompSearchNode aggregateParent = null;
+
+    /** The pending edge index in aggregateParent that this aggregate covers. */
+    public int aggregatePendingIdx = -1;
+
     /**
      * Create a root search node (no edges assigned, all positions unassigned).
      */
@@ -204,9 +221,136 @@ public class DecompSearchNode implements Comparable<DecompSearchNode> {
         return child;
     }
 
+    /**
+     * Create an aggregate node representing all un-enumerated lambda-states
+     * of a pending edge. The aggregate holds a LambdaAStar and the parent context
+     * needed to produce concrete children on demand.
+     *
+     * Z bounds use the same logic as MARK*'s partial-assignment nodes:
+     *   - The A* frontier's best f-score is an energy lower bound for ALL remaining states
+     *   - ZUpper = numRemaining × numCompletionsPerLambda × boltz(frontierBestF)
+     *     (lowest possible energy → highest Boltzmann → Z upper bound)
+     *   - ZLower = 0 (conservative: no upper bound on energy → boltz → 0)
+     *
+     * Each remaining lambda-state, once fully assigned, still has unassigned positions
+     * from further pending edges. numCompletionsPerLambda accounts for those.
+     *
+     * @param parent          the node being expanded
+     * @param pendingIdx      index into parent.pendingEdges
+     * @param lambdaAStar     the A* search (already produced some states)
+     * @param parentZUpper    (unused, kept for API compat)
+     * @param alreadyUsedZUpper  (unused, kept for API compat)
+     */
+    public static DecompSearchNode makeAggregate(
+            DecompSearchNode parent,
+            int pendingIdx,
+            LambdaAStar lambdaAStar,
+            BigDecimal parentZUpper,
+            BigDecimal alreadyUsedZUpper,
+            BoltzmannCalculator bc) {
+
+        int numPos = parent.partialConf.length;
+        DecompSearchNode agg = new DecompSearchNode(numPos);
+        agg.isAggregate = true;
+        agg.lambdaAStar = lambdaAStar;
+        agg.aggregateParent = parent;
+        agg.aggregatePendingIdx = pendingIdx;
+
+        // Copy parent's partial conf
+        System.arraycopy(parent.partialConf, 0, agg.partialConf, 0, numPos);
+
+        // Compute Z upper bound from A* frontier
+        computeAggregateZBounds(agg, parent, bc);
+
+        return agg;
+    }
+
+    /**
+     * Recompute an aggregate node's Z bounds from its A* frontier.
+     *
+     * ZUpper = numRemaining × numCompletionsPerLambda × boltz(frontierBestF)
+     *   where frontierBestF = A* frontier's best f-score (energy lower bound for all remaining)
+     *   and numCompletionsPerLambda = product of |RCs| at positions not yet assigned
+     *     (i.e., positions not in parent's partialConf AND not in this edge's lambda-set)
+     *
+     * ZLower = numRemaining × completionsPerChild × boltz(parent.confUpperBound)
+     *   parent.confUpperBound = g_rigid - h_negRigid is an energy upper bound for any completion,
+     *   so boltz(parent.confUpperBound) is a Boltzmann weight lower bound per completion.
+     */
+    static void computeAggregateZBounds(DecompSearchNode agg, DecompSearchNode parent,
+                                         BoltzmannCalculator bc) {
+        int numRemaining = agg.lambdaAStar.getNumRemaining();
+        if (numRemaining <= 0) {
+            agg.subtreeUpperBound = BigDecimal.ZERO;
+            agg.subtreeLowerBound = BigDecimal.ZERO;
+            agg.errorBound = BigDecimal.ZERO;
+            return;
+        }
+
+        double frontierF = agg.lambdaAStar.getFrontierBestF();
+        if (Double.isInfinite(frontierF) || Double.isNaN(frontierF)) {
+            agg.subtreeUpperBound = BigDecimal.ZERO;
+            agg.subtreeLowerBound = BigDecimal.ZERO;
+            agg.errorBound = BigDecimal.ZERO;
+            return;
+        }
+
+        PendingEdge pe = parent.pendingEdges.get(agg.aggregatePendingIdx);
+        int totalLambdaStates = pe.edge.getTotalLambdaStates();
+
+        // completionsPerChild: parent had numCompletions assuming lambda positions unassigned.
+        // Each child assigns all lambda positions, so divide by product of |RCs| at lambda positions.
+        // totalLambdaStates = that product. Integer division rounds down (conservative for both bounds).
+        BigInteger completionsPerChild = parent.numCompletions.divide(BigInteger.valueOf(totalLambdaStates));
+        BigDecimal completions = new BigDecimal(completionsPerChild);
+        BigDecimal remaining = BigDecimal.valueOf(numRemaining);
+
+        // ZUpper: parent.confLowerBound is energy lower bound → highest Boltzmann weight
+        BigDecimal boltzParentLower = safeBoltzCalc(bc, parent.confLowerBound);
+        agg.subtreeUpperBound = boltzParentLower.multiply(completions).multiply(remaining);
+
+        // ZLower: parent.confUpperBound is energy upper bound → lowest Boltzmann weight
+        BigDecimal boltzParentUpper = safeBoltzCalc(bc, parent.confUpperBound);
+        agg.subtreeLowerBound = boltzParentUpper.multiply(completions).multiply(remaining);
+
+        // Ensure lower ≤ upper
+        if (agg.subtreeLowerBound.compareTo(agg.subtreeUpperBound) > 0) {
+            BigDecimal temp = agg.subtreeLowerBound;
+            agg.subtreeLowerBound = agg.subtreeUpperBound;
+            agg.subtreeUpperBound = temp;
+        }
+
+        agg.errorBound = agg.subtreeUpperBound.subtract(agg.subtreeLowerBound);
+        if (agg.errorBound.signum() < 0) agg.errorBound = BigDecimal.ZERO;
+    }
+
+    /**
+     * Pop the next lambda-state from an aggregate node's A* search.
+     * Returns a concrete child DecompSearchNode, or null if exhausted.
+     *
+     * After calling this, the aggregate's Z bounds should be updated by the caller
+     * (subtract the new child's ZUpper from the aggregate's ZUpper).
+     */
+    public DecompSearchNode popNextFromAggregate(
+            RCs rcs,
+            AStarScorer gScorerMin, AStarScorer hScorerMin,
+            AStarScorer gScorerRigid, AStarScorer hScorerNegRigid,
+            BoltzmannCalculator bc) {
+
+        if (!isAggregate || lambdaAStar == null) return null;
+
+        int lambdaIdx = lambdaAStar.next();
+        if (lambdaIdx < 0) return null;  // exhausted
+
+        // Create a concrete child using the standard makeChild
+        return DecompSearchNode.makeChild(
+                aggregateParent, aggregatePendingIdx, lambdaIdx, rcs,
+                gScorerMin, hScorerMin, gScorerRigid, hScorerNegRigid, bc);
+    }
+
     /** Is this a leaf node (all edges assigned = full conformation)? */
     public boolean isLeaf() {
-        return pendingEdges.isEmpty();
+        return pendingEdges.isEmpty() && !isAggregate;
     }
 
     /**
@@ -260,6 +404,11 @@ public class DecompSearchNode implements Comparable<DecompSearchNode> {
      * ExpFunction.exp() which crashes on such values (BigDecimal.pow overflow).
      * We guard against this here.
      */
+    /** Public version for external callers (e.g., correction matrix updates). */
+    public void recomputeZBounds(BoltzmannCalculator bc) {
+        computeZBounds(bc);
+    }
+
     private void computeZBounds(BoltzmannCalculator bc) {
         BigDecimal numComp = new BigDecimal(numCompletions);
 
@@ -295,7 +444,7 @@ public class DecompSearchNode implements Comparable<DecompSearchNode> {
      *
      * Returns BigDecimal.ZERO for any non-computable case (conservative bound).
      */
-    private static BigDecimal safeBoltzCalc(BoltzmannCalculator bc, double energy) {
+    public static BigDecimal safeBoltzCalc(BoltzmannCalculator bc, double energy) {
         if (Double.isNaN(energy) || Double.isInfinite(energy)) {
             // +Infinity energy → Boltzmann weight = 0
             // -Infinity energy → Boltzmann weight would be +Infinity, not representable → 0
@@ -315,7 +464,7 @@ public class DecompSearchNode implements Comparable<DecompSearchNode> {
      * Build a ConfIndex from a partial conformation array.
      * partialConf[pos] = rc if assigned, -1 if unassigned.
      */
-    static ConfIndex buildConfIndex(int[] partialConf, int numPos) {
+    public static ConfIndex buildConfIndex(int[] partialConf, int numPos) {
         ConfIndex index = new ConfIndex(numPos);
         // Collect defined and undefined positions
         // ConfIndex expects definedPos to be sorted (ascending)

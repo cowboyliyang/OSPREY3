@@ -53,33 +53,112 @@ public class GNNDataExporter {
     private final SimpleConfSpace confSpace;
     private final ConfEnergyCalculator confEcalc;
     private final EnergyMatrix ematMinimized;
+    private final EnergyMatrix ematRigid;   // rigid (no minimization) energy matrix
     private final InteractionGraph interactionGraph;
     private final RCs rcs;
+
+    // Emat-based pre-filter thresholds (applied before CCD, consistent with inference)
+    private double rigidEmatThreshold = 0.0;    // skip if E_rigid > this
+    private double minEmatThreshold = -20.0;    // skip if E_min > this
 
     public GNNDataExporter(
             ConfEnergyCalculator confEcalc,
             EnergyMatrix ematMinimized,
+            EnergyMatrix ematRigid,
             InteractionGraph interactionGraph,
             RCs rcs
     ) {
         this.confSpace = confEcalc.confSpace;
         this.confEcalc = confEcalc;
         this.ematMinimized = ematMinimized;
+        this.ematRigid = ematRigid;
         this.interactionGraph = interactionGraph;
         this.rcs = rcs;
     }
 
+    /** Backwards-compatible constructor (no rigid emat, no pre-filter). */
+    public GNNDataExporter(
+            ConfEnergyCalculator confEcalc,
+            EnergyMatrix ematMinimized,
+            InteractionGraph interactionGraph,
+            RCs rcs
+    ) {
+        this(confEcalc, ematMinimized, null, interactionGraph, rcs);
+        // Disable emat pre-filter when no rigid emat
+        this.rigidEmatThreshold = Double.MAX_VALUE;
+        this.minEmatThreshold = Double.MAX_VALUE;
+    }
+
+    public void setRigidEmatThreshold(double threshold) { this.rigidEmatThreshold = threshold; }
+    public void setMinEmatThreshold(double threshold) { this.minEmatThreshold = threshold; }
+
+    /** Pre-filter: returns true if this conf should be SKIPPED (too high energy). */
+    private boolean shouldFilter(int[] conf) {
+        double eMin = ematMinimized.confE(conf);
+        if (eMin > minEmatThreshold) return true;
+        if (ematRigid != null) {
+            double eRigid = ematRigid.confE(conf);
+            if (eRigid > rigidEmatThreshold) return true;
+        }
+        return false;
+    }
+
     public void export(int numSamples, File outputDir) throws IOException {
+        export(numSamples, 10, outputDir);
+    }
+
+    /**
+     * @param numSamples   max total samples (used as cap)
+     * @param confsPerPair number of A* confs per rotamer pair
+     * @param outputDir    output directory
+     */
+    public void export(int numSamples, int confsPerPair, File outputDir) throws IOException {
         outputDir.mkdirs();
 
-        // 1. Sample conformations via A* (low energy first)
-        System.out.println("Enumerating " + numSamples + " lowest-energy conformations via A*...");
-        List<int[]> confs = sampleByAStar(numSamples);
-        System.out.println("Enumerated " + confs.size() + " conformations.");
+        System.out.println("Pre-filter: E_rigid > " + rigidEmatThreshold
+                + " OR E_min > " + minEmatThreshold + " → skip");
+
+        // 1a. LUTE-style pairwise A* sampling
+        System.out.println("LUTE-style sampling: " + confsPerPair + " confs per RC pair...");
+        List<int[]> pairConfs = sampleByPairwiseAStar(confsPerPair, numSamples);
+        System.out.println("Pairwise sampled " + pairConfs.size() + " unique conformations.");
+
+        // 1b. Global A* sampling (low-energy biased, no fixed positions)
+        int globalBudget = Math.max(numSamples / 5, 100000); // 20% of budget for global A*
+        System.out.println("Global A* sampling: up to " + globalBudget + " confs...");
+        List<int[]> globalConfs = sampleByAStar(globalBudget);
+        System.out.println("Global A* sampled " + globalConfs.size() + " conformations.");
+
+        // 1c. Merge and deduplicate
+        Set<String> seen = new HashSet<>();
+        List<int[]> allConfs = new ArrayList<>();
+        for (int[] conf : pairConfs) {
+            if (seen.add(Arrays.toString(conf))) allConfs.add(conf);
+        }
+        int pairCount = allConfs.size();
+        for (int[] conf : globalConfs) {
+            if (seen.add(Arrays.toString(conf))) allConfs.add(conf);
+        }
+        System.out.println("After merge+dedup: " + allConfs.size()
+                + " (pair=" + pairCount + ", globalNew=" + (allConfs.size() - pairCount) + ")");
+
+        // 1d. Apply emat pre-filter
+        List<int[]> confs = new ArrayList<>();
+        int filtered = 0;
+        for (int[] conf : allConfs) {
+            if (shouldFilter(conf)) {
+                filtered++;
+            } else {
+                confs.add(conf);
+            }
+        }
+        System.out.println("After emat pre-filter: " + confs.size()
+                + " kept, " + filtered + " filtered out (" + String.format("%.1f", 100.0 * filtered / allConfs.size()) + "%)");
 
         // 2. Compute CCD energies in parallel
         double[] eCCD = new double[confs.size()];
-        double[] eEmat = new double[confs.size()];
+        double[] eEmatMin = new double[confs.size()];
+        double[] eEmatRigid = new double[confs.size()];
         AtomicInteger failures = new AtomicInteger(0);
 
         Progress progress = new Progress(confs.size());
@@ -88,7 +167,8 @@ public class GNNDataExporter {
 
         for (int i = 0; i < confs.size(); i++) {
             int[] conf = confs.get(i);
-            eEmat[i] = ematMinimized.confE(conf);
+            eEmatMin[i] = ematMinimized.confE(conf);
+            eEmatRigid[i] = (ematRigid != null) ? ematRigid.confE(conf) : Double.NaN;
 
             final int idx = i;
             confEcalc.calcEnergyAsync(new RCTuple(conf), (EnergyCalculator.EnergiedParametricMolecule epm) -> {
@@ -109,10 +189,11 @@ public class GNNDataExporter {
         }
 
         // 3. Write all output files
-        int written = writeConfs(new File(outputDir, "confs.csv"), confs, eCCD, eEmat);
+        int written = writeConfs(new File(outputDir, "confs.csv"), confs, eCCD, eEmatMin, eEmatRigid);
         writeGraph(new File(outputDir, "graph.csv"));
         writeMeta(new File(outputDir, "meta.csv"));
         writeRCFeatures(new File(outputDir, "rc_features.csv"));
+        writeOneBodyEnergies(new File(outputDir, "onebody_energies.csv"));
         writePairwiseEnergies(new File(outputDir, "pairwise_energies.csv"));
         writeCaDistances(new File(outputDir, "ca_distances.csv"));
 
@@ -125,6 +206,87 @@ public class GNNDataExporter {
         System.out.println("  ca_distances.csv:      Cα distances exported");
     }
 
+    /**
+     * LUTE-style sampling: for each pair of positions (i,j) and each RC pair
+     * (rc_i, rc_j), fix those two positions and run A* over the remaining
+     * positions to get the top-K lowest-energy conformations.
+     * Deduplicates by full conf assignment. Parallelized across RC pairs.
+     */
+    private List<int[]> sampleByPairwiseAStar(int confsPerPair, int maxTotal) {
+        int numPos = confSpace.positions.size();
+        Set<String> seen = Collections.synchronizedSet(new HashSet<>());
+        List<int[]> result = Collections.synchronizedList(new ArrayList<>());
+        AtomicInteger pairsDone = new AtomicInteger(0);
+
+        // Collect all (posI, posJ, ri, rj) tasks
+        List<int[]> tasks = new ArrayList<>();
+        for (int posI = 0; posI < numPos; posI++)
+            for (int posJ = posI + 1; posJ < numPos; posJ++)
+                for (int ri : rcs.get(posI))
+                    for (int rj : rcs.get(posJ))
+                        tasks.add(new int[]{posI, posJ, ri, rj});
+
+        int totalPairs = tasks.size();
+        System.out.println("Total RC pairs: " + totalPairs
+                + " × " + confsPerPair + " = up to " + (totalPairs * confsPerPair) + " confs");
+
+        int nThreads = Runtime.getRuntime().availableProcessors();
+        java.util.concurrent.ExecutorService executor =
+                java.util.concurrent.Executors.newFixedThreadPool(nThreads);
+        System.out.println("Sampling with " + nThreads + " threads...");
+
+        for (int[] task : tasks) {
+            executor.submit(() -> {
+                if (result.size() >= maxTotal) return;
+
+                int posI = task[0], posJ = task[1], ri = task[2], rj = task[3];
+                int[][] allowedRCs = new int[numPos][];
+                for (int p = 0; p < numPos; p++) {
+                    if (p == posI) {
+                        allowedRCs[p] = new int[]{ri};
+                    } else if (p == posJ) {
+                        allowedRCs[p] = new int[]{rj};
+                    } else {
+                        allowedRCs[p] = rcs.get(p);
+                    }
+                }
+                RCs fixedRCs = new RCs(allowedRCs);
+
+                ConfAStarTree astar = new ConfAStarTree.Builder(ematMinimized, fixedRCs)
+                        .setTraditional()
+                        .build();
+
+                for (int k = 0; k < confsPerPair; k++) {
+                    if (result.size() >= maxTotal) break;
+                    ConfSearch.ScoredConf sc = astar.nextConf();
+                    if (sc == null) break;
+                    int[] conf = sc.getAssignments();
+                    String key = Arrays.toString(conf);
+                    if (seen.add(key)) {
+                        result.add(conf);
+                    }
+                }
+
+                int done = pairsDone.incrementAndGet();
+                if (done % 10000 == 0) {
+                    System.out.println("  Pairs: " + done + "/" + totalPairs
+                            + ", unique confs: " + result.size());
+                }
+            });
+        }
+
+        executor.shutdown();
+        try {
+            executor.awaitTermination(24, java.util.concurrent.TimeUnit.HOURS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
+        System.out.println("All " + totalPairs + " pairs done, " + result.size() + " unique confs.");
+        return new ArrayList<>(result);
+    }
+
+    /** Original A* sampling (kept for reference) */
     private List<int[]> sampleByAStar(int numSamples) {
         ConfAStarTree astar = new ConfAStarTree.Builder(ematMinimized, rcs)
                 .setTraditional()
@@ -142,7 +304,7 @@ public class GNNDataExporter {
         return confs;
     }
 
-    private int writeConfs(File file, List<int[]> confs, double[] eCCD, double[] eEmat) throws IOException {
+    private int writeConfs(File file, List<int[]> confs, double[] eCCD, double[] eEmatMin, double[] eEmatRigid) throws IOException {
         int n = confSpace.positions.size();
         int written = 0;
         try (PrintWriter pw = new PrintWriter(new BufferedWriter(new FileWriter(file)))) {
@@ -150,7 +312,7 @@ public class GNNDataExporter {
             for (int p = 0; p < n; p++) {
                 header.append("rc_").append(p).append(',');
             }
-            header.append("E_CCD,E_emat,residual");
+            header.append("E_CCD,E_emat,E_rigid,residual");
             pw.println(header);
 
             for (int i = 0; i < confs.size(); i++) {
@@ -161,8 +323,9 @@ public class GNNDataExporter {
                     sb.append(conf[p]).append(',');
                 }
                 sb.append(String.format("%.6f", eCCD[i])).append(',');
-                sb.append(String.format("%.6f", eEmat[i])).append(',');
-                sb.append(String.format("%.6f", eCCD[i] - eEmat[i]));
+                sb.append(String.format("%.6f", eEmatMin[i])).append(',');
+                sb.append(String.format("%.6f", eEmatRigid[i])).append(',');
+                sb.append(String.format("%.6f", eCCD[i] - eEmatMin[i]));
                 pw.println(sb);
                 written++;
             }
@@ -222,6 +385,18 @@ public class GNNDataExporter {
                             + String.format("%.4f", chis[1]) + ","
                             + String.format("%.4f", chis[2]) + ","
                             + String.format("%.4f", chis[3]));
+                }
+            }
+        }
+    }
+
+    private void writeOneBodyEnergies(File file) throws IOException {
+        try (PrintWriter pw = new PrintWriter(new BufferedWriter(new FileWriter(file)))) {
+            pw.println("pos,rc,E_onebody");
+            for (SimpleConfSpace.Position pos : confSpace.positions) {
+                for (int r = 0; r < pos.resConfs.size(); r++) {
+                    double e = ematMinimized.getOneBody(pos.index, r);
+                    pw.println(pos.index + "," + r + "," + String.format("%.6f", e));
                 }
             }
         }

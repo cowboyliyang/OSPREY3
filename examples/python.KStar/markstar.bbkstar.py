@@ -75,7 +75,8 @@ for info in bbkstar.confSpaceInfos():
 	info.confSearchFactoryMinimized = osprey.BBKStar.ConfSearchFactory(makeAStarMinimized)
 
 	# BBK* needs rigid energies too
-	confEcalcRigid = osprey.ConfEnergyCalculatorCopy(info.confEcalcMinimized, rigidEcalc)
+	erefRigid = osprey.ReferenceEnergies(info.confSpace, rigidEcalc)
+	confEcalcRigid = osprey.ConfEnergyCalculator(info.confSpace, rigidEcalc, referenceEnergies=erefRigid)
 	ematRigid = osprey.EnergyMatrix(confEcalcRigid, cacheFile='emat.%s.rigid.dat' % info.id)
 	def makeAStarRigid(rcs, emat=ematRigid):
 		return osprey.AStarTraditional(emat, rcs, showProgress=False)

@@ -92,10 +92,10 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
     public boolean debug = false;
     public boolean profileOutput = false;
     private Status status = null;
-    private Values values = null;
+    protected Values values = null;
 
     // the number of full conformations minimized
-    private int numConfsEnergied = 0;
+    protected int numConfsEnergied = 0;
     // max confs minimized, -1 means infinite.
     private int maxNumConfs = -1;
 
@@ -103,12 +103,13 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
 
 
     // the number of full conformations scored OR energied
-    private int numConfsScored = 0;
+    protected int numConfsScored = 0;
 
     protected int numInternalNodesProcessed = 0;
+    private int tightenRoundCounter = 0;
 
     private boolean printMinimizedConfs;
-    private MARKStarProgress progress;
+    protected MARKStarProgress progress;
     public String stateName = String.format("%4f",Math.random());
     private int numPartialMinimizations;
     private ArrayList<Integer> minList;
@@ -372,19 +373,17 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
     public final AStarPruner pruner;
     protected RCs RCs;
     protected Parallelism parallelism;
-    private ObjectPool<ScoreContext> contexts;
+    protected ObjectPool<ScoreContext> contexts;
     private MARKStarNode.ScorerFactory gscorerFactory;
     private MARKStarNode.ScorerFactory hscorerFactory;
 
     public boolean reduceMinimizations = true;
-    private ConfAnalyzer confAnalyzer;
+    protected ConfAnalyzer confAnalyzer;
     EnergyMatrix minimizingEmat;
     EnergyMatrix rigidEmat;
     UpdatingEnergyMatrix correctionMatrix;
     ConfEnergyCalculator minimizingEcalc;
     private edu.duke.cs.osprey.energy.approximation.branch.GNNConfEnergyCalculator gnnCalc; // GNN surrogate (optional)
-    private edu.duke.cs.osprey.ematrix.SubtreeDOFCache tripleDOFCache; // For storing triple DOF values
-    private edu.duke.cs.osprey.ematrix.PartialFixCache partialFixCache; // PartialFixCache (Phase 4): L-set/M-set caching
     // Phase 7: Grid DP upper bound
     private GridDPMinimizer gridDPMinimizer;
     private boolean useGridDP = false;
@@ -477,14 +476,6 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
 
 
 
-    public void setTripleDOFCache(edu.duke.cs.osprey.ematrix.SubtreeDOFCache cache) {
-        this.tripleDOFCache = cache;
-    }
-
-    public void setPartialFixCache(edu.duke.cs.osprey.ematrix.PartialFixCache cache) {
-        this.partialFixCache = cache;
-    }
-
     public void setGNNCalculator(edu.duke.cs.osprey.energy.approximation.branch.GNNConfEnergyCalculator gnn) {
         this.gnnCalc = gnn;
     }
@@ -567,7 +558,7 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
         cumulativeZCorrection = cumulativeZCorrection.add(upper.subtract(corrected));
         upperReduction_PartialMin = upperReduction_PartialMin.add(upper.subtract(corrected));
     }
-    private void recordReduction(double lowerBound, double upperBound, double energy) {
+    protected void recordReduction(double lowerBound, double upperBound, double energy) {
         BigDecimal lowerBoundWeight = bc.calc(lowerBound);
         BigDecimal upperBoundWeight = bc.calc(upperBound);
         BigDecimal energyWeight = bc.calc(energy);
@@ -614,6 +605,15 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
     }
 
     protected void tightenBoundInPhases() {
+        tightenRoundCounter++;
+        if (tightenRoundCounter % 100 == 0) {
+            System.out.println("MARK* round=" + tightenRoundCounter
+                    + ", eps=" + String.format("%.6f", epsilonBound)
+                    + ", minimizations=" + numConfsEnergied
+                    + ", queueSize=" + queue.size()
+                    + ", maxMinBatch=" + maxMinimizations
+                    + ", internalsProcessed=" + numInternalNodesProcessed);
+        }
         // System.out.println(String.format("Current overall error bound: %12.10f, spread of [%12.6e, %12.6e]",epsilonBound, rootNode.getLowerBound(), rootNode.getUpperBound()));
         List<MARKStarNode> internalNodes = new ArrayList<>();
         List<MARKStarNode> leafNodes = new ArrayList<>();
@@ -1110,6 +1110,8 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
             // Triple correction alone is enough — skip without running Grid DP or PartialFixCache
             double oldg = node.gscore;
             node.gscore = confCorrection;
+            System.out.println(String.format("[SKIP_CCD] tripleCorr=%.6f pairwiseLB=%.6f gscore=%.6f upper=%.6f",
+                confCorrection, pairwiseLowerBound, currentGscore, currentUpper));
             recordCorrection(oldg, confCorrection - oldg);
             node.setBoundsFromConfLowerAndUpper(confCorrection, currentUpper);
             curNode.markUpdated();
@@ -1131,18 +1133,8 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
         //     return;
         // }
 
-        // Decision 3: PartialFixCache (~50ms) - only if cheaper checks didn't skip
+        // Decision 3: (PartialFixCache removed — skip logic no longer applicable)
         double quickUpperBound = tryQuickUpperBound(node);
-        boolean shouldSkipDueToUpperBound =
-            (partialFixCache != null && quickUpperBound < currentUpper);
-
-        if (shouldSkipDueToUpperBound) {
-            node.gscore = confCorrection;
-            node.setBoundsFromConfLowerAndUpper(confCorrection, quickUpperBound);
-            curNode.markUpdated();
-            newNodes.add(curNode);
-            return;
-        }
 
         // GNN fast path: synchronous prediction for full conformation (replaces CCD)
         if (gnnCalc != null) {
@@ -1151,10 +1143,16 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
             double oldConfLower = node.getConfLowerBound();
             double newConfUpper = energy;
             double newConfLower = energy;
+            boolean rejected = false;
             if (newConfUpper > oldConfUpper) {
                 newConfUpper = oldConfUpper;
                 newConfLower = oldConfUpper;
+                rejected = true;
             }
+            System.out.println(String.format("[GNN_LEAF] old=[%.4f,%.4f] gap=%.4f GNN=%.4f → new=[%.4f,%.4f] gap=%.4f%s",
+                oldConfLower, oldConfUpper, oldConfUpper-oldConfLower, energy,
+                newConfLower, newConfUpper, newConfUpper-newConfLower,
+                rejected ? " REJECTED(GNN>upper)" : ""));
             curNode.setBoundsFromConfLowerAndUpper(newConfLower, newConfUpper);
             node.gscore = newConfLower;
             curNode.markUpdated();
@@ -1350,7 +1348,7 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
             debugPrint("Bounds incorrect.");
     }
 
-    private void computeEnergyCorrection(ConfAnalyzer.ConfAnalysis analysis, ConfSearch.ScoredConf conf,
+    protected void computeEnergyCorrection(ConfAnalyzer.ConfAnalysis analysis, ConfSearch.ScoredConf conf,
                                                   ConfEnergyCalculator ecalc) {
         if(conf.getAssignments().length < 3)
             return;
@@ -1469,23 +1467,6 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
                 correctionMatrix.setHigherOrder(tuple, correction);
             }
 
-            // NEW: Store triple DOF values in cache
-            if (edu.duke.cs.osprey.ematrix.SubtreeDOFCache.ENABLE_TRIPLE_DOF_CACHE &&
-                tripleDOFCache != null &&
-                tuple.size() == 3 &&
-                minimizedTuple.params != null) {
-
-                try {
-                    tripleDOFCache.storeTripleDOFs(
-                        tuple,
-                        minimizedTuple.params,
-                        tripleEnergy,
-                        minimizedTuple.pmol
-                    );
-                } catch (Exception e) {
-                    System.err.println("[TRIPLE_DOF_CACHE_ERROR] " + e.getMessage());
-                }
-            }
         });
     }
 
@@ -1611,78 +1592,7 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
      * PartialFixCache to get a tighter upper bound without full minimization.
      */
     protected double tryQuickUpperBound(Node node) {
-        // DEBUG OUTPUT DISABLED
-        // System.out.println("[MARKStarBound DEBUG] tryQuickUpperBound() called, partialFixCache: " +
-        //     (partialFixCache != null ? "EXISTS" : "NULL"));
-
-        if (partialFixCache == null) {
-            return node.getConfUpperBound();
-        }
-
-        // DEBUG OUTPUT DISABLED
-        // System.out.println("[MARKStarBound DEBUG] Calling partialFixCache.minimizeWithPartialFixCache()");
-
-        try (ObjectPool.Checkout<ScoreContext> checkout = contexts.autoCheckout()) {
-            ScoreContext context = checkout.get();
-
-            // Step 1: Create RCTuple from node assignments
-            RCTuple conf = new RCTuple(node.assignments);
-
-            // Step 2: Make the parametric molecule for this conformation
-            ParametricMolecule pmol = context.ecalc.confSpace.makeMolecule(conf);
-
-            // Step 3: Get initial DOFs (centered in voxel)
-            cern.colt.matrix.DoubleMatrix1D initialDOFs =
-                cern.colt.matrix.DoubleFactory1D.dense.make(pmol.dofs.size());
-            pmol.dofBounds.getCenter(initialDOFs);
-
-            // Step 4: Create residue interactions
-            ResidueInteractions inters = context.ecalc.makeFragInters(conf);
-
-            // Step 5: Access EnergyCalculator's context to get minimizer factory
-            // The context is directly accessible from EnergyCalculator
-            edu.duke.cs.osprey.energy.EnergyCalculator.Type.Context ecalcContext =
-                context.ecalc.ecalc.context;
-
-            // Step 6: Create energy function
-            edu.duke.cs.osprey.energy.EnergyFunction efunc =
-                ecalcContext.efuncs.make(inters, pmol.mol);
-
-            // Step 7: Create objective function
-            edu.duke.cs.osprey.minimization.ObjectiveFunction objectiveFunction =
-                new edu.duke.cs.osprey.minimization.MoleculeObjectiveFunction(pmol, efunc);
-
-            // Step 8: Create minimizer
-            edu.duke.cs.osprey.minimization.Minimizer minimizer =
-                ecalcContext.minimizers.make(objectiveFunction);
-
-            // Step 9: Call PartialFixCache to perform quick minimization
-            edu.duke.cs.osprey.ematrix.PartialFixCache.MinimizationResult result =
-                partialFixCache.minimizeWithPartialFixCache(
-                    conf,
-                    minimizer,
-                    initialDOFs,
-                    objectiveFunction,
-                    pmol
-                );
-
-            // Step 10: Clean up resources
-            efunc.close();
-            minimizer.close();
-
-            // Return the minimized energy as the tightened upper bound
-            return result.energy;
-
-        } catch (Exception e) {
-            // If anything goes wrong, fall back to original upper bound
-            // This ensures robustness - we never fail, just miss optimization opportunity
-            if (debug) {
-                System.err.println("WARNING: PartialFixCache tryQuickUpperBound failed for conf "
-                    + SimpleConfSpace.formatConfRCs(node.assignments) + ": " + e.getMessage());
-                e.printStackTrace();
-            }
-            return node.getConfUpperBound();
-        }
+        return node.getConfUpperBound();
     }
 
     /**
