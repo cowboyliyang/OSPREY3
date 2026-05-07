@@ -60,3 +60,4 @@ build/install/osprey/lib/onnxruntime.pdb
 transfer-tensor/
 *.confdb
 *.conf.db
+/run_*.slurm
