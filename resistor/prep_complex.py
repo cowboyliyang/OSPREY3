@@ -117,7 +117,7 @@ def protonate_ligand(
 
 
 def run_antechamber(
-    lig_h_pdb: Path, prepi_out: Path, net_charge: int, resname: str = "LIG",
+    lig_h_in: Path, prepi_out: Path, net_charge: int, resname: str = "LIG",
 ) -> None:
     """antechamber drops scratch files (ATOMTYPE.INF, ANTECHAMBER_*.AC, sqm.*)
     into cwd, so we cd into prepi_out.parent and pass *basenames* so all
@@ -126,22 +126,47 @@ def run_antechamber(
     `-rn <resname>` forces antechamber to write the supplied 3-letter residue
     name into the prepi output instead of its default 'UNL'. OSPREY's YAML
     ligand block must use the same resname.
+
+    Input format auto-detected from suffix: prefer .mol2 (explicit bond block,
+    needed for ligands with non-standard bonds like ATP/ANP P–N where bond
+    perception from PDB coords falsely reports 'multiple units'). Falls back
+    to .pdb for back-compat.
     """
     if shutil.which("antechamber") is None:
         raise RuntimeError("antechamber not on PATH — activate AmberTools env")
+    suf = lig_h_in.suffix.lower()
+    fi = {".mol2": "mol2", ".pdb": "pdb", ".sdf": "mdl"}.get(suf)
+    if fi is None:
+        raise RuntimeError(
+            f"unsupported antechamber input suffix {suf!r} for {lig_h_in}"
+        )
     work = prepi_out.parent.resolve()
-    in_arg = (lig_h_pdb.resolve().name
-              if lig_h_pdb.resolve().parent == work
-              else str(lig_h_pdb.resolve()))
-    _run([
+    in_arg = (lig_h_in.resolve().name
+              if lig_h_in.resolve().parent == work
+              else str(lig_h_in.resolve()))
+    base_cmd = [
         "antechamber",
-        "-i", in_arg, "-fi", "pdb",
+        "-i", in_arg, "-fi", fi,
         "-o", prepi_out.name, "-fo", "prepi",
-        "-c", "bcc",
         "-nc", str(net_charge),
         "-rn", resname,
-        "-pf", "y",   # purge intermediate files when done
-    ], cwd=str(work))
+        "-pf", "y",
+    ]
+    # Try AM1-BCC first (highest accuracy). If sqm fails to converge — common
+    # for highly-charged polyphosphates like ATP/ANP at -4 — fall back to
+    # Gasteiger ('-c gas'). Gasteiger is less accurate but always converges
+    # and is acceptable for prototype-level OSPREY scoring.
+    try:
+        _run(base_cmd + ["-c", "bcc"], cwd=str(work))
+        return
+    except Exception as e:
+        msg = str(e).lower()
+        if "sqm" not in msg and "maxcyc" not in msg and "converge" not in msg \
+           and not (work / "sqm.out").exists():
+            # not a sqm-related failure; re-raise
+            raise
+        print(f"[antechamber] AM1-BCC failed ({e!s}); retrying with Gasteiger.")
+        _run(base_cmd + ["-c", "gas"], cwd=str(work))
 
 
 def run_parmchk2(prepi_in: Path, frcmod_out: Path) -> None:
@@ -363,6 +388,7 @@ def main() -> int:
     protein_pdb = od / f"{tag}.protein.pdb"
     lig_pdb     = od / f"{tag}.ligand.pdb"
     lig_h_pdb   = od / f"{tag}.ligand.h.pdb"
+    lig_h_mol2  = od / f"{tag}.ligand.h.mol2"   # written by protonate_ligand v2
     prepi       = od / f"{tag}.ligand.prepi"
     frcmod      = od / f"{tag}.ligand.frcmod"
     tc          = od / f"{tag}.ligand.tc"
@@ -376,7 +402,10 @@ def main() -> int:
         split_protein_ligand(renum_pdb, args.ligand_resname, protein_pdb, lig_pdb)
         net_q = protonate_ligand(lig_pdb, lig_h_pdb,
                                  resname=args.ligand_resname, pH=args.pH)
-        run_antechamber(lig_h_pdb, prepi, net_q, resname=args.ligand_resname)
+        # Feed mol2 (explicit bond table) to antechamber, NOT pdb. Required for
+        # ligands where bond perception from coords fails (ATP/ANP P–N bonds,
+        # osi acryloyl). protonate_ligand v2 writes the sister mol2 file.
+        run_antechamber(lig_h_mol2, prepi, net_q, resname=args.ligand_resname)
         run_parmchk2(prepi, frcmod)
         gen_templ_coords(lig_h_pdb, args.ligand_resname, tc)
         detect_rotamers(lig_h_pdb, args.ligand_resname, rot)
