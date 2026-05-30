@@ -28,6 +28,7 @@ from itertools import combinations
 
 
 NUM_AA_TYPES = 20
+UNKNOWN_AA_IDX = NUM_AA_TYPES  # index 20 for non-standard residues (aa_type_idx == -1)
 MAX_CHI = 4
 KT = 0.5922  # kcal/mol at 298K
 
@@ -212,7 +213,9 @@ def load_data(data_dir):
         pos_mask = rc_feat_df["pos"].values == p
         pos_data = rc_feat_df[pos_mask]
         n = len(pos_data)
-        aa_table[p, :n] = torch.tensor(pos_data["aa_type_idx"].values, dtype=torch.long)
+        aa_vals = pos_data["aa_type_idx"].values
+        aa_vals = np.where(aa_vals < 0, UNKNOWN_AA_IDX, aa_vals)
+        aa_table[p, :n] = torch.tensor(aa_vals, dtype=torch.long)
         chis = pos_data[["chi1", "chi2", "chi3", "chi4"]].fillna(0.0).values
         chi_table[p, :n] = torch.tensor(chis, dtype=torch.float32)
 
@@ -300,7 +303,7 @@ class SubtreeGNN(nn.Module):
         edge_feat_dim = 2  # [pair_energy, ca_distance]
 
         # Shared AA type embedding
-        self.aa_embedding = nn.Embedding(NUM_AA_TYPES, aa_embed_dim)
+        self.aa_embedding = nn.Embedding(NUM_AA_TYPES + 1, aa_embed_dim)
 
         # Position embedding
         self.pos_embedding = nn.Embedding(num_pos, pos_embed_dim)
@@ -453,10 +456,12 @@ class SubtreeGNN(nn.Module):
         rc_src = torch.gather(fixed_rcs, 1, src_exp)
         rc_dst = torch.gather(fixed_rcs, 1, dst_exp)
         flat_idx = rc_src * self.max_rcs + rc_dst
-        pair_energy_fixed = torch.gather(
-            self.pair_table.unsqueeze(0).expand(batch, -1, -1),
-            2, flat_idx.unsqueeze(-1)
-        ).squeeze(-1)  # (batch, num_edges)
+        # Advanced indexing avoids materializing [batch, num_edges, max_rcs**2]
+        # (that intermediate hits CUDA grid/memory limits on big confspaces — e.g. for
+        # max_rcs=189 and num_edges=82 at batch=1149 it is ~13 GB and triggers
+        # cudaErrorInvalidConfiguration in the ONNX Expand kernel).
+        edge_arange = torch.arange(num_edges, device=device)
+        pair_energy_fixed = self.pair_table[edge_arange, flat_idx]  # (batch, num_edges)
 
         # Free edge: use 0 (unknown pairwise interaction — model infers from node features)
         pair_energy = torch.where(either_free, torch.zeros_like(pair_energy_fixed), pair_energy_fixed)

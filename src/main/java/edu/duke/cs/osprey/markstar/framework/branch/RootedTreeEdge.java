@@ -129,6 +129,8 @@ public class RootedTreeEdge {
     public int getTotalLambdaStates() { return totalLambdaStates; }
     public RCs getRCs() { return rcs; }
     public int getEnumeratedCount(int mIdx) { return enumeratedCount != null ? enumeratedCount[mIdx] : 0; }
+    public double[][] getFullEnergyMin() { return fullEnergyMin; }
+    public double[][] getFullEnergyRigid() { return fullEnergyRigid; }
 
     // ========== Log-space utility ==========
 
@@ -142,6 +144,10 @@ public class RootedTreeEdge {
     // ========== compLlambda: compute L and lambda sets ==========
 
     public void compLlambda() {
+        compLlambda(true);
+    }
+
+    public void compLlambda(boolean initEnumerationArrays) {
         RootedTreeNode clc = child.getLeftChild();
 
         if (clc == null) {
@@ -168,7 +174,10 @@ public class RootedTreeEdge {
             isLambdaEdge = true;
             Fset = new LinkedHashSet<>();
             computeFset(child);
-            initializeArrays();
+            initializeIndexing();
+            if (initEnumerationArrays) {
+                initializeArrays();
+            }
         } else {
             isLambdaEdge = false;
         }
@@ -197,7 +206,7 @@ public class RootedTreeEdge {
 
     // ========== Array initialization ==========
 
-    private void initializeArrays() {
+    private void initializeIndexing() {
         mPositionsSorted = M.stream().mapToInt(Integer::intValue).sorted().toArray();
         lambdaPositionsSorted = lambda.stream().mapToInt(Integer::intValue).sorted().toArray();
 
@@ -206,16 +215,17 @@ public class RootedTreeEdge {
             mArraySize *= rcs.getNum(pos);
         }
 
-        logZLower = new double[mArraySize];
-        logZUpper = new double[mArraySize];
-        Arrays.fill(logZLower, NEG_INF);
-        Arrays.fill(logZUpper, NEG_INF);
-
-        // Compute total lambda-states
         totalLambdaStates = 1;
         for (int pos : lambdaPositionsSorted) {
             totalLambdaStates *= rcs.getNum(pos);
         }
+    }
+
+    private void initializeArrays() {
+        logZLower = new double[mArraySize];
+        logZUpper = new double[mArraySize];
+        Arrays.fill(logZLower, NEG_INF);
+        Arrays.fill(logZUpper, NEG_INF);
 
         enumeratedCount = new int[mArraySize];
         // sortedLambdaIndices allocated lazily per M-state in initIncrementalEnumeration
@@ -911,11 +921,15 @@ public class RootedTreeEdge {
     // ========== Post-order traversal helpers ==========
 
     public static void postOrderCompLlambda(RootedTreeNode node) {
+        postOrderCompLlambda(node, true);
+    }
+
+    public static void postOrderCompLlambda(RootedTreeNode node, boolean initEnumerationArrays) {
         if (node == null) return;
-        postOrderCompLlambda(node.getLeftChild());
-        postOrderCompLlambda(node.getRightChild());
+        postOrderCompLlambda(node.getLeftChild(), initEnumerationArrays);
+        postOrderCompLlambda(node.getRightChild(), initEnumerationArrays);
         if (node.getChildOfEdge() != null) {
-            node.getChildOfEdge().compLlambda();
+            node.getChildOfEdge().compLlambda(initEnumerationArrays);
         }
     }
 

@@ -29,7 +29,9 @@ import edu.duke.cs.osprey.ematrix.NegatedEnergyMatrix;
 import edu.duke.cs.osprey.ematrix.UpdatingEnergyMatrix;
 import edu.duke.cs.osprey.energy.ConfEnergyCalculator;
 import edu.duke.cs.osprey.energy.ResidueForcefieldBreakdown;
+import edu.duke.cs.osprey.energy.EnergyPartition;
 import edu.duke.cs.osprey.energy.ResidueInteractions;
+import edu.duke.cs.osprey.ematrix.SimpleReferenceEnergies;
 import edu.duke.cs.osprey.energy.approximation.branch.GNNConfEnergyCalculator;
 import edu.duke.cs.osprey.energy.approximation.branch.GNNSubtreeEnergyCalculator;
 import edu.duke.cs.osprey.gmec.ConfAnalyzer;
@@ -92,6 +94,13 @@ public class BranchMARKStarBound extends MARKStarBound {
     private static final String REGION_ATOM_WHATIF_DELTAS_PROPERTY = "branchmarkstar.regionAtom.whatIfDeltas";
     private static final String REGION_ATOM_CERTIFY_PROPERTY = "branchmarkstar.regionAtom.certify";
     private static final String REGION_ATOM_CERTIFY_USE_DP_PROPERTY = "branchmarkstar.regionAtom.certify.useDP";
+    /** Top-K boundary cells (by Phase 0 emat gap) to certify. 0 = all cells. */
+    private static final String REGION_ATOM_CERTIFY_TOPK_PROPERTY = "branchmarkstar.regionAtom.certify.topK";
+    private static final String PAC_ENABLED_PROPERTY = "branchmarkstar.usePAC";
+    private static final String DP_CACHE_ENABLED_PROPERTY = "branchmarkstar.dp.cache";
+    private static final String DP_CACHE_MAX_ENTRIES_PROPERTY = "branchmarkstar.dp.cache.maxEntries";
+    private static final String PAC_RESTORE_DP_PROPERTY = "branchmarkstar.pac.restoreDP";
+    private static final int DEFAULT_DP_CACHE_MAX_ENTRIES = 20000;
 
     private enum EdgeSelectionStrategy {
         LAMBDA_STATES,
@@ -229,6 +238,11 @@ public class BranchMARKStarBound extends MARKStarBound {
     private final double[] regionAtomWhatIfDeltas;
     private final Set<String> regionAtomCertifyNames;
     private final boolean regionAtomCertifyUseDP;
+    private final int regionAtomCertifyTopK;
+    private final boolean usePAC;
+    private final boolean dpCacheEnabled;
+    private final int dpCacheMaxEntries;
+    private final boolean pacRestoreDP;
     /**
      * Energy matrices used by ALL pfunc-relevant operations under SPARSE mode:
      * scorers, A*, computeFullConfPairwiseEnergy, breakdownScoreByPosition,
@@ -249,6 +263,26 @@ public class BranchMARKStarBound extends MARKStarBound {
     private boolean dpTablesReady = false;
     /** RCs used to build the tree / DP tables; stashed for use by enhanceWithDPBounds. */
     private RCs searchRCs;
+
+    private static final Object DP_TABLE_CACHE_LOCK = new Object();
+    private static final LinkedHashMap<String, CachedDPTable> DP_TABLE_CACHE =
+            new LinkedHashMap<>(1024, 0.75f, true);
+
+    private static class CachedDPTable {
+        final double[] lower;
+        final double[] upper;
+
+        CachedDPTable(double[] lower, double[] upper) {
+            this.lower = lower;
+            this.upper = upper;
+        }
+    }
+
+    private static class DPCacheStats {
+        int hits = 0;
+        int misses = 0;
+        int stores = 0;
+    }
 
     // Whether branch decomposition is active
     private boolean useBranchDecomposition = true;
@@ -560,6 +594,13 @@ public class BranchMARKStarBound extends MARKStarBound {
         this.regionAtomCertifyNames = parseRegionAtomCertifyNames(
                 getConfigProperty(REGION_ATOM_CERTIFY_PROPERTY, ""));
         this.regionAtomCertifyUseDP = getConfigBoolean(REGION_ATOM_CERTIFY_USE_DP_PROPERTY, false);
+        this.regionAtomCertifyTopK = Math.max(0,
+                getConfigInteger(REGION_ATOM_CERTIFY_TOPK_PROPERTY, 0));
+        this.usePAC = getConfigBoolean(PAC_ENABLED_PROPERTY, false);
+        this.dpCacheEnabled = getConfigBoolean(DP_CACHE_ENABLED_PROPERTY, true);
+        this.dpCacheMaxEntries = Math.max(0,
+                getConfigInteger(DP_CACHE_MAX_ENTRIES_PROPERTY, DEFAULT_DP_CACHE_MAX_ENTRIES));
+        this.pacRestoreDP = getConfigBoolean(PAC_RESTORE_DP_PROPERTY, false);
 
         System.out.println("BranchMARK*: Cutoff strategy=" + cutoffStrategy
                 + ", distCutoff=" + distCutoff
@@ -577,6 +618,8 @@ public class BranchMARKStarBound extends MARKStarBound {
                 + ", rootSplitMaxFset=" + rootSplitMaxFset
                 + ", tripleCorrections=" + useHigherOrderCorrections
                 + ", correctionAudit=" + correctionAudit
+                + ", usePAC=" + usePAC
+                + ", dpCache=" + dpCacheEnabled
                 + ", parallelInternal=" + parallelInternal + " [DEPRECATED]"
                 + ", parallelEnumeration=" + parallelEnumeration + " [DEPRECATED]");
         if (regionAtomEnabled) {
@@ -689,6 +732,30 @@ public class BranchMARKStarBound extends MARKStarBound {
         // NOT modify flatSumZ, DP tables, or correctionMatrix.
         if (regionAtomEnabled) {
             initRegionAtoms(rcs);
+
+            // DP-level integration: if any tables were certified, apply corrections
+            // to DP table entries and recompute. Must happen AFTER certification
+            // (initRegionAtoms) and AFTER initial DP build (initSearch).
+            if (regionAtomCertifyUseDP && dpTablesReady
+                    && regionAtomTables.stream().anyMatch(t -> t.certified)) {
+                double rtForDP = BoltzmannCalculator.RClassic * BoltzmannCalculator.TClassic;
+                applyRegionAtomToDP(rtForDP);
+                RootedTreeEdge.postOrderComputeFullDP(rootedRoot);
+                // Rebuild root search node with corrected DP bounds
+                DecompSearchNode rootSearchNode = DecompSearchNode.makeRoot(
+                        rootedRootEdge, rcs.getNumPos(), rcs,
+                        gScorerMin, hScorerMin, gScorerRigid, hScorerNegRigid, bc);
+                enhanceWithDPBounds(rootSearchNode);
+                decompQueue.clear();
+                decompQueue.add(rootSearchNode);
+                flatSumZLower = rootSearchNode.subtreeLowerBound;
+                flatSumZUpper = rootSearchNode.subtreeUpperBound;
+                updateBound();
+                System.out.println("BranchMARK*: DP tables recomputed after region-atom certification."
+                        + " Root upper=" + String.format("%.4e", flatSumZUpper.doubleValue())
+                        + ", lower=" + String.format("%.4e", flatSumZLower.doubleValue())
+                        + ", epsilon=" + String.format("%.6f", epsilonBound));
+            }
         }
     }
 
@@ -1689,8 +1756,33 @@ public class BranchMARKStarBound extends MARKStarBound {
         final java.util.concurrent.atomic.AtomicLong jobsPruned = new java.util.concurrent.atomic.AtomicLong(0);
         final int totalLocalPerBoundary = table.spec.localStatesPerBoundary.intValueExact();
 
+        // Optional top-K subsampling: certify only the K boundary cells with the
+        // largest Phase 0 emat gap. The rest fall back to the pre-min sandwich
+        // (still valid bounds, just not tightened). This makes Phase 3 feasible
+        // for atoms with many boundary cells (e.g. {7} has 41040 cells).
+        final Set<String> certifyAllowedBoundary;
+        if (regionAtomCertifyTopK > 0
+                && table.boundaryCells.size() > regionAtomCertifyTopK) {
+            List<Map.Entry<String, RegionAtomCell>> sorted = new ArrayList<>(table.boundaryCells.entrySet());
+            sorted.sort((a, b) -> b.getValue().gap.compareTo(a.getValue().gap));
+            certifyAllowedBoundary = new HashSet<>();
+            int k = Math.min(regionAtomCertifyTopK, sorted.size());
+            for (int i = 0; i < k; i++) certifyAllowedBoundary.add(sorted.get(i).getKey());
+            System.out.println("[REGION_ATOM_CERT] name=" + table.spec.name
+                    + " topK=" + regionAtomCertifyTopK
+                    + " totalBoundaryCells=" + table.boundaryCells.size()
+                    + " certifying=" + certifyAllowedBoundary.size()
+                    + " skipping=" + (table.boundaryCells.size() - certifyAllowedBoundary.size())
+                    + " (others fall back to Phase 0 sandwich)");
+        } else {
+            certifyAllowedBoundary = null;  // certify all
+        }
+
         enumerateAssignments(boundary, 0, xB, rcs, () -> {
             final String bKey = makeAssignmentKey(boundary, xB);
+            if (certifyAllowedBoundary != null && !certifyAllowedBoundary.contains(bKey)) {
+                return;  // skipped boundary cell — uses Phase 0 pre-min bound
+            }
             final int[] xBSnapshot = xB.clone();
             final CertifiedBoundaryCell cell = table.certifiedCells.computeIfAbsent(bKey,
                     k -> new CertifiedBoundaryCell(bKey, xBSnapshot, totalLocalPerBoundary));
@@ -1713,9 +1805,14 @@ public class BranchMARKStarBound extends MARKStarBound {
 
                 RCTuple tuple = makeRegionAtomTuple(region, boundary, xRSnapshot, xBSnapshot);
                 ResidueInteractions inters = makeRegionAtomInteractions(region, boundary,
-                        confSpace);
+                        xRSnapshot, xBSnapshot);
 
-                jobsSubmitted.incrementAndGet();
+                long submitted = jobsSubmitted.incrementAndGet();
+                if (submitted % 2000 == 0) {
+                    System.out.println("[REGION_ATOM_CERT_PROGRESS] name=" + table.spec.name
+                            + " submitted=" + submitted
+                            + " elapsedMs=" + (System.currentTimeMillis() - t0));
+                }
                 final String localKey = makeAssignmentKey(region, xRSnapshot);
                 minimizingEcalc.calcEnergyAsync(tuple, inters, epmol -> {
                     double eCert = epmol.energy;
@@ -1819,25 +1916,41 @@ public class BranchMARKStarBound extends MARKStarBound {
      *   - pair for every R-B crossing
      * Excludes B singles, B-B pairs, and all outside terms.
      */
-    private static ResidueInteractions makeRegionAtomInteractions(int[] region, int[] boundary,
-                                                                  SimpleConfSpace confSpace) {
+    /**
+     * R-owned ResidueInteractions matching the emat's {@link EnergyPartition} convention.
+     *
+     * The emat values include offsets (reference energies, residue entropy) and shell
+     * interactions according to the chosen partition (Traditional puts shell+intra on
+     * singles; AllOnPairs distributes intra+shell across pairs with weight 1/(n-1)).
+     * To make calcEnergy(tuple, inters) return a value comparable to the emat sum, we
+     * must use the SAME {@code epart.makeSingle} / {@code epart.makePair} that built
+     * the emat — bare {@code addSingle}/{@code addPair} would silently drop offsets
+     * and shell, producing energies that are systematically too negative (this was
+     * the early-bug: certified U_R came out 10^3x larger than the pre-min sandwich).
+     */
+    private ResidueInteractions makeRegionAtomInteractions(int[] region, int[] boundary,
+                                                           int[] xR, int[] xB) {
         ResidueInteractions inters = new ResidueInteractions();
+        EnergyPartition epart = minimizingEcalc.epart;
+        SimpleReferenceEnergies eref = minimizingEcalc.eref;
+        boolean addEntropy = minimizingEcalc.addResEntropy;
+
+        // R one-body
         for (int i = 0; i < region.length; i++) {
-            String resI = confSpace.positions.get(region[i]).resNum;
-            inters.addSingle(resI);
+            inters.addAll(epart.makeSingle(confSpace, eref, addEntropy, region[i], xR[i]));
         }
+        // R-R pairs
         for (int i = 0; i < region.length; i++) {
-            String resI = confSpace.positions.get(region[i]).resNum;
             for (int j = i + 1; j < region.length; j++) {
-                String resJ = confSpace.positions.get(region[j]).resNum;
-                inters.addPair(resI, resJ);
+                inters.addAll(epart.makePair(confSpace, eref, addEntropy,
+                        region[i], xR[i], region[j], xR[j]));
             }
         }
+        // R-B crossings
         for (int i = 0; i < region.length; i++) {
-            String resI = confSpace.positions.get(region[i]).resNum;
             for (int j = 0; j < boundary.length; j++) {
-                String resJ = confSpace.positions.get(boundary[j]).resNum;
-                inters.addPair(resI, resJ);
+                inters.addAll(epart.makePair(confSpace, eref, addEntropy,
+                        region[i], xR[i], boundary[j], xB[j]));
             }
         }
         return inters;
@@ -1847,9 +1960,176 @@ public class BranchMARKStarBound extends MARKStarBound {
 
     /** Per-pfunc tally of Phase 4 hits across all node tighten attempts. */
     private long regionAtomDPApplied = 0;
+    /** Accumulated flatSumZUpper delta from region-atom tightening (flushed once per round). */
+    private BigDecimal regionAtomDPUpperDelta = BigDecimal.ZERO;
     private long regionAtomDPSkippedPartial = 0;
     private long regionAtomDPMissingBoundary = 0;
     private long regionAtomDPMissingLocal = 0;
+
+    /**
+     * DP-level integration: apply certified region-atom corrections directly into
+     * DP table entries. For each lambda-edge whose lambda set covers R, and for
+     * each (mIdx, lambdaIdx) entry, replace the R-owned energy from minimizingEmat
+     * with the certified energy eCert. This tightens Z_upper at the DP source,
+     * propagating to ALL nodes without per-node patching.
+     *
+     * Soundness: eCert >= eMin_R_owned (certified CCD min >= pairwise emat min),
+     * so fullEnergyMin increases -> Boltzmann decreases -> Z_upper tighter.
+     */
+    private void applyRegionAtomToDP(double RT) {
+        // Collect all lambda edges
+        List<RootedTreeEdge> lambdaEdges = new ArrayList<>();
+        RootedTreeEdge.collectLambdaEdges(rootedRoot, lambdaEdges);
+
+        for (RegionAtomTable table : regionAtomTables) {
+            if (!table.certified) continue;
+            int[] region = table.spec.region;
+            int[] boundary = table.spec.boundary;
+
+            for (RootedTreeEdge edge : lambdaEdges) {
+                int[] lambdaPos = edge.getLambdaPositionsSorted();
+                int[] mPos = edge.getMPositionsSorted();
+
+                System.out.println("[REGION_ATOM_DP_DEBUG] checking edge lambda="
+                        + Arrays.toString(lambdaPos) + " m=" + Arrays.toString(mPos)
+                        + " R=" + Arrays.toString(region) + " B=" + Arrays.toString(boundary));
+
+                // Check: R must be a subset of lambda (so R is assigned at this edge)
+                boolean rInLambda = true;
+                for (int rp : region) {
+                    boolean found = false;
+                    for (int lp : lambdaPos) { if (lp == rp) { found = true; break; } }
+                    if (!found) { rInLambda = false; break; }
+                }
+                if (!rInLambda) {
+                    System.out.println("[REGION_ATOM_DP_DEBUG]   SKIP: R not in lambda");
+                    continue;
+                }
+
+                // Check: B positions must all be in lambda ∪ M
+                boolean bCovered = true;
+                for (int bp : boundary) {
+                    boolean found = false;
+                    for (int lp : lambdaPos) { if (lp == bp) { found = true; break; } }
+                    if (!found) {
+                        for (int mp : mPos) { if (mp == bp) { found = true; break; } }
+                    }
+                    if (!found) {
+                        System.out.println("[REGION_ATOM_DP_DEBUG]   SKIP: B pos " + bp + " not in lambda∪M");
+                        bCovered = false; break;
+                    }
+                }
+                if (!bCovered) continue;
+
+                double[][] fullEnergyMin = edge.getFullEnergyMin();
+                if (fullEnergyMin == null) continue;
+
+                int corrected = 0;
+                for (int mIdx = 0; mIdx < edge.getMArraySize(); mIdx++) {
+                    int[] mRCs = edge.decodeMStatePublic(mIdx);
+                    for (int lIdx = 0; lIdx < edge.getTotalLambdaStates(); lIdx++) {
+                        if (Double.isNaN(fullEnergyMin[mIdx][lIdx])) continue;
+
+                        int[] lambdaRCs = edge.decodeLambdaStatePublic(lIdx);
+
+                        // Build xR and xB from lambda+M RCs
+                        int[] xR = new int[region.length];
+                        int[] xB = new int[boundary.length];
+                        for (int i = 0; i < region.length; i++) {
+                            xR[i] = resolveRC(region[i], lambdaPos, lambdaRCs, mPos, mRCs, edge.getRCs());
+                        }
+                        boolean valid = true;
+                        for (int i = 0; i < boundary.length; i++) {
+                            int rc = resolveRC(boundary[i], lambdaPos, lambdaRCs, mPos, mRCs, edge.getRCs());
+                            if (rc < 0) { valid = false; break; }
+                            xB[i] = rc;
+                        }
+                        if (!valid) continue;
+
+                        // Look up certified energy
+                        String bKey = makeAssignmentKey(boundary, xB);
+                        CertifiedBoundaryCell cell = table.certifiedCells.get(bKey);
+                        if (cell == null) continue;
+                        String lKey = makeAssignmentKey(region, xR);
+                        Double eCert = cell.certifiedEnergyPerLocal.get(lKey);
+                        if (eCert == null) continue;
+
+                        // Compute R-owned energy from minimizing emat
+                        double eMinOwned = ownedLocalEnergy(branchMinimizingEmat, region, boundary, xR, xB);
+                        if (!Double.isFinite(eMinOwned)) continue;
+
+                        double correction = eCert - eMinOwned;
+                        if (correction > 0) {
+                            fullEnergyMin[mIdx][lIdx] += correction;
+                            corrected++;
+                        }
+                    }
+                }
+
+                if (corrected > 0) {
+                    // Re-sort lambda indices since energies changed
+                    edge.initIncrementalEnumeration(
+                            branchRigidEmat, branchMinimizingEmat, interactionGraph, RT);
+                    // Re-apply corrections after re-init (which resets energies)
+                    // Actually, let's apply corrections differently - modify after init
+                    // For now, just apply corrections to the re-initialized table
+                    fullEnergyMin = edge.getFullEnergyMin();
+                    if (fullEnergyMin != null) {
+                        int reapplied = 0;
+                        for (int mIdx = 0; mIdx < edge.getMArraySize(); mIdx++) {
+                            int[] mRCs = edge.decodeMStatePublic(mIdx);
+                            for (int lIdx = 0; lIdx < edge.getTotalLambdaStates(); lIdx++) {
+                                if (Double.isNaN(fullEnergyMin[mIdx][lIdx])) continue;
+                                int[] lambdaRCs = edge.decodeLambdaStatePublic(lIdx);
+                                int[] xR = new int[region.length];
+                                int[] xB = new int[boundary.length];
+                                for (int i = 0; i < region.length; i++)
+                                    xR[i] = resolveRC(region[i], lambdaPos, lambdaRCs, mPos, mRCs, edge.getRCs());
+                                boolean v2 = true;
+                                for (int i = 0; i < boundary.length; i++) {
+                                    int rc = resolveRC(boundary[i], lambdaPos, lambdaRCs, mPos, mRCs, edge.getRCs());
+                                    if (rc < 0) { v2 = false; break; }
+                                    xB[i] = rc;
+                                }
+                                if (!v2) continue;
+                                String bKey = makeAssignmentKey(boundary, xB);
+                                CertifiedBoundaryCell cell = table.certifiedCells.get(bKey);
+                                if (cell == null) continue;
+                                String lKey = makeAssignmentKey(region, xR);
+                                Double eCert = cell.certifiedEnergyPerLocal.get(lKey);
+                                if (eCert == null) continue;
+                                double eMinOwned = ownedLocalEnergy(branchMinimizingEmat, region, boundary, xR, xB);
+                                if (!Double.isFinite(eMinOwned)) continue;
+                                double corr = eCert - eMinOwned;
+                                if (corr > 0) {
+                                    fullEnergyMin[mIdx][lIdx] += corr;
+                                    reapplied++;
+                                }
+                            }
+                        }
+                        corrected = reapplied;
+                    }
+
+                    System.out.println("[REGION_ATOM_DP_INTEGRATE] edge lambda="
+                            + Arrays.toString(lambdaPos) + " corrected=" + corrected
+                            + "/" + (edge.getMArraySize() * edge.getTotalLambdaStates())
+                            + " entries");
+                }
+            }
+        }
+    }
+
+    /** Resolve a position's RC from lambda or M arrays. Returns the actual RC index. */
+    private int resolveRC(int pos, int[] lambdaPos, int[] lambdaRCs,
+                          int[] mPos, int[] mRCs, RCs edgeRCs) {
+        for (int i = 0; i < lambdaPos.length; i++) {
+            if (lambdaPos[i] == pos) return edgeRCs.get(pos, lambdaRCs[i]);
+        }
+        for (int i = 0; i < mPos.length; i++) {
+            if (mPos[i] == pos) return edgeRCs.get(pos, mRCs[i]);
+        }
+        return -1;
+    }
 
     /**
      * Region-atom Phase 4 hook: try to tighten a search node's bounds using any
@@ -1872,80 +2152,8 @@ public class BranchMARKStarBound extends MARKStarBound {
      * already exercises the certified table end-to-end.
      */
     private void tightenNodeWithCertifiedTables(DecompSearchNode node) {
-        if (!regionAtomCertifyUseDP) return;
-        if (node == null || node.isAggregate || node.minimized) return;
-        if (regionAtomTables.isEmpty()) return;
-        int[] conf = node.partialConf;
-        if (conf == null) return;
-
-        BigDecimal nodeOldUpper = node.subtreeUpperBound;
-        BigDecimal newUpper = nodeOldUpper;
-        boolean tightened = false;
-
-        for (RegionAtomTable table : regionAtomTables) {
-            if (!table.certified) continue;
-            int[] region = table.spec.region;
-            int[] boundary = table.spec.boundary;
-
-            boolean allAssigned = true;
-            for (int pos : boundary) {
-                if (conf[pos] < 0) { allAssigned = false; break; }
-            }
-            if (allAssigned) {
-                for (int pos : region) {
-                    if (conf[pos] < 0) { allAssigned = false; break; }
-                }
-            }
-            if (!allAssigned) {
-                regionAtomDPSkippedPartial++;
-                continue;
-            }
-
-            int[] xB = new int[boundary.length];
-            int[] xR = new int[region.length];
-            for (int i = 0; i < boundary.length; i++) xB[i] = conf[boundary[i]];
-            for (int i = 0; i < region.length; i++) xR[i] = conf[region[i]];
-            String bKey = makeAssignmentKey(boundary, xB);
-            CertifiedBoundaryCell cell = table.certifiedCells.get(bKey);
-            if (cell == null) {
-                regionAtomDPMissingBoundary++;
-                continue;
-            }
-            String lKey = makeAssignmentKey(region, xR);
-            Double eCert = cell.certifiedEnergyPerLocal.get(lKey);
-            if (eCert == null) {
-                regionAtomDPMissingLocal++;
-                continue;
-            }
-
-            double eMin = ownedLocalEnergy(branchMinimizingEmat, region, boundary, xR, xB);
-            if (!Double.isFinite(eMin)) continue;
-            // bc.calc(eCert) / bc.calc(eMin) = exp(-(eCert - eMin)/RT) ≤ 1 (since eCert ≥ eMin).
-            BigDecimal num = bc.calc(eCert);
-            BigDecimal den = bc.calc(eMin);
-            if (den.signum() <= 0) continue;
-            BigDecimal ratio = MathTools.bigDivide(num, den, PartitionFunction.decimalPrecision);
-            if (ratio.signum() <= 0) continue;
-            // ratio ≤ 1 by construction; guard against numerical drift
-            if (ratio.compareTo(BigDecimal.ONE) > 0) continue;
-            BigDecimal candidate = nodeOldUpper.multiply(ratio, PartitionFunction.decimalPrecision);
-            if (candidate.compareTo(newUpper) < 0) {
-                newUpper = candidate;
-                tightened = true;
-            }
-        }
-
-        if (tightened) {
-            // Update flatSumZ accounting for this node
-            flatSumZUpper = flatSumZUpper.subtract(nodeOldUpper).add(newUpper);
-            node.subtreeUpperBound = newUpper;
-            if (node.subtreeLowerBound.compareTo(node.subtreeUpperBound) > 0) {
-                node.subtreeLowerBound = node.subtreeUpperBound;
-            }
-            node.errorBound = node.subtreeUpperBound.subtract(node.subtreeLowerBound);
-            if (node.errorBound.signum() < 0) node.errorBound = BigDecimal.ZERO;
-            regionAtomDPApplied++;
-        }
+        // Per-node tightening disabled: DP-level integration (applyRegionAtomToDP)
+        // bakes corrections into DP table entries before search starts.
     }
 
     private boolean isBetterRooting(RootingCandidate candidate, RootingCandidate best,
@@ -1987,6 +2195,126 @@ public class BranchMARKStarBound extends MARKStarBound {
         return logNaive;
     }
 
+    private DPCacheStats computeFullDPTables(String context, boolean allowCache) {
+        if (!allowCache || !dpCacheEnabled || dpCacheMaxEntries == 0) {
+            RootedTreeEdge.postOrderComputeFullDP(rootedRoot);
+            return null;
+        }
+
+        DPCacheStats stats = new DPCacheStats();
+        IdentityHashMap<RootedTreeEdge, String> edgeKeys = new IdentityHashMap<>();
+        String namespace = makeDPCacheNamespace(context);
+        postOrderComputeFullDPWithCache(rootedRoot, namespace, edgeKeys, stats);
+        return stats;
+    }
+
+    private void postOrderComputeFullDPWithCache(RootedTreeNode node, String namespace,
+                                                 IdentityHashMap<RootedTreeEdge, String> edgeKeys,
+                                                 DPCacheStats stats) {
+        if (node == null) return;
+        postOrderComputeFullDPWithCache(node.getLeftChild(), namespace, edgeKeys, stats);
+        postOrderComputeFullDPWithCache(node.getRightChild(), namespace, edgeKeys, stats);
+
+        RootedTreeEdge edge = node.getChildOfEdge();
+        if (edge == null || !edge.getIsLambdaEdge()) return;
+
+        String key = buildDPCacheKey(namespace, edge, edgeKeys);
+        CachedDPTable cached = getCachedDPTable(key, edge.getMArraySize());
+        if (cached != null) {
+            System.arraycopy(cached.lower, 0, edge.getLogZLower(), 0, cached.lower.length);
+            System.arraycopy(cached.upper, 0, edge.getLogZUpper(), 0, cached.upper.length);
+            stats.hits++;
+        } else {
+            edge.computeFullDP();
+            putCachedDPTable(key, edge.getLogZLower(), edge.getLogZUpper());
+            stats.misses++;
+            stats.stores++;
+        }
+        edgeKeys.put(edge, key);
+    }
+
+    private CachedDPTable getCachedDPTable(String key, int expectedLength) {
+        synchronized (DP_TABLE_CACHE_LOCK) {
+            CachedDPTable cached = DP_TABLE_CACHE.get(key);
+            if (cached == null) return null;
+            if (cached.lower.length != expectedLength || cached.upper.length != expectedLength) {
+                DP_TABLE_CACHE.remove(key);
+                return null;
+            }
+            return cached;
+        }
+    }
+
+    private void putCachedDPTable(String key, double[] lower, double[] upper) {
+        synchronized (DP_TABLE_CACHE_LOCK) {
+            DP_TABLE_CACHE.put(key, new CachedDPTable(
+                    Arrays.copyOf(lower, lower.length),
+                    Arrays.copyOf(upper, upper.length)));
+            while (DP_TABLE_CACHE.size() > dpCacheMaxEntries) {
+                Iterator<String> it = DP_TABLE_CACHE.keySet().iterator();
+                if (!it.hasNext()) break;
+                it.next();
+                it.remove();
+            }
+        }
+    }
+
+    private String formatDPCacheStats(DPCacheStats stats) {
+        if (stats == null) return "";
+        int size;
+        synchronized (DP_TABLE_CACHE_LOCK) {
+            size = DP_TABLE_CACHE.size();
+        }
+        return ", dpCacheHits=" + stats.hits
+                + ", dpCacheMisses=" + stats.misses
+                + ", dpCacheSize=" + size;
+    }
+
+    private String makeDPCacheNamespace(String context) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(context)
+                .append("|conf=").append(System.identityHashCode(confSpace))
+                .append("|rigid=").append(System.identityHashCode(rigidEmat))
+                .append("|min=").append(System.identityHashCode(minimizingEmat))
+                .append("|mode=").append(energyMode)
+                .append("|prune=").append(sparsePruneThreshold)
+                .append("|root=").append(selectedRootSplitIndex)
+                .append("|graph=");
+        for (int[] edge : interactionGraph.getEdgeList()) {
+            sb.append(edge[0]).append('-').append(edge[1]).append(';');
+        }
+        return sb.toString();
+    }
+
+    private String buildDPCacheKey(String namespace, RootedTreeEdge edge,
+                                   IdentityHashMap<RootedTreeEdge, String> edgeKeys) {
+        StringBuilder sb = new StringBuilder(namespace);
+        sb.append("|M=");
+        appendPositionsWithRCs(sb, edge.getMPositionsSorted(), edge.getRCs());
+        sb.append("|L=");
+        appendPositionsWithRCs(sb, edge.getLambdaPositionsSorted(), edge.getRCs());
+        sb.append("|F=");
+        if (edge.getFset() != null) {
+            for (RootedTreeEdge child : edge.getFset()) {
+                String childKey = edgeKeys.get(child);
+                sb.append('{').append(childKey == null ? "missing" : childKey).append("},");
+            }
+        }
+        return sb.toString();
+    }
+
+    private void appendPositionsWithRCs(StringBuilder sb, int[] positions, RCs rcs) {
+        for (int pos : positions) {
+            sb.append(pos).append('[');
+            int n = rcs.getNum(pos);
+            for (int i = 0; i < n; i++) {
+                if (i > 0) sb.append(',');
+                sb.append(rcs.get(pos, i));
+            }
+            sb.append("];");
+        }
+    }
+
     /** Initialize search: create scorers and root search node */
     private void initSearch(RCs rcs) {
         int numPos = rcs.getNumPos();
@@ -2010,7 +2338,17 @@ public class BranchMARKStarBound extends MARKStarBound {
             double rtForDP = BoltzmannCalculator.RClassic * BoltzmannCalculator.TClassic;
             RootedTreeEdge.postOrderInitIncremental(rootedRoot,
                     branchRigidEmat, branchMinimizingEmat, interactionGraph, rtForDP);
-            RootedTreeEdge.postOrderComputeFullDP(rootedRoot);
+            DPCacheStats dpCacheStats = computeFullDPTables("initial", !regionAtomCertifyUseDP);
+
+            // Region-atom DP-level integration: apply certified corrections
+            // directly into the DP table entries BEFORE the full DP propagation
+            // is used by the search. This tightens Z_upper at the source.
+            if (regionAtomCertifyUseDP && !regionAtomTables.isEmpty()) {
+                applyRegionAtomToDP(rtForDP);
+                // Recompute full DP after modifying leaf-edge energies
+                RootedTreeEdge.postOrderComputeFullDP(rootedRoot);
+            }
+
             dpTablesReady = true;
             long dpInitTime = System.currentTimeMillis() - dpInitStart;
             // Diagnostic: report root edge DP values so we can spot -inf / 0 issues.
@@ -2021,7 +2359,8 @@ public class BranchMARKStarBound extends MARKStarBound {
             System.out.println("BranchMARK*: DP tables computed in " + dpInitTime + " ms (SPARSE factored Z)"
                     + ", rootEdge logZ[0]: lower=" + lzlStr + ", upper=" + lzuStr
                     + ", rootEdge isLambdaEdge=" + rootedRootEdge.getIsLambdaEdge()
-                    + ", mArraySize=" + (rootLZU == null ? -1 : rootLZU.length));
+                    + ", mArraySize=" + (rootLZU == null ? -1 : rootLZU.length)
+                    + formatDPCacheStats(dpCacheStats));
         } else {
             dpTablesReady = false;
             System.out.println("BranchMARK*: DP table precomputation skipped (FULL mode, DP would be invalid)");
@@ -2039,8 +2378,10 @@ public class BranchMARKStarBound extends MARKStarBound {
         decompQueue = new PriorityQueue<>();
         decompQueue.add(rootSearchNode);
 
-        // Start with 1 minimization per round, increment like MARK*
-        maxMinimizations = 1;
+        // Start at full parallelism so async loopTasks can saturate all threads
+        // from the first leaf-dominant round (previously +1/round warmup wasted
+        // CPUs while ramping up to parallelism.numThreads).
+        maxMinimizations = Math.max(1, parallelism.numThreads);
 
         // Initialize Z bounds from root node
         flatSumZLower = rootSearchNode.subtreeLowerBound;
@@ -2407,6 +2748,14 @@ public class BranchMARKStarBound extends MARKStarBound {
         }
         decompQueue.addAll(leftoverLeaves);
 
+        // Flush accumulated region-atom delta in one synchronized batch.
+        if (regionAtomDPUpperDelta.signum() != 0) {
+            synchronized (this) {
+                flatSumZUpper = flatSumZUpper.add(regionAtomDPUpperDelta);
+            }
+            regionAtomDPUpperDelta = BigDecimal.ZERO;
+        }
+
         updateBound();
 
         if (trace && (gnnRoundCounter <= traceRounds || correctionsThisRound > 0)) {
@@ -2481,15 +2830,15 @@ public class BranchMARKStarBound extends MARKStarBound {
                         + " internalZ=" + formatBigExp(internalZ));
             }
             // Leaf error dominates: minimize leaves, put internals back
+            // Submit all leaves asynchronously to loopTasks (parallel CCD min),
+            // then wait for completion before continuing. Mirrors MARK*'s pattern.
             for (DecompSearchNode leaf : leafNodes) {
                 minimizeDecompLeaf(leaf);
             }
+            loopTasks.waitForFinish();
             decompQueue.addAll(internalNodes);
-
-            // Increment maxMinimizations toward full parallelism (like MARK*)
-            if (maxMinimizations < parallelism.numThreads) {
-                maxMinimizations++;
-            }
+            // maxMinimizations is already at parallelism.numThreads (set in run()),
+            // so no per-round ramp-up is needed.
         } else {
             if (trace && (gnnRoundCounter <= traceRounds || correctionsThisRound > 0)) {
                 trace("round=" + gnnRoundCounter + " decision=internal"
@@ -2996,9 +3345,16 @@ public class BranchMARKStarBound extends MARKStarBound {
         }
 
         if (!lambdaAStar.isExhausted()) {
+            // Use the original (pre-tightening) upper bound for the aggregate
+            // computation. If the node was tightened by region-atom, its
+            // subtreeUpperBound is smaller than the DP-based children sum,
+            // which would make the aggregate negative. Using the original
+            // ensures children + aggregate = original (consistent with DP).
+            BigDecimal parentUpperForAggregate = node.regionAtomOriginalUpper != null
+                    ? node.regionAtomOriginalUpper : node.subtreeUpperBound;
             DecompSearchNode aggregate = DecompSearchNode.makeAggregate(
                     node, pendingIdx, lambdaAStar,
-                    node.subtreeUpperBound, childrenZUpper, bc);
+                    parentUpperForAggregate, childrenZUpper, bc);
             generatedNodes.add(aggregate);
             lowerDelta = lowerDelta.add(aggregate.subtreeLowerBound);
             upperDelta = upperDelta.add(aggregate.subtreeUpperBound);
@@ -3325,10 +3681,10 @@ public class BranchMARKStarBound extends MARKStarBound {
      * calcEnergy + triple corrections.
      */
     private void minimizeDecompLeaf(DecompSearchNode leaf) {
-        int[] fullConf = leaf.partialConf;
+        final int[] fullConf = leaf.partialConf;
 
-        // Check if already minimized
-        String confKey = SimpleConfSpace.formatConfRCs(fullConf);
+        // Check if already minimized (main thread, before async dispatch).
+        final String confKey = SimpleConfSpace.formatConfRCs(fullConf);
         if (minimizedConfs.contains(confKey)) {
             // Put back with current bounds
             decompQueue.add(leaf);
@@ -3336,7 +3692,7 @@ public class BranchMARKStarBound extends MARKStarBound {
         }
         minimizedConfs.add(confKey);
 
-        // Track GNN stats
+        // Track GNN stats (main thread, before async dispatch).
         if (gnnBoundedNodes.remove(leaf)) {
             gnnBudgetUsed--;
             gnnCCDFromGNN++;
@@ -3345,75 +3701,90 @@ public class BranchMARKStarBound extends MARKStarBound {
         }
 
         // Use branch emats so pairwise scoring stays inside the sparse pfunc world.
-        double eRigid = computeFullConfPairwiseEnergy(fullConf, branchRigidEmat);
-        double eMin = computeFullConfPairwiseEnergy(fullConf, branchMinimizingEmat);
-        double oldConfLower = leaf.confLowerBound;
-        double oldConfUpper = leaf.confUpperBound;
-        double epsilonBefore = computeEpsilon();
+        // Cheap emat lookups: keep on main thread; capture pre-min state for the callback.
+        final double eRigid = computeFullConfPairwiseEnergy(fullConf, branchRigidEmat);
+        final double eMin = computeFullConfPairwiseEnergy(fullConf, branchMinimizingEmat);
+        final double oldConfLower = leaf.confLowerBound;
+        final double oldConfUpper = leaf.confUpperBound;
+        final double epsilonBefore = computeEpsilon();
+        final BigDecimal oldLeafLower = leaf.subtreeLowerBound;
+        final BigDecimal oldLeafUpper = leaf.subtreeUpperBound;
+        final ConfSearch.ScoredConf scoredConf = new ConfSearch.ScoredConf(fullConf, eMin);
 
-        // Minimize against the same pair set used by the bounds. In SPARSE mode
-        // we limit ResidueInteractions to graph-kept pairs (cut pairs contribute
-        // 0 to E_sparse, and A* has already pruned any conf with a +inf cut pair).
-        // In FULL mode we use the standard ConfAnalyzer minimization.
-        ConfSearch.ScoredConf scoredConf = new ConfSearch.ScoredConf(fullConf, eMin);
-        double eTrue;
-        if (useSparsePfunc) {
-            eTrue = minimizingEcalc.calcEnergy(new RCTuple(fullConf), makeSparseFullConfInters(fullConf)).energy;
-            if (useHigherOrderCorrections) {
-                correctionSparseGenerationSkips++;
-                if (shouldPrintCorrectionDetail(correctionSparseGenerationSkips)) {
-                    correctionAuditLog("NO-GENERATE sparse leaf min#" + (totalMinimizations + 1)
-                            + " state=" + stateName
-                            + " reason=SPARSE uses sparse interactions and does not run ConfAnalyzer triple corrections"
-                            + " conf=" + SimpleConfSpace.formatConfRCs(fullConf));
+        // Submit the CCD minimization (and any triple-correction work that needs the
+        // ConfAnalysis object) to loopTasks. Multiple leaves run in parallel up to
+        // parallelism.numThreads. All shared-state updates happen inside synchronized
+        // blocks so flatSumZ / totalMinimizations / decompQueue stay consistent.
+        loopTasks.submit(() -> {
+            // Worker thread: run CCD and (in FULL mode) compute triple corrections.
+            double eTrueLocal;
+            if (useSparsePfunc) {
+                eTrueLocal = minimizingEcalc.calcEnergy(new RCTuple(fullConf), makeSparseFullConfInters(fullConf)).energy;
+                if (useHigherOrderCorrections) {
+                    synchronized (this) {
+                        correctionSparseGenerationSkips++;
+                        if (shouldPrintCorrectionDetail(correctionSparseGenerationSkips)) {
+                            correctionAuditLog("NO-GENERATE sparse leaf min#" + (totalMinimizations + 1)
+                                    + " state=" + stateName
+                                    + " reason=SPARSE uses sparse interactions and does not run ConfAnalyzer triple corrections"
+                                    + " conf=" + SimpleConfSpace.formatConfRCs(fullConf));
+                        }
+                    }
+                }
+            } else {
+                ConfAnalyzer.ConfAnalysis analysis = new ConfAnalyzer(minimizingEcalc).analyze(scoredConf);
+                eTrueLocal = analysis.epmol.energy;
+                if (useHigherOrderCorrections) {
+                    // computeTripleCorrections mutates shared correction state; serialize.
+                    synchronized (this) {
+                        computeTripleCorrections(analysis, scoredConf);
+                    }
                 }
             }
-        } else {
-            ConfAnalyzer.ConfAnalysis analysis = new ConfAnalyzer(minimizingEcalc).analyze(scoredConf);
-            eTrue = analysis.epmol.energy;
-            if (useHigherOrderCorrections) {
-                computeTripleCorrections(analysis, scoredConf);
+            return eTrueLocal;
+        }, (Double eTrueObj) -> {
+            // Listener: update shared bookkeeping under a single lock so flatSumZ,
+            // totalMinimizations, and per-leaf profile recording stay atomic.
+            double eTrue = eTrueObj.doubleValue();
+            synchronized (this) {
+                totalMinimizations++;
+
+                // Update Z bounds: remove old contribution, add new (exact) contribution.
+                flatSumZLower = flatSumZLower.subtract(oldLeafLower);
+                flatSumZUpper = flatSumZUpper.subtract(oldLeafUpper);
+
+                BigDecimal boltzTrue = bc.calc(eTrue);
+                flatSumZLower = flatSumZLower.add(boltzTrue);
+                flatSumZUpper = flatSumZUpper.add(boltzTrue);
+                double epsilonAfter = computeEpsilon();
+
+                // Mark as minimized (don't re-add to queue — it's exact now).
+                leaf.minimized = true;
+                leaf.minimizedEnergy = eTrue;
+
+                recordLeafMinimizationProfile("BranchMARK*-" + edgeSelectionStrategy.name(),
+                        totalMinimizations, fullConf,
+                        oldConfLower, oldConfUpper, eTrue,
+                        oldLeafLower, oldLeafUpper, boltzTrue,
+                        epsilonBefore, epsilonAfter);
+
+                if (totalMinimizations % 100 == 0 || totalMinimizations <= 5) {
+                    System.out.println("BranchMARK*: " + totalMinimizations
+                            + " minimizations, epsilon=" + String.format("%.6f", epsilonBound)
+                            + ", flatSumZLower=" + String.format("%.6e", flatSumZLower.doubleValue())
+                            + ", flatSumZUpper=" + String.format("%.6e", flatSumZUpper.doubleValue())
+                            + ", oldConf=[" + String.format("%.4f", oldConfLower)
+                            + "," + String.format("%.4f", oldConfUpper) + "]"
+                            + ", eRigid=" + String.format("%.4f", eRigid)
+                            + ", eMin=" + String.format("%.4f", eMin)
+                            + ", eTrue=" + String.format("%.4f", eTrue)
+                            + ", boltzTrue=" + String.format("%.6e", boltzTrue.doubleValue())
+                            + ", leafOldLower=" + String.format("%.6e", oldLeafLower.doubleValue())
+                            + ", leafOldUpper=" + String.format("%.6e", oldLeafUpper.doubleValue())
+                            + (trace ? ", conf=" + SimpleConfSpace.formatConfRCs(fullConf) : ""));
+                }
             }
-        }
-        totalMinimizations++;
-
-        // Update Z bounds: remove old contribution, add new (exact) contribution
-        BigDecimal oldLeafLower = leaf.subtreeLowerBound;
-        BigDecimal oldLeafUpper = leaf.subtreeUpperBound;
-        flatSumZLower = flatSumZLower.subtract(leaf.subtreeLowerBound);
-        flatSumZUpper = flatSumZUpper.subtract(leaf.subtreeUpperBound);
-
-        BigDecimal boltzTrue = bc.calc(eTrue);
-        // After minimization, both lower and upper for this conformation become exact
-        flatSumZLower = flatSumZLower.add(boltzTrue);
-        flatSumZUpper = flatSumZUpper.add(boltzTrue);
-        double epsilonAfter = computeEpsilon();
-
-        // Mark as minimized (don't re-add to queue — it's exact now)
-        leaf.minimized = true;
-        leaf.minimizedEnergy = eTrue;
-
-        recordLeafMinimizationProfile("BranchMARK*-" + edgeSelectionStrategy.name(),
-                totalMinimizations, fullConf,
-                oldConfLower, oldConfUpper, eTrue,
-                oldLeafLower, oldLeafUpper, boltzTrue,
-                epsilonBefore, epsilonAfter);
-
-        if (totalMinimizations % 100 == 0 || totalMinimizations <= 5) {
-            System.out.println("BranchMARK*: " + totalMinimizations
-                    + " minimizations, epsilon=" + String.format("%.6f", epsilonBound)
-                    + ", flatSumZLower=" + String.format("%.6e", flatSumZLower.doubleValue())
-                    + ", flatSumZUpper=" + String.format("%.6e", flatSumZUpper.doubleValue())
-                    + ", oldConf=[" + String.format("%.4f", oldConfLower)
-                    + "," + String.format("%.4f", oldConfUpper) + "]"
-                    + ", eRigid=" + String.format("%.4f", eRigid)
-                    + ", eMin=" + String.format("%.4f", eMin)
-                    + ", eTrue=" + String.format("%.4f", eTrue)
-                    + ", boltzTrue=" + String.format("%.6e", boltzTrue.doubleValue())
-                    + ", leafOldLower=" + String.format("%.6e", oldLeafLower.doubleValue())
-                    + ", leafOldUpper=" + String.format("%.6e", oldLeafUpper.doubleValue())
-                    + (trace ? ", conf=" + SimpleConfSpace.formatConfRCs(fullConf) : ""));
-        }
+        });
     }
 
     /**
@@ -3803,6 +4174,20 @@ public class BranchMARKStarBound extends MARKStarBound {
             return;
         }
 
+        // PAC mode: first use the original DP certificate. If that already meets
+        // target, skip CCD sampling and the corrected-DP pass entirely.
+        if (usePAC && dpTablesReady) {
+            if (epsilonBound <= targetEpsilon) {
+                finishWithCurrentDPBounds("BranchMARK*: PAC skipped; first-round DP bounds already meet target, "
+                        + "so CCD sampling and corrected DP are unnecessary. "
+                        + "epsilon=" + String.format("%.6f", epsilonBound)
+                        + " <= target=" + String.format("%.6f", targetEpsilon));
+                return;
+            }
+            computeWithPAC();
+            return;
+        }
+
         double lastEps = 1.0;
 
         while (epsilonBound > targetEpsilon) {
@@ -3899,6 +4284,74 @@ public class BranchMARKStarBound extends MARKStarBound {
             // scoutOnly is diagnostic only — do NOT mark as Estimated; bounds are not certified.
             System.out.println("BranchMARK*: scoutOnly mode complete; pfunc NOT certified.");
         } else if (reportedEpsilon <= targetEpsilon) {
+            setStatus(Status.Estimated);
+        }
+    }
+
+    /**
+     * Finish a pfunc using the current deterministic DP/search bounds. Used by
+     * PAC mode when the initial DP certificate already meets the requested target,
+     * so the sampling/corrected-DP pass would only over-solve the pfunc.
+     */
+    private void finishWithCurrentDPBounds(String message) {
+        System.out.println(message);
+
+        PartitionFunction.Values vals = getValues();
+        double reportedEpsilon = setReportedPartitionFunctionValues(vals);
+        if (reportedEpsilon <= targetEpsilon) {
+            setStatus(Status.Estimated);
+        }
+    }
+
+    /**
+     * PAC mode: estimate partition function via Rao-Blackwellized importance sampling.
+     * Bypasses the deterministic search loop. DP tables must already be computed.
+     */
+    private void computeWithPAC() {
+        System.out.println("BranchMARK*: PAC mode activated for state=" + stateName);
+
+        PACPartitionFunction pac = new PACPartitionFunction(
+                rootedRoot, rootedRootEdge,
+                branchMinimizingEmat, branchRigidEmat,
+                interactionGraph, minimizingEcalc,
+                searchRCs, confSpace);
+
+        double pacEpsilon = pac.compute();
+
+        if (pacRestoreDP) {
+            // Optional legacy behavior: restore the original DP tables after PAC's
+            // corrected-DP pass. Normal pfunc completion only needs PAC's returned
+            // q bounds, so this is disabled by default to avoid another full DP.
+            long restoreStart = System.currentTimeMillis();
+            double rtForDP = BoltzmannCalculator.RClassic * BoltzmannCalculator.TClassic;
+            RootedTreeEdge.postOrderInitIncremental(rootedRoot,
+                    branchRigidEmat, branchMinimizingEmat, interactionGraph, rtForDP);
+            DPCacheStats restoreStats = computeFullDPTables("initial", true);
+            System.out.println("BranchMARK*: PAC restored original DP tables in "
+                    + (System.currentTimeMillis() - restoreStart) + " ms"
+                    + formatDPCacheStats(restoreStats));
+        }
+
+        // Set partition function values from PAC bounds
+        PartitionFunction.Values vals = getValues();
+        vals.qstar = pac.getZLower();
+        vals.pstar = pac.getZUpper();
+        vals.qprime = vals.pstar.subtract(vals.qstar);
+
+        // Also update flatSum for consistent epsilon reporting
+        flatSumZLower = pac.getZLower();
+        flatSumZUpper = pac.getZUpper();
+        epsilonBound = pacEpsilon;
+
+        totalMinimizations = pac.getTotalCCDCalls();
+
+        System.out.println("BranchMARK*: PAC finished. epsilon=" + String.format("%.6f", pacEpsilon)
+                + ", CCD calls=" + pac.getTotalCCDCalls()
+                + ", cvPsi=" + String.format("%.4f", pac.getCvPsi())
+                + ", meanResidual=" + String.format("%.4f", pac.getMeanResidual()) + " kcal/mol"
+                + ", stdResidual=" + String.format("%.4f", pac.getStdResidual()) + " kcal/mol");
+
+        if (pacEpsilon <= targetEpsilon) {
             setStatus(Status.Estimated);
         }
     }

@@ -62,12 +62,16 @@ public class GNNSubtreeEnergyCalculator implements AutoCloseable {
     }
 
     /**
-     * Predict free energy correction ΔF for a batch of partial assignments.
+     * Predict raw subtree-model outputs for a batch of partial assignments.
+     *
+     * Current models output the free energy correction ΔF = F_CCD - F_emat.
+     * Newer models may output an equivalent logZ residual, depending on the
+     * caller's configured interpretation.
      *
      * @param assignments  array of (numPositions,) int arrays; -1 = free position
-     * @return ΔF = F_CCD - F_emat (kcal/mol) for each partial assignment
+     * @return raw model output for each partial assignment
      */
-    public double[] predictSubtreeResiduals(int[][] assignments) {
+    public double[] predictSubtreeModelOutputs(int[][] assignments) {
         int batchSize = assignments.length;
         try {
             long[] flatRCs = new long[batchSize * numPositions];
@@ -136,6 +140,14 @@ public class GNNSubtreeEnergyCalculator implements AutoCloseable {
         } catch (OrtException e) {
             throw new RuntimeException("Subtree ONNX inference failed", e);
         }
+    }
+
+    /**
+     * Backward-compatible name for existing callers. Current released subtree
+     * models output ΔF = F_CCD - F_emat in kcal/mol.
+     */
+    public double[] predictSubtreeResiduals(int[][] assignments) {
+        return predictSubtreeModelOutputs(assignments);
     }
 
     /**

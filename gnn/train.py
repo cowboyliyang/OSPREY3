@@ -24,6 +24,7 @@ from torch.utils.data import Dataset, DataLoader
 
 
 NUM_AA_TYPES = 20
+UNKNOWN_AA_IDX = NUM_AA_TYPES  # index 20 for non-standard residues (aa_type_idx == -1)
 MAX_CHI = 4
 
 # Standard amino acid 3-letter codes → index (must match Java side)
@@ -128,7 +129,10 @@ def load_data(data_dir):
         pos_mask = rc_feat_df["pos"].values == p
         pos_data = rc_feat_df[pos_mask]
         n = len(pos_data)
-        aa_table[p, :n] = torch.tensor(pos_data["aa_type_idx"].values, dtype=torch.long)
+        aa_vals = pos_data["aa_type_idx"].values
+        # Remap non-standard residues (-1) to UNKNOWN_AA_IDX so embedding lookup is valid
+        aa_vals = np.where(aa_vals < 0, UNKNOWN_AA_IDX, aa_vals)
+        aa_table[p, :n] = torch.tensor(aa_vals, dtype=torch.long)
         chis = pos_data[["chi1", "chi2", "chi3", "chi4"]].fillna(0.0).values
         chi_table[p, :n] = torch.tensor(chis, dtype=torch.float32)
 
@@ -221,8 +225,8 @@ class InteractionGNNv2(nn.Module):
 
         edge_feat_dim = 2  # [pair_energy, ca_distance]
 
-        # Shared AA type embedding
-        self.aa_embedding = nn.Embedding(NUM_AA_TYPES, aa_embed_dim)
+        # Shared AA type embedding (+1 slot for unknown / non-standard residues)
+        self.aa_embedding = nn.Embedding(NUM_AA_TYPES + 1, aa_embed_dim)
 
         # Position embedding
         self.pos_embedding = nn.Embedding(num_pos, pos_embed_dim)
@@ -325,12 +329,13 @@ class InteractionGNNv2(nn.Module):
         rc_src = torch.gather(confs, 1, src_exp)  # (batch, num_edges)
         rc_dst = torch.gather(confs, 1, dst_exp)
 
-        # Pairwise energy lookup
+        # Pairwise energy lookup — advanced indexing avoids the [batch, num_edges,
+        # max_rcs**2] intermediate that triggers cudaErrorInvalidConfiguration in
+        # the exported ONNX Expand kernel at batch>~700 (see train_subtree.py for
+        # the same fix on the subtree model).
         flat_idx = rc_src * self.max_rcs + rc_dst  # (batch, num_edges)
-        pair_energy = torch.gather(
-            self.pair_table.unsqueeze(0).expand(batch, -1, -1),
-            2, flat_idx.unsqueeze(-1)
-        ).squeeze(-1)  # (batch, num_edges)
+        edge_arange = torch.arange(num_edges, device=confs.device)
+        pair_energy = self.pair_table[edge_arange, flat_idx]  # (batch, num_edges)
 
         # Cα distance (static, same for all samples)
         ca_dist = self.ca_dist_vec.unsqueeze(0).expand(batch, -1)

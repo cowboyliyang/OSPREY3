@@ -87,6 +87,22 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
     // If (quickUpperBound - confCorrection) < SKIP_THRESHOLD, skip full minimization
     // Typical RT at 300K ≈ 0.6 kcal/mol, so 1.0 kcal/mol is a reasonable threshold
     private static final double PARTIALFIX_SKIP_THRESHOLD = 1.0;  // kcal/mol
+    private static final boolean LEAF_PROFILE_ENABLED =
+            Boolean.parseBoolean(System.getProperty("markstar.leafProfile", "false"));
+    private static final int LEAF_PROFILE_DETAIL =
+            Integer.getInteger("markstar.leafProfile.detail", 20);
+    private static final int LEAF_PROFILE_INTERVAL =
+            Integer.getInteger("markstar.leafProfile.interval", 100);
+    private static final boolean LEAF_PROFILE_ALL_CONFS =
+            Boolean.parseBoolean(System.getProperty("markstar.leafProfile.allConfs", "false"));
+    /**
+     * If true, start at full parallelism (maxMinimizations = parallelism.numThreads)
+     * from the very first leaf round instead of ramping up +1 per round. Mirrors
+     * BranchMARK*'s default behavior. Off by default to preserve historical MARK*
+     * dynamics. Enable with -Dmarkstar.fullParallelFromStart=true.
+     */
+    private static final boolean FULL_PARALLEL_FROM_START =
+            Boolean.parseBoolean(System.getProperty("markstar.fullParallelFromStart", "false"));
 
     protected double targetEpsilon = 1;
     public boolean debug = false;
@@ -131,6 +147,16 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
     protected static double totalMinLowerTightening = 0;
     protected static double totalMinUpperTightening = 0;
     protected static int totalMinCount = 0;
+
+    private final List<Double> leafProfileEnergies = new ArrayList<>();
+    private double leafProfileEnergySum = 0;
+    private double leafProfileLowerRaiseSum = 0;
+    private double leafProfileUpperDropSum = 0;
+    private BigDecimal leafProfileZGapClosed = BigDecimal.ZERO;
+    private BigDecimal leafProfileExactBoltzSum = BigDecimal.ZERO;
+    private int leafProfileBestAt = 0;
+    private double leafProfileBestEnergy = Double.POSITIVE_INFINITY;
+    private String leafProfileAlgorithm = null;
 
     private ConfDB confDB;
     private ConfDB.Key confDBKey;
@@ -291,7 +317,99 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
             //rootNode.printTree(stateName, minimizingEcalc.confSpace);
         }
         // Print leaf vs internal statistics for this pfunc and cumulative
+        printLeafMinimizationProfile();
         printPhaseStatistics();
+    }
+
+    protected synchronized void recordLeafMinimizationProfile(String algorithm,
+            int minimizationIndex, int[] assignments,
+            double oldConfLower, double oldConfUpper, double minimizedEnergy,
+            BigDecimal oldLeafLowerZ, BigDecimal oldLeafUpperZ, BigDecimal exactLeafZ,
+            double epsilonBefore, double epsilonAfter) {
+
+        if (!LEAF_PROFILE_ENABLED) {
+            return;
+        }
+
+        if (leafProfileAlgorithm == null) {
+            leafProfileAlgorithm = algorithm;
+        }
+
+        leafProfileEnergies.add(minimizedEnergy);
+        leafProfileEnergySum += minimizedEnergy;
+        leafProfileLowerRaiseSum += Math.max(0, minimizedEnergy - oldConfLower);
+        leafProfileUpperDropSum += Math.max(0, oldConfUpper - minimizedEnergy);
+        leafProfileZGapClosed = leafProfileZGapClosed.add(oldLeafUpperZ.subtract(oldLeafLowerZ).max(BigDecimal.ZERO));
+        leafProfileExactBoltzSum = leafProfileExactBoltzSum.add(exactLeafZ);
+
+        if (minimizedEnergy < leafProfileBestEnergy) {
+            leafProfileBestEnergy = minimizedEnergy;
+            leafProfileBestAt = minimizationIndex;
+        }
+
+        boolean printDetail = LEAF_PROFILE_ALL_CONFS
+                || minimizationIndex <= LEAF_PROFILE_DETAIL
+                || (LEAF_PROFILE_INTERVAL > 0 && minimizationIndex % LEAF_PROFILE_INTERVAL == 0);
+        if (printDetail) {
+            System.out.println("[LEAF_PROFILE] alg=" + algorithm
+                    + ", state=" + stateName
+                    + ", min=" + minimizationIndex
+                    + ", eTrue=" + String.format("%.4f", minimizedEnergy)
+                    + ", preE=[" + String.format("%.4f", oldConfLower)
+                    + "," + String.format("%.4f", oldConfUpper) + "]"
+                    + ", lowerRaise=" + String.format("%.4f", Math.max(0, minimizedEnergy - oldConfLower))
+                    + ", upperDrop=" + String.format("%.4f", Math.max(0, oldConfUpper - minimizedEnergy))
+                    + ", oldZGap=" + String.format("%.6e", oldLeafUpperZ.subtract(oldLeafLowerZ).doubleValue())
+                    + ", exactZ=" + String.format("%.6e", exactLeafZ.doubleValue())
+                    + ", bestAt=" + leafProfileBestAt
+                    + ", bestE=" + String.format("%.4f", leafProfileBestEnergy)
+                    + ", epsBefore=" + String.format("%.6f", epsilonBefore)
+                    + (Double.isNaN(epsilonAfter) ? "" : ", epsAfter=" + String.format("%.6f", epsilonAfter))
+                    + ", conf=" + SimpleConfSpace.formatConfRCs(assignments));
+        }
+    }
+
+    protected synchronized void printLeafMinimizationProfile() {
+        if (!LEAF_PROFILE_ENABLED || leafProfileEnergies.isEmpty()) {
+            return;
+        }
+
+        List<Double> sorted = new ArrayList<>(leafProfileEnergies);
+        Collections.sort(sorted);
+        int n = sorted.size();
+        double mean = leafProfileEnergySum / n;
+        double p10 = percentile(sorted, 0.10);
+        double median = percentile(sorted, 0.50);
+        double p90 = percentile(sorted, 0.90);
+        int firstN = Math.min(10, n);
+        double firstSum = 0;
+        for (int i = 0; i < firstN; i++) {
+            firstSum += leafProfileEnergies.get(i);
+        }
+
+        System.out.println("[LEAF_PROFILE_SUMMARY] alg=" + leafProfileAlgorithm
+                + ", state=" + stateName
+                + ", n=" + n
+                + ", meanE=" + String.format("%.4f", mean)
+                + ", first" + firstN + "MeanE=" + String.format("%.4f", firstSum / firstN)
+                + ", p10E=" + String.format("%.4f", p10)
+                + ", medianE=" + String.format("%.4f", median)
+                + ", p90E=" + String.format("%.4f", p90)
+                + ", bestE=" + String.format("%.4f", leafProfileBestEnergy)
+                + ", bestAt=" + leafProfileBestAt
+                + ", avgLowerRaise=" + String.format("%.4f", leafProfileLowerRaiseSum / n)
+                + ", avgUpperDrop=" + String.format("%.4f", leafProfileUpperDropSum / n)
+                + ", totalZGapClosed=" + String.format("%.6e", leafProfileZGapClosed.doubleValue())
+                + ", exactBoltzSum=" + String.format("%.6e", leafProfileExactBoltzSum.doubleValue()));
+    }
+
+    private static double percentile(List<Double> sorted, double p) {
+        if (sorted.isEmpty()) {
+            return Double.NaN;
+        }
+        int idx = (int)Math.round(p * (sorted.size() - 1));
+        idx = Math.max(0, Math.min(sorted.size() - 1, idx));
+        return sorted.get(idx);
     }
 
     protected static void printPhaseStatistics() {
@@ -347,6 +465,11 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
         upperReduction_ConfLowerBound = startUpperBound.subtract(rootNode.getUpperBound()).subtract(upperReduction_FullMin).subtract(upperReduction_PartialMin);
 
         PartitionFunction.Result result = new PartitionFunction.Result(getStatus(), getValues(), getNumConfsEvaluated());
+        // Expose MARK*-specific counters via the generic stats map (default 0 if unused).
+        result.setStat("numConfsScored", numConfsScored);
+        result.setStat("numPartialMinimizations", numPartialMinimizations);
+        // Subclasses can append their own stats by overriding makeResult().
+        attachExtraStats(result);
         /*
         result.setWorkInfo(numPartialMinimizations, numConfsScored,minList);
         result.setZInfo(lowerReduction_FullMin, lowerReduction_ConfUpperBound, upperReduction_FullMin, upperReduction_PartialMin, upperReduction_ConfLowerBound);
@@ -362,6 +485,31 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
      * TODO: 1. Make MARKStarBounds use and update a queue.
      * TODO: 2. Make MARKStarNodes compute and update bounds correctly
      */
+
+    /**
+     * Hook for subclasses to add extra stats to the {@link PartitionFunction.Result}
+     * returned by {@link #makeResult()}. Default implementation is a no-op.
+     */
+    protected void attachExtraStats(PartitionFunction.Result result) {
+        // no-op
+    }
+
+    /**
+     * Hook for subclasses that need to audit or account for GNN leaf replacements.
+     * The default MARK* behavior remains unchanged.
+     */
+    protected void onGNNLeafReplacement(
+            MARKStarNode markNode,
+            Node confNode,
+            double oldLower,
+            double oldUpper,
+            double gnnEnergy,
+            double newLower,
+            double newUpper,
+            boolean rejectedAboveUpper) {
+        // no-op
+    }
+
     // We keep track of the root node for computing our K* bounds
     protected MARKStarNode rootNode;
     // Heap of nodes for recursive expansion
@@ -540,6 +688,16 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
         if(loopTasks == null)
             loopTasks = parallelism.makeTaskExecutor(1000);
         contexts.allocate(parallelism.getParallelism());
+
+        // Optional: start at full parallelism from the first leaf round, like
+        // BranchMARK*. Default off — historical MARK* used a +1/round warm-up
+        // (see tightenBoundInPhases). Enabled via -Dmarkstar.fullParallelFromStart=true.
+        if (FULL_PARALLEL_FROM_START) {
+            maxMinimizations = Math.max(1, parallelism.numThreads);
+            System.out.println("MARK*: fullParallelFromStart=true, "
+                    + "maxMinimizations preset to " + maxMinimizations
+                    + " (was ramping up +1 per leaf round)");
+        }
     }
 
     private void debugEpsilon(double curEpsilon) {
@@ -1153,6 +1311,8 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
                 oldConfLower, oldConfUpper, oldConfUpper-oldConfLower, energy,
                 newConfLower, newConfUpper, newConfUpper-newConfLower,
                 rejected ? " REJECTED(GNN>upper)" : ""));
+            onGNNLeafReplacement(curNode, node, oldConfLower, oldConfUpper,
+                    energy, newConfLower, newConfUpper, rejected);
             curNode.setBoundsFromConfLowerAndUpper(newConfLower, newConfUpper);
             node.gscore = newConfLower;
             curNode.markUpdated();
@@ -1203,6 +1363,8 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
                 // Record pre-minimization bounds so we can parse out how much minimization helped for upper and lower bounds
                 double oldConfUpper = node.getConfUpperBound();
                 double oldConfLower = node.getConfLowerBound();
+                BigDecimal oldLeafLowerZ = curNode.getLowerBound();
+                BigDecimal oldLeafUpperZ = curNode.getUpperBound();
                 checkConfLowerBound(node, energy);
                 if (newConfUpper > oldConfUpper) {
                     System.err.println("[ERROR] Upper bounds got worse after minimization: " + newConfUpper
@@ -1238,6 +1400,10 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
                     totalMinLowerTightening += Math.max(0, newConfLower - oldConfLower);
                     totalMinUpperTightening += Math.max(0, oldConfUpper - newConfUpper);
                     totalMinCount++;
+                    recordLeafMinimizationProfile("MARK*", numConfsEnergied, node.assignments,
+                            oldConfLower, oldConfUpper, energy,
+                            oldLeafLowerZ, oldLeafUpperZ, bc.calc(energy),
+                            epsilonBound, Double.NaN);
                     printMinimizationOutput(node, newConfLower, oldgscore);
 
                     // PRIORITY QUEUE DUMP: After first minimization

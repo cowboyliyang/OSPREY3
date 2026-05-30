@@ -81,7 +81,7 @@ for BS in "${BATCH_SIZES[@]}"; do
     echo "Submitted Strategy8 gpuBatch=$BS: $JID"
 done
 
-# 4. Strategy9 with varying gpuBatchSize (subtree GNN as search router)
+# 4. Strategy9 with varying gpuBatchSize (logZ residual subtree bound oracle)
 for BS in "${BATCH_SIZES[@]}"; do
     JID=$(sbatch $SLURM --job-name=bench_s9_bs${BS} \
         --output=bench_logs/bench_s9_bs${BS}_%j.out --error=bench_logs/bench_s9_bs${BS}_%j.err \

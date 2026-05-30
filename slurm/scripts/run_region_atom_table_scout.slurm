@@ -36,6 +36,9 @@ CERTIFY=${CERTIFY:-""}
 # Phase 4 DP factor replacement (per-node bound tightening using the certified table).
 # Only has any effect when CERTIFY is non-empty.
 CERTIFY_USE_DP=${CERTIFY_USE_DP:-false}
+# Top-K boundary cells (by Phase 0 emat gap) to certify. 0 = all cells.
+# For atoms with many boundary cells, set this to ~100-1000 to keep Phase 3 feasible.
+CERTIFY_TOPK=${CERTIFY_TOPK:-0}
 
 echo "=============================================="
 echo "Region-Atom BranchMARK* SCOUT"
@@ -54,10 +57,20 @@ echo "  DELTAS:     $WHATIF_DELTAS"
 echo "  SCOUT_ONLY: $SCOUT_ONLY"
 echo "  CERTIFY:    $CERTIFY"
 echo "  USE_DP:     $CERTIFY_USE_DP"
+echo "  TOPK:       $CERTIFY_TOPK"
 echo "  Start:      $(date)"
 echo "=============================================="
 
 cd /home/users/lz280/IdeaProjects/OSPREY3
+
+# Clean stale NFS lock files from prior gradle runs ('.nfsXXXX' silly-renames left
+# behind when a process held an open file handle when files were deleted).
+# Without this, gradle :processResources / :test fails with "Unable to delete directory".
+echo "Cleaning stale NFS lock files..."
+find /home/users/lz280/IdeaProjects/OSPREY3/build -name ".nfs*" -delete 2>/dev/null
+# Some lock dirs can't be partially deleted; remove the offending subtrees outright.
+rm -rf /home/users/lz280/IdeaProjects/OSPREY3/build/resources/main/config 2>/dev/null
+rm -rf /home/users/lz280/IdeaProjects/OSPREY3/build/test-results/test/binary 2>/dev/null
 
 # Isolate gradle caches per-job in case multiple scouts run in parallel.
 export GRADLE_USER_HOME="/tmp/lz280-gradle-${SLURM_JOB_ID}"
@@ -65,8 +78,8 @@ PROJECT_CACHE="/tmp/lz280-projcache-${SLURM_JOB_ID}"
 mkdir -p "$GRADLE_USER_HOME" "$PROJECT_CACHE"
 
 echo "Compiling (isolated)..."
-./gradlew --project-cache-dir "$PROJECT_CACHE" compileJava compileTestJava --no-daemon 2>&1 | tail -5
-if [ ${PIPESTATUS[0]} -ne 0 ]; then
+./gradlew --project-cache-dir "$PROJECT_CACHE" compileJava compileTestJava --no-daemon 2>&1
+if [ $? -ne 0 ]; then
     echo "COMPILATION FAILED"
     rm -rf "$GRADLE_USER_HOME" "$PROJECT_CACHE"
     exit 1
@@ -93,6 +106,7 @@ echo ""
     -Dbranchmarkstar.regionAtom.whatIfDeltas="$WHATIF_DELTAS" \
     -Dbranchmarkstar.regionAtom.certify="$CERTIFY" \
     -Dbranchmarkstar.regionAtom.certify.useDP="$CERTIFY_USE_DP" \
+    -Dbranchmarkstar.regionAtom.certify.topK="$CERTIFY_TOPK" \
     2>&1
 
 echo ""

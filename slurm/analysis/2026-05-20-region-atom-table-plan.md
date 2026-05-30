@@ -440,6 +440,63 @@ The single-position atom `{7}` is useful as a sanity check, but the better
 scientific hypothesis is a pos7-centered interaction region, because the signal
 comes from pos7 together with positions like `0,2,6,8`.
 
+### If the boundary is too large
+
+A large separator does not make the atom unsound; it makes full deterministic
+tightening too expensive. The safe response is to keep a complete emat-level
+table for all boundary cells, then spend CCD minimization only on boundary cells
+whose expected value justifies the cost.
+
+For example, the singleton atom:
+
+```text
+R = {7}
+B = {0,1,5,6,8,9}
+boundaryCells = 41040
+localStates = 19
+totalJobs = 779760
+```
+
+is a yellow-light candidate. It is small enough to enumerate at the emat level,
+but large enough that certifying every local state with CCD may be wasteful.
+The next diagnostic should sort boundary cells by a target gap metric and emit a
+cumulative capture curve:
+
+```text
+topK boundary cells
+CCD jobs = topK * localStates
+capturedGap = sum_gap(topK) / total_gap
+capturedQueueGap = sum_selected_gap(topK) / selected_gap
+```
+
+Then use a mixed certified table:
+
+```text
+for b in certifiedCells:
+    use tightened [L_R^ccd(b), U_R^ccd(b)]
+for b not in certifiedCells:
+    use original [L_R^pre(b), U_R^pre(b)]
+```
+
+This remains a valid bound because every boundary assignment still has a valid
+local interval. Certification can stop when marginal improvement per CCD job
+falls below the current leaf-minimization baseline.
+
+If the cumulative curve is broad, do not force `{7}`. Try a different atom
+family:
+
+- expand `R` to own more of the pos7-centered interaction, such as `{6,7,8}`;
+- use the branch/tree separator instead of raw graph neighbors when that gives a
+  smaller proven separator;
+- condition only on the strongest boundary subset and bound the omitted
+  boundary variables with a worst-case residual envelope;
+- split into smaller edge or pair atoms, for example around `(7,6)` or `(7,8)`,
+  if they have better benefit per job.
+
+Moving a position from `B` into `R` does not automatically reduce total jobs:
+the product is over `R union B`. It is still often useful because it changes the
+owned factors and can greatly increase benefit at similar cost.
+
 ## 7. Implementation touchpoints
 
 ### BranchMARKStarBound
@@ -641,4 +698,3 @@ atom gives the best amortized certificate:
 {0,2,6,7,8}
 or an automatically selected sparse-graph neighborhood
 ```
-

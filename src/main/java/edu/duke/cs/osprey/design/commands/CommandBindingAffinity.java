@@ -71,6 +71,15 @@ public class CommandBindingAffinity extends RunnableCommand {
     @Parameter(names = "--use-branchmarkstar", description = "Use BranchMARK* (branch-decomposition variant of MARK*) for the partition function calculation. Faster than MARK* on kinase-sized active sites.")
     public boolean useBranchMarkstar;
 
+    @Parameter(names = "--use-branchmarkstar-pac", description = "Use BranchMARK* with PAC partition-function sampling.")
+    public boolean useBranchMarkstarPac;
+
+    @Parameter(names = "--branchmarkstar-pac-samples", description = "Number of PAC samples for BranchMARK* PAC mode. Uses the BranchMARK* default when omitted.")
+    public int branchMarkstarPacSamples = -1;
+
+    @Parameter(names = "--branchmarkstar-pac-confidence", description = "PAC confidence level for BranchMARK* PAC mode. Uses the BranchMARK* default when omitted.")
+    public double branchMarkstarPacConfidence = Double.NaN;
+
     // === GNN Strategy 8 (leaf + subtree GNN) — only used with --use-branchmarkstar ===
     @Parameter(names = "--gnn-strategy", description = "GNN strategy ID (0=off, 8=leaf+subtree). Only effective with --use-branchmarkstar.")
     public int gnnStrategy = 0;
@@ -151,6 +160,17 @@ public class CommandBindingAffinity extends RunnableCommand {
     }
 
     private int runAffinityDesign(AffinityDesign design) {
+        if (useBranchMarkstarPac) {
+            useBranchMarkstar = true;
+            System.setProperty("branchmarkstar.usePAC", "true");
+            if (branchMarkstarPacSamples > 0) {
+                System.setProperty("branchmarkstar.pac.samples", Integer.toString(branchMarkstarPacSamples));
+            }
+            if (!Double.isNaN(branchMarkstarPacConfidence) && branchMarkstarPacConfidence > 0) {
+                System.setProperty("branchmarkstar.pac.confidence", Double.toString(branchMarkstarPacConfidence));
+            }
+        }
+
         var paramsAndStrands = new ForceFieldParamsAndStrands(delegate, design);
 
         if (doScan && design.scanSettings != null) {

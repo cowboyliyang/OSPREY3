@@ -1,0 +1,23 @@
+BranchMARK* fast working backup
+Created: 2026-05-17 22:52:58 America/New_York
+
+Purpose:
+- Snapshot of the current usable fast BranchMARK* implementation before adding
+  residual-budget cutoff / K* certification changes.
+- This is distinct from backups/branchmarkstar_sparse_20260517_151953, which
+  explored a fully sparse emat / sparse minimization path and was much slower.
+
+Included:
+- BranchMARKStarBound.java
+- DecompSearchNode.java
+- LambdaAStar.java
+- framework/branch/*.java
+- TestBranchMARKStar.java
+- tracked_dirty.diff for the same files
+
+Notes:
+- Current behavior uses the fast full-emat / full-minimization leaf path with a
+  sparse branch decomposition graph.
+- This version is useful as a performance baseline, but its sparse decomposition
+  Z bounds should not be treated as full-Hamiltonian certificates without an
+  omitted-interaction residual bound.

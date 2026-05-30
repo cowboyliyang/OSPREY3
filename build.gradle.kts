@@ -236,16 +236,21 @@ tasks.withType<Test> {
 	// method call appends additional arguments for the JVM
 	jvmArgs(Jvm.moduleArgs)
 
-	// Forward osprey.* system properties from gradle CLI (-Dosprey.xxx=yyy) to test JVM
+	// Forward osprey.* AND branchmarkstar.* system properties from gradle CLI
+	// (-Dosprey.xxx=yyy / -Dbranchmarkstar.xxx=yyy) to the test JVM. Without
+	// this, properties set on the gradle command line are silently dropped
+	// (the test only sees its own defaults / System.setProperty calls).
 	System.getProperties().forEach { key, value ->
-		if (key.toString().startsWith("osprey.")) {
-			systemProperty(key.toString(), value.toString())
+		val k = key.toString()
+		if (k.startsWith("osprey.") || k.startsWith("branchmarkstar.")) {
+			systemProperty(k, value.toString())
 		}
 	}
 
 	testLogging {
 		setExceptionFormat("full")
-        events("passed", "skipped", "failed")
+        events("passed", "skipped", "failed", "standardOut", "standardError")
+        showStandardStreams = true
 	}
 }
 

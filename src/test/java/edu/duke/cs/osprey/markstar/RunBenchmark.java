@@ -1,5 +1,7 @@
 package edu.duke.cs.osprey.markstar;
 
+import edu.duke.cs.osprey.markstar.bench.GNNStrategyBench;
+
 /**
  * Simple main() entry point to run benchmarkGNNStrategies without JUnit.
  * Usage: java -cp ... edu.duke.cs.osprey.markstar.RunBenchmark
@@ -7,7 +9,6 @@ package edu.duke.cs.osprey.markstar;
  */
 public class RunBenchmark {
     public static void main(String[] args) throws Exception {
-        TestBranchMARKStar test = new TestBranchMARKStar();
-        test.benchmarkGNNStrategies();
+        new GNNStrategyBench().benchmarkGNNStrategies();
     }
 }
