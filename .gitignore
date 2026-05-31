@@ -61,3 +61,7 @@ transfer-tensor/
 *.confdb
 *.conf.db
 /run_*.slurm
+
+# JVM crash artifacts
+hs_err_pid*.log
+replay_pid*.log
