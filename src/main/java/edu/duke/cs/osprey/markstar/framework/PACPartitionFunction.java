@@ -56,13 +56,20 @@ public class PACPartitionFunction {
     private static final String PAC_CONFIDENCE_PROPERTY = "branchmarkstar.pac.confidence";
     private static final String DP_CACHE_ENABLED_PROPERTY = "branchmarkstar.dp.cache";
     private static final String DP_CACHE_MAX_ENTRIES_PROPERTY = "branchmarkstar.dp.cache.maxEntries";
+    private static final String DP_CACHE_MAX_TABLE_BYTES_PROPERTY = "branchmarkstar.dp.cache.maxTableBytes";
+    private static final String DP_CACHE_MAX_TOTAL_BYTES_PROPERTY = "branchmarkstar.dp.cache.maxTotalBytes";
+    private static final String DP_CACHE_SKIP_IF_M_STATES_PROPERTY = "branchmarkstar.dp.cache.skipIfMStates";
     private static final int DEFAULT_SAMPLES = 500;
     private static final double DEFAULT_CONFIDENCE = 0.05; // delta = 0.05 => 95% confidence
     private static final int DEFAULT_DP_CACHE_MAX_ENTRIES = 20000;
+    private static final long DEFAULT_DP_CACHE_MAX_TABLE_BYTES = 256L * 1024L * 1024L;
+    private static final long DEFAULT_DP_CACHE_MAX_TOTAL_BYTES = 4L * 1024L * 1024L * 1024L;
+    private static final long DEFAULT_DP_CACHE_SKIP_IF_M_STATES = 8_000_000L;
 
     private static final Object CORRECTED_DP_CACHE_LOCK = new Object();
     private static final LinkedHashMap<String, CachedDPTable> CORRECTED_DP_CACHE =
             new LinkedHashMap<>(1024, 0.75f, true);
+    private static long correctedDPCacheBytes = 0L;
 
     // Inputs
     private final RootedTreeNode rootedRoot;
@@ -80,11 +87,16 @@ public class PACPartitionFunction {
     private final double delta; // confidence parameter
     private final boolean dpCacheEnabled;
     private final int dpCacheMaxEntries;
+    private final long dpCacheMaxTableBytes;
+    private final long dpCacheMaxTotalBytes;
+    private final long dpCacheSkipIfMStates;
 
     // Results
     private BigDecimal zLower;
     private BigDecimal zUpper;
     private double epsilon;
+    private double logZLowerPAC;
+    private double logZUpperPAC;
     private int totalCCDCalls;
 
     // Original logZ_min before Phase 4 modifies DP tables
@@ -123,15 +135,23 @@ public class PACPartitionFunction {
         this.dpCacheEnabled = getConfigBoolean(DP_CACHE_ENABLED_PROPERTY, true);
         this.dpCacheMaxEntries = Math.max(0,
                 getConfigInteger(DP_CACHE_MAX_ENTRIES_PROPERTY, DEFAULT_DP_CACHE_MAX_ENTRIES));
+        this.dpCacheMaxTableBytes = Math.max(0L,
+                getConfigBytes(DP_CACHE_MAX_TABLE_BYTES_PROPERTY, DEFAULT_DP_CACHE_MAX_TABLE_BYTES));
+        this.dpCacheMaxTotalBytes = Math.max(0L,
+                getConfigBytes(DP_CACHE_MAX_TOTAL_BYTES_PROPERTY, DEFAULT_DP_CACHE_MAX_TOTAL_BYTES));
+        this.dpCacheSkipIfMStates = Math.max(0L,
+                getConfigLong(DP_CACHE_SKIP_IF_M_STATES_PROPERTY, DEFAULT_DP_CACHE_SKIP_IF_M_STATES));
     }
 
     private static class CachedDPTable {
         final double[] lower;
         final double[] upper;
+        final long bytes;
 
-        CachedDPTable(double[] lower, double[] upper) {
+        CachedDPTable(double[] lower, double[] upper, long bytes) {
             this.lower = lower;
             this.upper = upper;
+            this.bytes = bytes;
         }
     }
 
@@ -139,6 +159,8 @@ public class PACPartitionFunction {
         int hits = 0;
         int misses = 0;
         int stores = 0;
+        int skippedLarge = 0;
+        int evictions = 0;
     }
 
     private static class CorrectedDPResult {
@@ -171,6 +193,72 @@ public class PACPartitionFunction {
                     + "': '" + value + "', using " + defaultValue + ".");
             return defaultValue;
         }
+    }
+
+    private static long getConfigLong(String key, long defaultValue) {
+        String value = getConfigProperty(key, null);
+        if (value == null || value.trim().isEmpty()) {
+            return defaultValue;
+        }
+        try {
+            return Long.parseLong(value.trim());
+        } catch (NumberFormatException e) {
+            System.err.println("[PAC] Invalid long for '" + key
+                    + "': '" + value + "', using " + defaultValue + ".");
+            return defaultValue;
+        }
+    }
+
+    private static long getConfigBytes(String key, long defaultValue) {
+        String value = getConfigProperty(key, null);
+        if (value == null || value.trim().isEmpty()) {
+            return defaultValue;
+        }
+        try {
+            return parseByteCount(value.trim());
+        } catch (NumberFormatException e) {
+            System.err.println("[PAC] Invalid byte count for '" + key
+                    + "': '" + value + "', using " + defaultValue + ".");
+            return defaultValue;
+        }
+    }
+
+    private static long parseByteCount(String value) {
+        String normalized = value.trim().toLowerCase(Locale.ROOT).replace("_", "");
+        long multiplier = 1L;
+        if (normalized.endsWith("kib")) {
+            multiplier = 1024L;
+            normalized = normalized.substring(0, normalized.length() - 3);
+        } else if (normalized.endsWith("kb") || normalized.endsWith("k")) {
+            multiplier = 1024L;
+            normalized = normalized.replaceAll("kb?$", "");
+        } else if (normalized.endsWith("mib")) {
+            multiplier = 1024L * 1024L;
+            normalized = normalized.substring(0, normalized.length() - 3);
+        } else if (normalized.endsWith("mb") || normalized.endsWith("m")) {
+            multiplier = 1024L * 1024L;
+            normalized = normalized.replaceAll("mb?$", "");
+        } else if (normalized.endsWith("gib")) {
+            multiplier = 1024L * 1024L * 1024L;
+            normalized = normalized.substring(0, normalized.length() - 3);
+        } else if (normalized.endsWith("gb") || normalized.endsWith("g")) {
+            multiplier = 1024L * 1024L * 1024L;
+            normalized = normalized.replaceAll("gb?$", "");
+        } else if (normalized.endsWith("tib")) {
+            multiplier = 1024L * 1024L * 1024L * 1024L;
+            normalized = normalized.substring(0, normalized.length() - 3);
+        } else if (normalized.endsWith("tb") || normalized.endsWith("t")) {
+            multiplier = 1024L * 1024L * 1024L * 1024L;
+            normalized = normalized.replaceAll("tb?$", "");
+        } else if (normalized.endsWith("b")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+
+        double amount = Double.parseDouble(normalized.trim());
+        if (amount < 0 || amount > Long.MAX_VALUE / (double) multiplier) {
+            throw new NumberFormatException(value);
+        }
+        return (long) (amount * multiplier);
     }
 
     private static boolean getConfigBoolean(String key, boolean defaultValue) {
@@ -254,7 +342,9 @@ public class PACPartitionFunction {
                 + " CCD calls, epsilon=" + String.format("%.6f", epsilon)
                 + ", confidence=" + String.format("%.2f%%", (1.0 - delta) * 100));
         System.out.println("[PAC] Z bounds: lower=" + String.format("%.6e", zLower.doubleValue())
-                + ", upper=" + String.format("%.6e", zUpper.doubleValue()));
+                + ", upper=" + String.format("%.6e", zUpper.doubleValue())
+                + ", log10Lower=" + formatLog10(logZLowerPAC)
+                + ", log10Upper=" + formatLog10(logZUpperPAC));
 
         return epsilon;
     }
@@ -347,12 +437,11 @@ public class PACPartitionFunction {
         int totalLambda = edge.getTotalLambdaStates();
         double[] logWeights = new double[totalLambda];
 
-        double[][] fullEnergyMin = edge.getFullEnergyMin();
-
         if (!edge.hasFsetChildren()) {
-            // Leaf edge: weight = exp(-fullEnergyMin[mIdx][lIdx]/RT)
+            // Leaf edge: weight = exp(-fullEnergyMin/RT). The energy table may be
+            // streamed/on-demand instead of materialized as [M x lambda].
             for (int lIdx = 0; lIdx < totalLambda; lIdx++) {
-                logWeights[lIdx] = -fullEnergyMin[mIdx][lIdx] / RT;
+                logWeights[lIdx] = -edge.getFullEnergyMin(mIdx, lIdx) / RT;
             }
         } else {
             // Non-leaf edge: weight = exp(-localEnergy/RT) * product of child Z_upper
@@ -717,9 +806,10 @@ public class PACPartitionFunction {
             stats.hits++;
         } else {
             edge.computeFullDP();
-            putCorrectedCachedDPTable(key, edge.getLogZLower(), edge.getLogZUpper());
+            if (putCorrectedCachedDPTable(key, edge.getLogZLower(), edge.getLogZUpper(), stats)) {
+                stats.stores++;
+            }
             stats.misses++;
-            stats.stores++;
         }
         edgeKeys.put(edge, key);
     }
@@ -729,36 +819,89 @@ public class PACPartitionFunction {
             CachedDPTable cached = CORRECTED_DP_CACHE.get(key);
             if (cached == null) return null;
             if (cached.lower.length != expectedLength || cached.upper.length != expectedLength) {
-                CORRECTED_DP_CACHE.remove(key);
+                removeCorrectedCachedDPTable(key, cached);
                 return null;
             }
             return cached;
         }
     }
 
-    private void putCorrectedCachedDPTable(String key, double[] lower, double[] upper) {
+    private boolean putCorrectedCachedDPTable(String key, double[] lower, double[] upper,
+                                              DPCacheStats stats) {
+        long tableBytes = estimateDPTableBytes(lower.length);
+        if (lower.length >= dpCacheSkipIfMStates
+                || tableBytes > dpCacheMaxTableBytes
+                || tableBytes > dpCacheMaxTotalBytes) {
+            stats.skippedLarge++;
+            return false;
+        }
+
         synchronized (CORRECTED_DP_CACHE_LOCK) {
+            CachedDPTable previous = CORRECTED_DP_CACHE.remove(key);
+            if (previous != null) {
+                correctedDPCacheBytes -= previous.bytes;
+            }
+
             CORRECTED_DP_CACHE.put(key, new CachedDPTable(
                     Arrays.copyOf(lower, lower.length),
-                    Arrays.copyOf(upper, upper.length)));
-            while (CORRECTED_DP_CACHE.size() > dpCacheMaxEntries) {
+                    Arrays.copyOf(upper, upper.length),
+                    tableBytes));
+            correctedDPCacheBytes += tableBytes;
+
+            while (CORRECTED_DP_CACHE.size() > dpCacheMaxEntries
+                    || correctedDPCacheBytes > dpCacheMaxTotalBytes) {
                 Iterator<String> it = CORRECTED_DP_CACHE.keySet().iterator();
                 if (!it.hasNext()) break;
-                it.next();
+                String evictKey = it.next();
+                CachedDPTable evicted = CORRECTED_DP_CACHE.get(evictKey);
                 it.remove();
+                if (evicted != null) {
+                    correctedDPCacheBytes -= evicted.bytes;
+                }
+                stats.evictions++;
             }
         }
+        return true;
+    }
+
+    private static void removeCorrectedCachedDPTable(String key, CachedDPTable cached) {
+        CORRECTED_DP_CACHE.remove(key);
+        correctedDPCacheBytes -= cached.bytes;
+    }
+
+    private static long estimateDPTableBytes(int mStates) {
+        return 2L * (long) mStates * (long) Double.BYTES;
+    }
+
+    private static String formatBytes(long bytes) {
+        if (bytes < 1024L) {
+            return bytes + " B";
+        }
+        double value = bytes / 1024.0;
+        String[] units = {"KiB", "MiB", "GiB", "TiB"};
+        int unit = 0;
+        while (value >= 1024.0 && unit < units.length - 1) {
+            value /= 1024.0;
+            unit++;
+        }
+        return String.format(Locale.ROOT, "%.1f %s", value, units[unit]);
     }
 
     private String formatDPCacheStats(DPCacheStats stats) {
         if (stats == null) return "";
         int size;
+        long bytes;
         synchronized (CORRECTED_DP_CACHE_LOCK) {
             size = CORRECTED_DP_CACHE.size();
+            bytes = correctedDPCacheBytes;
         }
         return ", correctedDPCacheHits=" + stats.hits
                 + ", correctedDPCacheMisses=" + stats.misses
-                + ", correctedDPCacheSize=" + size;
+                + ", correctedDPCacheStores=" + stats.stores
+                + ", correctedDPCacheSkippedLarge=" + stats.skippedLarge
+                + ", correctedDPCacheEvictions=" + stats.evictions
+                + ", correctedDPCacheSize=" + size
+                + ", correctedDPCacheBytes=" + formatBytes(bytes);
     }
 
     private String makeCorrectedDPCacheNamespace() {
@@ -900,8 +1043,13 @@ public class PACPartitionFunction {
                                   EnergyMatrix correctedEmat,
                                   double logZCorrected) {
         int N = ccdResults.size();
-        double[] phiValues = new double[N];    // phi(c) = exp(-g/kT), the basic IS weight
-        double[] alphaValues = new double[N];  // alpha(c) = exp(-eta/kT), the control variate
+        if (N == 0) {
+            setZeroBounds("PAC has no valid CCD samples");
+            return;
+        }
+
+        double[] logPhiValues = new double[N];    // log phi(c) = -g/kT
+        double[] logAlphaValues = new double[N];  // log alpha(c) = -eta/kT
         double[] residuals = new double[N];    // residual = g - eta (for diagnostics)
 
         for (int i = 0; i < N; i++) {
@@ -910,17 +1058,34 @@ public class PACPartitionFunction {
             double eta = computeFullConfPairwiseEnergy(result.conf, correctedEmat)
                     - result.eMin;  // eta(c) = E_corrected - E_min
             residuals[i] = g - eta;
-            phiValues[i] = Math.exp(-g / RT);
-            alphaValues[i] = Math.exp(-eta / RT);
+            logPhiValues[i] = -g / RT;
+            logAlphaValues[i] = -eta / RT;
         }
 
         // E_p[alpha] = Z_corrected / Z_min (exact from DP)
         // logZMinOriginal was saved before Phase 4 modified the DP tables.
-        double logRatio = logZCorrected - logZMinOriginal;
-        double expectedAlpha = Math.exp(logRatio);
-        if (Double.isNaN(logRatio) || Double.isNaN(expectedAlpha)) {
+        double logExpectedAlpha = logZCorrected - logZMinOriginal;
+        if (!Double.isFinite(logExpectedAlpha)) {
             setZeroBounds("corrected/min DP ratio is NaN");
             return;
+        }
+
+        double weightShift = logExpectedAlpha;
+        for (int i = 0; i < N; i++) {
+            weightShift = Math.max(weightShift, logPhiValues[i]);
+            weightShift = Math.max(weightShift, logAlphaValues[i]);
+        }
+        if (!Double.isFinite(weightShift)) {
+            setZeroBounds("PAC sample weights are non-finite");
+            return;
+        }
+        double expectedAlpha = Math.exp(logExpectedAlpha - weightShift);
+
+        double[] phiValues = new double[N];    // shifted by exp(-weightShift)
+        double[] alphaValues = new double[N];  // shifted by exp(-weightShift)
+        for (int i = 0; i < N; i++) {
+            phiValues[i] = Math.exp(logPhiValues[i] - weightShift);
+            alphaValues[i] = Math.exp(logAlphaValues[i] - weightShift);
         }
 
         // Compute optimal beta for control variate: beta* = Cov(phi, alpha) / Var(alpha)
@@ -939,15 +1104,20 @@ public class PACPartitionFunction {
             covPhiAlpha += dPhi * dAlpha;
             varAlpha += dAlpha * dAlpha;
         }
-        covPhiAlpha /= (N - 1);
-        varAlpha /= (N - 1);
+        if (N > 1) {
+            covPhiAlpha /= (N - 1);
+            varAlpha /= (N - 1);
+        } else {
+            covPhiAlpha = 0.0;
+            varAlpha = 0.0;
+        }
 
         double beta = (varAlpha > 1e-30) ? covPhiAlpha / varAlpha : 0.0;
 
         // Compute control-variate-adjusted values: phi_cv = phi - beta*(alpha - E[alpha])
         double[] phiCV = new double[N];
         double sumCV = 0, sumCV2 = 0;
-        double minCV = Double.MAX_VALUE, maxCV = Double.MIN_VALUE;
+        double minCV = Double.MAX_VALUE, maxCV = -Double.MAX_VALUE;
         for (int i = 0; i < N; i++) {
             phiCV[i] = phiValues[i] - beta * (alphaValues[i] - expectedAlpha);
             sumCV += phiCV[i];
@@ -957,7 +1127,7 @@ public class PACPartitionFunction {
         }
 
         double meanCV = sumCV / N;
-        double varCV = Math.max(0, (sumCV2 - N * meanCV * meanCV) / (N - 1));
+        double varCV = N > 1 ? Math.max(0, (sumCV2 - N * meanCV * meanCV) / (N - 1)) : 0.0;
         double rangeCV = maxCV - minCV;
 
         // Residual diagnostics (for reporting)
@@ -967,10 +1137,14 @@ public class PACPartitionFunction {
             sumRes2 += residuals[i] * residuals[i];
         }
         meanResidual = sumRes / N;
-        stdResidual = Math.sqrt(Math.max(0, (sumRes2 - N * meanResidual * meanResidual) / (N - 1)));
+        stdResidual = N > 1
+                ? Math.sqrt(Math.max(0, (sumRes2 - N * meanResidual * meanResidual) / (N - 1)))
+                : 0.0;
 
-        // Also compute basic phi stats for reporting
-        meanPsi = meanPhi; // report the basic IS mean as "meanPsi" for backward compatibility
+        // Also compute basic phi stats for reporting. meanPsi is unshifted when
+        // representable as a double; log10 bounds above are the authoritative
+        // diagnostics for extreme cases.
+        meanPsi = shiftedMeanToDouble(meanPhi, weightShift);
         double varPhi = Math.max(0, (phiValues.length > 1 ?
                 (Arrays.stream(phiValues).map(x -> (x - meanPhi) * (x - meanPhi)).sum()) / (N - 1) : 0));
         cvPsi = (meanPhi > 0) ? Math.sqrt(varPhi) / meanPhi : Double.MAX_VALUE;
@@ -988,22 +1162,27 @@ public class PACPartitionFunction {
         }
 
         // Z = Z_min * E_p[phi] = Z_min * E_p[phi_cv]  (unbiased)
-        // Z_lower = Z_min * (meanCV - Delta)
-        // Z_upper = Z_min * (meanCV + Delta)
-        BigDecimal zMin = bigExpFromLog(logZMinOriginal);
-
+        // The confidence interval is still in the shifted scale. Convert by
+        // adding weightShift in log-space instead of multiplying tiny doubles.
         double cvBarLower = Math.max(0, meanCV - boundDelta);
         double cvBarUpper = meanCV + boundDelta;
-        if (!Double.isFinite(cvBarLower) || !Double.isFinite(cvBarUpper) || cvBarUpper < 0) {
+        if (!Double.isFinite(cvBarLower) || !Double.isFinite(cvBarUpper) || cvBarUpper <= 0) {
             setZeroBounds("PAC confidence interval is non-finite");
             return;
         }
 
-        zLower = zMin.multiply(BigDecimal.valueOf(cvBarLower), PartitionFunction.decimalPrecision);
-        zUpper = zMin.multiply(BigDecimal.valueOf(cvBarUpper), PartitionFunction.decimalPrecision);
+        logZLowerPAC = cvBarLower > 0
+                ? logZMinOriginal + weightShift + Math.log(cvBarLower)
+                : Double.NEGATIVE_INFINITY;
+        logZUpperPAC = logZMinOriginal + weightShift + Math.log(cvBarUpper);
 
-        if (zUpper.compareTo(BigDecimal.ZERO) > 0) {
-            epsilon = 1.0 - zLower.doubleValue() / zUpper.doubleValue();
+        zLower = bigExpFromLog(logZLowerPAC);
+        zUpper = bigExpFromLog(logZUpperPAC);
+
+        if (Double.isFinite(logZLowerPAC) && Double.isFinite(logZUpperPAC)) {
+            epsilon = 1.0 - Math.exp(logZLowerPAC - logZUpperPAC);
+            if (epsilon < 0.0 && epsilon > -1e-12) epsilon = 0.0;
+            if (epsilon > 1.0 && epsilon < 1.0 + 1e-12) epsilon = 1.0;
         } else {
             epsilon = 1.0;
         }
@@ -1015,7 +1194,10 @@ public class PACPartitionFunction {
                 + ", varPhi=" + String.format("%.6f", varPhi)
                 + ", vrRatio=" + String.format("%.4f", vrRatio)
                 + ", beta=" + String.format("%.4f", beta)
-                + ", E[alpha]=" + String.format("%.6f", expectedAlpha)
+                + ", logEAlpha=" + String.format("%.6f", logExpectedAlpha)
+                + ", weightShift=" + String.format("%.6f", weightShift)
+                + ", log10ZLower=" + formatLog10(logZLowerPAC)
+                + ", log10ZUpper=" + formatLog10(logZUpperPAC)
                 + ", N=" + N);
     }
 
@@ -1043,6 +1225,18 @@ public class PACPartitionFunction {
     }
 
     // ========== Utility methods ==========
+
+    private double shiftedMeanToDouble(double shiftedMean, double shift) {
+        if (shiftedMean <= 0.0) return 0.0;
+        return Math.exp(shift + Math.log(shiftedMean));
+    }
+
+    private static String formatLog10(double logZ) {
+        if (logZ == Double.NEGATIVE_INFINITY) return "-inf";
+        if (logZ == Double.POSITIVE_INFINITY) return "+inf";
+        if (Double.isNaN(logZ)) return "NaN";
+        return String.format(Locale.ROOT, "%.6f", logZ / Math.log(10.0));
+    }
 
     /**
      * Compute full conformation pairwise energy from an energy matrix.
@@ -1101,6 +1295,8 @@ public class PACPartitionFunction {
         System.out.println("[PAC] WARNING: " + reason + "; returning zero Z bounds");
         zLower = BigDecimal.ZERO;
         zUpper = BigDecimal.ZERO;
+        logZLowerPAC = Double.NEGATIVE_INFINITY;
+        logZUpperPAC = Double.NEGATIVE_INFINITY;
         epsilon = 1.0;
         meanPsi = 0.0;
         varPsi = 0.0;

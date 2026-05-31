@@ -75,6 +75,7 @@ public class BranchMARKStarBound extends MARKStarBound {
     private static final String EDGE_LOOKAHEAD_PARALLEL_PROPERTY = "branchmarkstar.edgeSelection.parallelLookahead";
     private static final String ROOT_SPLIT_PROPERTY = "branchmarkstar.rootSplit";
     private static final String ROOT_SPLIT_MAX_FSET_PROPERTY = "branchmarkstar.rootSplit.maxFset";
+    private static final String MUTABLE_POSITIONS_PROPERTY = "branchmarkstar.mutablePositions";
     private static final String PARALLEL_INTERNAL_PROPERTY = "branchmarkstar.parallel.internal";
     private static final String PARALLEL_ENUMERATION_PROPERTY = "branchmarkstar.parallel.enumeration";
     private static final String NUMERIC_AUDIT_PROPERTY = "branchmarkstar.numericAudit";
@@ -99,8 +100,14 @@ public class BranchMARKStarBound extends MARKStarBound {
     private static final String PAC_ENABLED_PROPERTY = "branchmarkstar.usePAC";
     private static final String DP_CACHE_ENABLED_PROPERTY = "branchmarkstar.dp.cache";
     private static final String DP_CACHE_MAX_ENTRIES_PROPERTY = "branchmarkstar.dp.cache.maxEntries";
+    private static final String DP_CACHE_MAX_TABLE_BYTES_PROPERTY = "branchmarkstar.dp.cache.maxTableBytes";
+    private static final String DP_CACHE_MAX_TOTAL_BYTES_PROPERTY = "branchmarkstar.dp.cache.maxTotalBytes";
+    private static final String DP_CACHE_SKIP_IF_M_STATES_PROPERTY = "branchmarkstar.dp.cache.skipIfMStates";
     private static final String PAC_RESTORE_DP_PROPERTY = "branchmarkstar.pac.restoreDP";
     private static final int DEFAULT_DP_CACHE_MAX_ENTRIES = 20000;
+    private static final long DEFAULT_DP_CACHE_MAX_TABLE_BYTES = 256L * 1024L * 1024L;
+    private static final long DEFAULT_DP_CACHE_MAX_TOTAL_BYTES = 4L * 1024L * 1024L * 1024L;
+    private static final long DEFAULT_DP_CACHE_SKIP_IF_M_STATES = 8_000_000L;
 
     private enum EdgeSelectionStrategy {
         LAMBDA_STATES,
@@ -242,7 +249,11 @@ public class BranchMARKStarBound extends MARKStarBound {
     private final boolean usePAC;
     private final boolean dpCacheEnabled;
     private final int dpCacheMaxEntries;
+    private final long dpCacheMaxTableBytes;
+    private final long dpCacheMaxTotalBytes;
+    private final long dpCacheSkipIfMStates;
     private final boolean pacRestoreDP;
+    private DPTableTooLargeException dpTooLargeException = null;
     /**
      * Energy matrices used by ALL pfunc-relevant operations under SPARSE mode:
      * scorers, A*, computeFullConfPairwiseEnergy, breakdownScoreByPosition,
@@ -267,14 +278,17 @@ public class BranchMARKStarBound extends MARKStarBound {
     private static final Object DP_TABLE_CACHE_LOCK = new Object();
     private static final LinkedHashMap<String, CachedDPTable> DP_TABLE_CACHE =
             new LinkedHashMap<>(1024, 0.75f, true);
+    private static long dpTableCacheBytes = 0L;
 
     private static class CachedDPTable {
         final double[] lower;
         final double[] upper;
+        final long bytes;
 
-        CachedDPTable(double[] lower, double[] upper) {
+        CachedDPTable(double[] lower, double[] upper, long bytes) {
             this.lower = lower;
             this.upper = upper;
+            this.bytes = bytes;
         }
     }
 
@@ -282,6 +296,8 @@ public class BranchMARKStarBound extends MARKStarBound {
         int hits = 0;
         int misses = 0;
         int stores = 0;
+        int skippedLarge = 0;
+        int evictions = 0;
     }
 
     // Whether branch decomposition is active
@@ -503,10 +519,15 @@ public class BranchMARKStarBound extends MARKStarBound {
         final int branchingEdges;
         final int totalFsetEdges;
         final int rootFsetSize;
+        final int reusableLambdaEdges;
+        final double reusableLogWork;
+        final double totalLogWork;
 
         RootingCandidate(RootedTreeNode root, int splitEdgeIndex, double logTESS,
                          int lambdaEdges, int maxFsetSize, int branchingEdges,
-                         int totalFsetEdges, int rootFsetSize) {
+                         int totalFsetEdges, int rootFsetSize,
+                         int reusableLambdaEdges, double reusableLogWork,
+                         double totalLogWork) {
             this.root = root;
             this.splitEdgeIndex = splitEdgeIndex;
             this.logTESS = logTESS;
@@ -515,6 +536,19 @@ public class BranchMARKStarBound extends MARKStarBound {
             this.branchingEdges = branchingEdges;
             this.totalFsetEdges = totalFsetEdges;
             this.rootFsetSize = rootFsetSize;
+            this.reusableLambdaEdges = reusableLambdaEdges;
+            this.reusableLogWork = reusableLogWork;
+            this.totalLogWork = totalLogWork;
+        }
+
+        double reusableEdgeRatio() {
+            return lambdaEdges == 0 ? 0.0 : (double) reusableLambdaEdges / (double) lambdaEdges;
+        }
+
+        double reusableWorkRatio() {
+            if (reusableLogWork == Double.NEGATIVE_INFINITY) return 0.0;
+            if (totalLogWork == Double.NEGATIVE_INFINITY) return 0.0;
+            return Math.exp(reusableLogWork - totalLogWork);
         }
     }
 
@@ -600,6 +634,12 @@ public class BranchMARKStarBound extends MARKStarBound {
         this.dpCacheEnabled = getConfigBoolean(DP_CACHE_ENABLED_PROPERTY, true);
         this.dpCacheMaxEntries = Math.max(0,
                 getConfigInteger(DP_CACHE_MAX_ENTRIES_PROPERTY, DEFAULT_DP_CACHE_MAX_ENTRIES));
+        this.dpCacheMaxTableBytes = Math.max(0L,
+                getConfigBytes(DP_CACHE_MAX_TABLE_BYTES_PROPERTY, DEFAULT_DP_CACHE_MAX_TABLE_BYTES));
+        this.dpCacheMaxTotalBytes = Math.max(0L,
+                getConfigBytes(DP_CACHE_MAX_TOTAL_BYTES_PROPERTY, DEFAULT_DP_CACHE_MAX_TOTAL_BYTES));
+        this.dpCacheSkipIfMStates = Math.max(0L,
+                getConfigLong(DP_CACHE_SKIP_IF_M_STATES_PROPERTY, DEFAULT_DP_CACHE_SKIP_IF_M_STATES));
         this.pacRestoreDP = getConfigBoolean(PAC_RESTORE_DP_PROPERTY, false);
 
         System.out.println("BranchMARK*: Cutoff strategy=" + cutoffStrategy
@@ -620,6 +660,9 @@ public class BranchMARKStarBound extends MARKStarBound {
                 + ", correctionAudit=" + correctionAudit
                 + ", usePAC=" + usePAC
                 + ", dpCache=" + dpCacheEnabled
+                + ", dpCacheMaxTable=" + formatBytes(dpCacheMaxTableBytes)
+                + ", dpCacheMaxTotal=" + formatBytes(dpCacheMaxTotalBytes)
+                + ", dpCacheSkipIfMStates=" + dpCacheSkipIfMStates
                 + ", parallelInternal=" + parallelInternal + " [DEPRECATED]"
                 + ", parallelEnumeration=" + parallelEnumeration + " [DEPRECATED]");
         if (regionAtomEnabled) {
@@ -681,7 +724,14 @@ public class BranchMARKStarBound extends MARKStarBound {
 
         // Step 3: Root the tree. Legacy uses split edge 0; optional strategies
         // can choose a split that exposes multiple pending edges for lookahead.
-        RootingCandidate rooting = selectRooting(rcs);
+        RootingCandidate rooting;
+        try {
+            rooting = selectRooting(rcs);
+        } catch (DPTableTooLargeException e) {
+            dpTooLargeException = e;
+            reportDPTooLarge(e);
+            return;
+        }
         rootedRoot = rooting != null ? rooting.root : null;
         if (rootedRoot == null) {
             System.out.println("BranchMARK*: Empty tree, falling back to standard MARK*.");
@@ -694,7 +744,11 @@ public class BranchMARKStarBound extends MARKStarBound {
                 + ", rootFset=" + rooting.rootFsetSize
                 + ", maxFset=" + rooting.maxFsetSize
                 + ", branchingEdges=" + rooting.branchingEdges
-                + ", totalFsetEdges=" + rooting.totalFsetEdges + ")");
+                + ", totalFsetEdges=" + rooting.totalFsetEdges
+                + ", reusableLambdaEdges=" + rooting.reusableLambdaEdges
+                + ", reusableEdgeRatio=" + String.format("%.4f", rooting.reusableEdgeRatio())
+                + ", reusableWorkRatio=" + String.format("%.4f", rooting.reusableWorkRatio())
+                + ")");
 
         rootedRootEdge = rootedRoot.getLeftChild().getChildOfEdge();
 
@@ -706,6 +760,7 @@ public class BranchMARKStarBound extends MARKStarBound {
         System.out.println("BranchMARK*: Compact tree TESS: logTESS=" + String.format("%.2f", logTESS)
                 + ", logNaive=" + String.format("%.2f", logNaive)
                 + ", ratio=" + String.format("%.4f", tessRatio));
+        logDPMemoryPredictions("initial", logTESS);
 
         if (tessRatio > TESS_FALLBACK_THRESHOLD) {
             if (useSparsePfunc) {
@@ -955,6 +1010,58 @@ public class BranchMARKStarBound extends MARKStarBound {
         }
     }
 
+    private static long getConfigBytes(String key, long defaultValue) {
+        String value = getConfigProperty(key, null);
+        if (value == null || value.trim().isEmpty()) {
+            return defaultValue;
+        }
+        try {
+            return parseByteCount(value.trim());
+        } catch (NumberFormatException e) {
+            System.err.println("BranchMARK*: Invalid byte count for '" + key
+                    + "': '" + value + "', using " + defaultValue + ".");
+            return defaultValue;
+        }
+    }
+
+    private static long parseByteCount(String value) {
+        String normalized = value.trim().toLowerCase(Locale.ROOT).replace("_", "");
+        long multiplier = 1L;
+        if (normalized.endsWith("kib")) {
+            multiplier = 1024L;
+            normalized = normalized.substring(0, normalized.length() - 3);
+        } else if (normalized.endsWith("kb") || normalized.endsWith("k")) {
+            multiplier = 1024L;
+            normalized = normalized.replaceAll("kb?$", "");
+        } else if (normalized.endsWith("mib")) {
+            multiplier = 1024L * 1024L;
+            normalized = normalized.substring(0, normalized.length() - 3);
+        } else if (normalized.endsWith("mb") || normalized.endsWith("m")) {
+            multiplier = 1024L * 1024L;
+            normalized = normalized.replaceAll("mb?$", "");
+        } else if (normalized.endsWith("gib")) {
+            multiplier = 1024L * 1024L * 1024L;
+            normalized = normalized.substring(0, normalized.length() - 3);
+        } else if (normalized.endsWith("gb") || normalized.endsWith("g")) {
+            multiplier = 1024L * 1024L * 1024L;
+            normalized = normalized.replaceAll("gb?$", "");
+        } else if (normalized.endsWith("tib")) {
+            multiplier = 1024L * 1024L * 1024L * 1024L;
+            normalized = normalized.substring(0, normalized.length() - 3);
+        } else if (normalized.endsWith("tb") || normalized.endsWith("t")) {
+            multiplier = 1024L * 1024L * 1024L * 1024L;
+            normalized = normalized.replaceAll("tb?$", "");
+        } else if (normalized.endsWith("b")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+
+        double amount = Double.parseDouble(normalized.trim());
+        if (amount < 0 || amount > Long.MAX_VALUE / (double) multiplier) {
+            throw new NumberFormatException(value);
+        }
+        return (long) (amount * multiplier);
+    }
+
     private static double getConfigDouble(String key, double defaultValue) {
         String value = getConfigProperty(key, null);
         if (value == null || value.trim().isEmpty()) {
@@ -1013,19 +1120,32 @@ public class BranchMARKStarBound extends MARKStarBound {
         }
 
         if (!strategy.equals("branching") && !strategy.equals("maxfset")
-                && !strategy.equals("lookahead")) {
+                && !strategy.equals("lookahead") && !strategy.equals("reuse")) {
             System.err.println("BranchMARK*: Unknown root split strategy '" + rootSplitStrategy
                     + "', using legacy split edge 0.");
             return evaluateRootSplit(rcs, 0, true);
         }
 
         double logNaive = computeLogNaive(rcs);
+        Set<Integer> mutablePositions = identifyMutablePositions(rcs);
+        if (strategy.equals("reuse")) {
+            System.out.println("BranchMARK*: rootSplit=reuse mutablePositions="
+                    + formatPositionsWithResidues(mutablePositions));
+            if (mutablePositions.isEmpty()) {
+                System.out.println("BranchMARK*: rootSplit=reuse found no mutable positions; "
+                        + "falling back to TESS/fset root scoring.");
+            }
+        }
+        boolean useReuseScoring = strategy.equals("reuse") && !mutablePositions.isEmpty();
         RootingCandidate best = null;
         for (int splitIdx = 0; splitIdx < numEdges; splitIdx++) {
             RootingCandidate candidate = evaluateRootSplit(rcs, splitIdx, false);
             if (candidate == null) continue;
             if (candidate.maxFsetSize > rootSplitMaxFset) continue;
-            if (isBetterRooting(candidate, best, logNaive)) {
+            boolean better = useReuseScoring
+                    ? isBetterReuseRooting(candidate, best, logNaive)
+                    : isBetterRooting(candidate, best, logNaive);
+            if (better) {
                 best = candidate;
             }
         }
@@ -1037,7 +1157,16 @@ public class BranchMARKStarBound extends MARKStarBound {
         RootedTreeNode root = branchDecomposition.rootBranchTree(rcs, splitEdgeIndex);
         if (root == null) return null;
 
-        RootedTreeEdge.postOrderCompLlambda(root, initEnumerationArrays);
+        try {
+            RootedTreeEdge.postOrderCompLlambda(root, initEnumerationArrays);
+        } catch (IllegalStateException e) {
+            if (!initEnumerationArrays) {
+                System.err.println("BranchMARK*: Skipping root split edge " + splitEdgeIndex
+                        + " during root selection: " + e.getMessage());
+                return null;
+            }
+            throw e;
+        }
         RootedTreeEdge rootEdge = root.getLeftChild().getChildOfEdge();
         rootEdge.compactTree();
 
@@ -1057,8 +1186,116 @@ public class BranchMARKStarBound extends MARKStarBound {
         }
 
         int rootFsetSize = rootEdge.getFset() == null ? 0 : rootEdge.getFset().size();
+        Set<Integer> mutablePositions = identifyMutablePositions(rcs);
+        ReuseStats reuseStats = computeReuseStats(lambdaEdges, mutablePositions, rcs);
         return new RootingCandidate(root, splitEdgeIndex, rootEdge.computeLogTESS(),
-                lambdaEdges.size(), maxFsetSize, branchingEdges, totalFsetEdges, rootFsetSize);
+                lambdaEdges.size(), maxFsetSize, branchingEdges, totalFsetEdges, rootFsetSize,
+                reuseStats.reusableEdges, reuseStats.reusableLogWork, reuseStats.totalLogWork);
+    }
+
+    private static class ReuseStats {
+        final int reusableEdges;
+        final double reusableLogWork;
+        final double totalLogWork;
+
+        ReuseStats(int reusableEdges, double reusableLogWork, double totalLogWork) {
+            this.reusableEdges = reusableEdges;
+            this.reusableLogWork = reusableLogWork;
+            this.totalLogWork = totalLogWork;
+        }
+    }
+
+    private ReuseStats computeReuseStats(List<RootedTreeEdge> lambdaEdges,
+                                         Set<Integer> mutablePositions, RCs rcs) {
+        int reusableEdges = 0;
+        double reusableLogWork = Double.NEGATIVE_INFINITY;
+        double totalLogWork = Double.NEGATIVE_INFINITY;
+
+        for (RootedTreeEdge edge : lambdaEdges) {
+            double logWork = computeEdgeLogWork(edge, rcs);
+            totalLogWork = RootedTreeEdge.logSumExp(totalLogWork, logWork);
+            if (!edgeSubtreeTouchesMutable(edge, mutablePositions)) {
+                reusableEdges++;
+                reusableLogWork = RootedTreeEdge.logSumExp(reusableLogWork, logWork);
+            }
+        }
+
+        return new ReuseStats(reusableEdges, reusableLogWork, totalLogWork);
+    }
+
+    private double computeEdgeLogWork(RootedTreeEdge edge, RCs rcs) {
+        double logWork = 0.0;
+        for (int pos : edge.getMPositionsSorted()) {
+            logWork += Math.log(Math.max(1, rcs.getNum(pos)));
+        }
+        for (int pos : edge.getLambdaPositionsSorted()) {
+            logWork += Math.log(Math.max(1, rcs.getNum(pos)));
+        }
+        return logWork;
+    }
+
+    private boolean edgeSubtreeTouchesMutable(RootedTreeEdge edge, Set<Integer> mutablePositions) {
+        if (mutablePositions.isEmpty()) return false;
+        for (int pos : edge.getM()) {
+            if (mutablePositions.contains(pos)) return true;
+        }
+        if (edge.getL() != null) {
+            for (int pos : edge.getL()) {
+                if (mutablePositions.contains(pos)) return true;
+            }
+        }
+        return false;
+    }
+
+    private Set<Integer> identifyMutablePositions(RCs rcs) {
+        TreeSet<Integer> mutable = new TreeSet<>();
+
+        String override = getConfigProperty(MUTABLE_POSITIONS_PROPERTY, null);
+        if (override != null && !override.trim().isEmpty()) {
+            for (String field : override.split(",")) {
+                String trimmed = field.trim();
+                if (trimmed.isEmpty()) continue;
+                try {
+                    int pos = Integer.parseInt(trimmed);
+                    if (pos >= 0 && pos < rcs.getNumPos()) {
+                        mutable.add(pos);
+                    } else {
+                        System.err.println("BranchMARK*: Ignoring mutable position " + pos
+                                + " outside [0," + rcs.getNumPos() + ").");
+                    }
+                } catch (NumberFormatException e) {
+                    System.err.println("BranchMARK*: Invalid mutable position '" + trimmed
+                            + "' in " + MUTABLE_POSITIONS_PROPERTY + ", skipping.");
+                }
+            }
+            return mutable;
+        }
+
+        if (confSpace != null && confSpace.positions != null) {
+            int n = Math.min(rcs.getNumPos(), confSpace.positions.size());
+            for (int pos = 0; pos < n; pos++) {
+                if (confSpace.positions.get(pos).hasMutations()) {
+                    mutable.add(pos);
+                }
+            }
+        }
+        return mutable;
+    }
+
+    private String formatPositionsWithResidues(Set<Integer> positions) {
+        if (positions.isEmpty()) return "[]";
+        StringBuilder sb = new StringBuilder("[");
+        boolean first = true;
+        for (int pos : positions) {
+            if (!first) sb.append(',');
+            first = false;
+            sb.append(pos);
+            if (confSpace != null && pos >= 0 && pos < confSpace.positions.size()) {
+                sb.append(':').append(confSpace.positions.get(pos).resNum);
+            }
+        }
+        sb.append(']');
+        return sb.toString();
     }
 
     private static class RegionAtomSpec {
@@ -2069,7 +2306,7 @@ public class BranchMARKStarBound extends MARKStarBound {
                 if (corrected > 0) {
                     // Re-sort lambda indices since energies changed
                     edge.initIncrementalEnumeration(
-                            branchRigidEmat, branchMinimizingEmat, interactionGraph, RT);
+                            branchRigidEmat, branchMinimizingEmat, interactionGraph, RT, true);
                     // Re-apply corrections after re-init (which resets energies)
                     // Actually, let's apply corrections differently - modify after init
                     // For now, just apply corrections to the re-initialized table
@@ -2185,6 +2422,33 @@ public class BranchMARKStarBound extends MARKStarBound {
         return candidate.splitEdgeIndex < best.splitEdgeIndex;
     }
 
+    private boolean isBetterReuseRooting(RootingCandidate candidate, RootingCandidate best,
+                                         double logNaive) {
+        if (best == null) return true;
+
+        boolean candidateValid = Math.exp(candidate.logTESS - logNaive) <= TESS_FALLBACK_THRESHOLD;
+        boolean bestValid = Math.exp(best.logTESS - logNaive) <= TESS_FALLBACK_THRESHOLD;
+        if (candidateValid != bestValid) return candidateValid;
+
+        boolean candidateCapped = candidate.maxFsetSize <= rootSplitMaxFset;
+        boolean bestCapped = best.maxFsetSize <= rootSplitMaxFset;
+        if (candidateCapped != bestCapped) return candidateCapped;
+
+        int workRatioCmp = Double.compare(candidate.reusableWorkRatio(), best.reusableWorkRatio());
+        if (workRatioCmp != 0) return workRatioCmp > 0;
+
+        int reusableEdgesCmp = Integer.compare(candidate.reusableLambdaEdges, best.reusableLambdaEdges);
+        if (reusableEdgesCmp != 0) return reusableEdgesCmp > 0;
+
+        int edgeRatioCmp = Double.compare(candidate.reusableEdgeRatio(), best.reusableEdgeRatio());
+        if (edgeRatioCmp != 0) return edgeRatioCmp > 0;
+
+        int cleanWorkCmp = Double.compare(candidate.reusableLogWork, best.reusableLogWork);
+        if (cleanWorkCmp != 0) return cleanWorkCmp > 0;
+
+        return isBetterRooting(candidate, best, logNaive);
+    }
+
     private double computeLogNaive(RCs rcs) {
         double logNaive = 0.0;
         for (int pos = 0; pos < rcs.getNumPos(); pos++) {
@@ -2193,6 +2457,71 @@ public class BranchMARKStarBound extends MARKStarBound {
             }
         }
         return logNaive;
+    }
+
+    private void reportDPTooLarge(DPTableTooLargeException e) {
+        System.err.println("BranchMARK*: status=TooLargeForDenseDP"
+                + ", state=" + stateName
+                + ", tableState=" + e.stateName
+                + ", mStates=" + e.mStates
+                + ", positions=" + Arrays.toString(e.mPositions)
+                + ", estimatedFinalTableBytes=" + formatBytes(saturatingDPTableBytes(e.mStates))
+                + ". Suggested actions: lower branchwidth/rooting pressure, run with "
+                + "-Dbranchmarkstar.dp.cache=false for dense-only runs, or enable the shard-backed DP table once available.");
+    }
+
+    private void logDPMemoryPredictions(String context, double logTESS) {
+        List<RootedTreeEdge> lambdaEdges = new ArrayList<>();
+        RootedTreeEdge.collectLambdaEdges(rootedRoot, lambdaEdges);
+
+        long totalFinalBytes = 0L;
+        long totalCacheBytes = 0L;
+        for (int edgeId = 0; edgeId < lambdaEdges.size(); edgeId++) {
+            RootedTreeEdge edge = lambdaEdges.get(edgeId);
+            long finalBytes = estimateDPTableBytes(edge.getMArraySize());
+            long cacheBytes = (dpCacheEnabled && dpCacheMaxEntries > 0) ? finalBytes : 0L;
+            totalFinalBytes = saturatingAdd(totalFinalBytes, finalBytes);
+            totalCacheBytes = saturatingAdd(totalCacheBytes, cacheBytes);
+
+            System.out.println("BranchMARK*: DP memory prediction"
+                    + " context=" + context
+                    + ", edgeId=" + edgeId
+                    + ", state=" + stateName
+                    + ", M=" + Arrays.toString(edge.getMPositionsSorted())
+                    + ", lambda=" + Arrays.toString(edge.getLambdaPositionsSorted())
+                    + ", mArraySize=" + edge.getMArraySize()
+                    + ", totalLambdaStates=" + edge.getTotalLambdaStates()
+                    + ", finalTableBytes=" + formatBytes(finalBytes)
+                    + ", cacheCopyBytes=" + formatBytes(cacheBytes)
+                    + ", branchwidth=" + branchwidth
+                    + ", logTESS=" + String.format(Locale.ROOT, "%.2f", logTESS));
+        }
+
+        System.out.println("BranchMARK*: DP memory prediction summary"
+                + " context=" + context
+                + ", state=" + stateName
+                + ", lambdaEdges=" + lambdaEdges.size()
+                + ", totalFinalTableBytes=" + formatBytes(totalFinalBytes)
+                + ", totalCacheCopyBytes=" + formatBytes(totalCacheBytes)
+                + ", dpCache=" + (dpCacheEnabled && dpCacheMaxEntries > 0)
+                + ", dpCacheMaxTable=" + formatBytes(dpCacheMaxTableBytes)
+                + ", dpCacheMaxTotal=" + formatBytes(dpCacheMaxTotalBytes)
+                + ", branchwidth=" + branchwidth
+                + ", logTESS=" + String.format(Locale.ROOT, "%.2f", logTESS));
+    }
+
+    private static long saturatingDPTableBytes(long mStates) {
+        if (mStates > Long.MAX_VALUE / (2L * (long) Double.BYTES)) {
+            return Long.MAX_VALUE;
+        }
+        return 2L * mStates * (long) Double.BYTES;
+    }
+
+    private static long saturatingAdd(long a, long b) {
+        if (Long.MAX_VALUE - a < b) {
+            return Long.MAX_VALUE;
+        }
+        return a + b;
     }
 
     private DPCacheStats computeFullDPTables(String context, boolean allowCache) {
@@ -2226,9 +2555,10 @@ public class BranchMARKStarBound extends MARKStarBound {
             stats.hits++;
         } else {
             edge.computeFullDP();
-            putCachedDPTable(key, edge.getLogZLower(), edge.getLogZUpper());
+            if (putCachedDPTable(key, edge.getLogZLower(), edge.getLogZUpper(), stats)) {
+                stats.stores++;
+            }
             stats.misses++;
-            stats.stores++;
         }
         edgeKeys.put(edge, key);
     }
@@ -2238,36 +2568,89 @@ public class BranchMARKStarBound extends MARKStarBound {
             CachedDPTable cached = DP_TABLE_CACHE.get(key);
             if (cached == null) return null;
             if (cached.lower.length != expectedLength || cached.upper.length != expectedLength) {
-                DP_TABLE_CACHE.remove(key);
+                removeCachedDPTable(key, cached);
                 return null;
             }
             return cached;
         }
     }
 
-    private void putCachedDPTable(String key, double[] lower, double[] upper) {
+    private boolean putCachedDPTable(String key, double[] lower, double[] upper,
+                                     DPCacheStats stats) {
+        long tableBytes = estimateDPTableBytes(lower.length);
+        if (lower.length >= dpCacheSkipIfMStates
+                || tableBytes > dpCacheMaxTableBytes
+                || tableBytes > dpCacheMaxTotalBytes) {
+            stats.skippedLarge++;
+            return false;
+        }
+
         synchronized (DP_TABLE_CACHE_LOCK) {
+            CachedDPTable previous = DP_TABLE_CACHE.remove(key);
+            if (previous != null) {
+                dpTableCacheBytes -= previous.bytes;
+            }
+
             DP_TABLE_CACHE.put(key, new CachedDPTable(
                     Arrays.copyOf(lower, lower.length),
-                    Arrays.copyOf(upper, upper.length)));
-            while (DP_TABLE_CACHE.size() > dpCacheMaxEntries) {
+                    Arrays.copyOf(upper, upper.length),
+                    tableBytes));
+            dpTableCacheBytes += tableBytes;
+
+            while (DP_TABLE_CACHE.size() > dpCacheMaxEntries
+                    || dpTableCacheBytes > dpCacheMaxTotalBytes) {
                 Iterator<String> it = DP_TABLE_CACHE.keySet().iterator();
                 if (!it.hasNext()) break;
-                it.next();
+                String evictKey = it.next();
+                CachedDPTable evicted = DP_TABLE_CACHE.get(evictKey);
                 it.remove();
+                if (evicted != null) {
+                    dpTableCacheBytes -= evicted.bytes;
+                }
+                stats.evictions++;
             }
         }
+        return true;
+    }
+
+    private static void removeCachedDPTable(String key, CachedDPTable cached) {
+        DP_TABLE_CACHE.remove(key);
+        dpTableCacheBytes -= cached.bytes;
+    }
+
+    private static long estimateDPTableBytes(int mStates) {
+        return 2L * (long) mStates * (long) Double.BYTES;
+    }
+
+    private static String formatBytes(long bytes) {
+        if (bytes < 1024L) {
+            return bytes + " B";
+        }
+        double value = bytes / 1024.0;
+        String[] units = {"KiB", "MiB", "GiB", "TiB"};
+        int unit = 0;
+        while (value >= 1024.0 && unit < units.length - 1) {
+            value /= 1024.0;
+            unit++;
+        }
+        return String.format(Locale.ROOT, "%.1f %s", value, units[unit]);
     }
 
     private String formatDPCacheStats(DPCacheStats stats) {
         if (stats == null) return "";
         int size;
+        long bytes;
         synchronized (DP_TABLE_CACHE_LOCK) {
             size = DP_TABLE_CACHE.size();
+            bytes = dpTableCacheBytes;
         }
         return ", dpCacheHits=" + stats.hits
                 + ", dpCacheMisses=" + stats.misses
-                + ", dpCacheSize=" + size;
+                + ", dpCacheStores=" + stats.stores
+                + ", dpCacheSkippedLarge=" + stats.skippedLarge
+                + ", dpCacheEvictions=" + stats.evictions
+                + ", dpCacheSize=" + size
+                + ", dpCacheBytes=" + formatBytes(bytes);
     }
 
     private String makeDPCacheNamespace(String context) {
@@ -2337,7 +2720,8 @@ public class BranchMARKStarBound extends MARKStarBound {
             long dpInitStart = System.currentTimeMillis();
             double rtForDP = BoltzmannCalculator.RClassic * BoltzmannCalculator.TClassic;
             RootedTreeEdge.postOrderInitIncremental(rootedRoot,
-                    branchRigidEmat, branchMinimizingEmat, interactionGraph, rtForDP);
+                    branchRigidEmat, branchMinimizingEmat, interactionGraph, rtForDP,
+                    regionAtomCertifyUseDP);
             DPCacheStats dpCacheStats = computeFullDPTables("initial", !regionAtomCertifyUseDP);
 
             // Region-atom DP-level integration: apply certified corrections
@@ -4169,6 +4553,14 @@ public class BranchMARKStarBound extends MARKStarBound {
 
     @Override
     public void compute(int maxNumConfs) {
+        if (dpTooLargeException != null) {
+            reportDPTooLarge(dpTooLargeException);
+            values = new Values();
+            values.qprime = MathTools.BigPositiveInfinity;
+            setStatus(Status.Aborted);
+            return;
+        }
+
         if (!useBranchDecomposition) {
             super.compute(maxNumConfs);
             return;

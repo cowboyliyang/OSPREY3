@@ -769,6 +769,9 @@ public class BranchDecomposition {
         if (bt.getNumEdges() == 0) {
             return null;
         }
+        if (bt.getNumEdges() == 1) {
+            return rootSingleEdgeTree(rcs);
+        }
         if (splitEdgeIndex < 0 || splitEdgeIndex >= bt.getNumEdges()) {
             throw new IllegalArgumentException("Invalid branch decomposition split edge index "
                     + splitEdgeIndex + " for " + bt.getNumEdges() + " edges");
@@ -827,6 +830,27 @@ public class BranchDecomposition {
         return root;
     }
 
+    private RootedTreeNode rootSingleEdgeTree(RCs rcs) {
+        BranchEdge onlyEdge = bt.getEdge(0);
+        BranchNode n1 = onlyEdge.getn1();
+        BranchNode n2 = onlyEdge.getn2();
+        BranchNode leaf = n1.getIsLeaf() ? n1 : (n2.getIsLeaf() ? n2 : null);
+        if (leaf == null) {
+            throw new RuntimeException("Single-edge branch tree has no leaf endpoint");
+        }
+
+        RootedTreeNode root = new RootedTreeNode(-3, false, -1, -1);
+        RootedTreeNode leafNode = new RootedTreeNode(
+                leaf.getIndex(), true, leaf.getPos1(), leaf.getPos2());
+        RootedTreeEdge rootEdge = new RootedTreeEdge(
+                root, leafNode, new LinkedHashSet<>(), true, rcs);
+
+        leafNode.setChildOfEdge(rootEdge);
+        leafNode.setParent(root);
+        root.setLeftChild(leafNode);
+        return root;
+    }
+
     /**
      * For an internal node that already has its parent set,
      * find the 2 remaining incident edges in the unrooted tree
@@ -846,13 +870,14 @@ public class BranchDecomposition {
             }
         }
 
-        // Internal nodes in a binary tree should have exactly 2 remaining edges
-        if (childEdgeIndices.size() != 2) {
+        // Degenerate decompositions for tiny sparse graphs can produce unary
+        // internal nodes. Keep those rooted instead of failing before DP starts.
+        if (childEdgeIndices.size() > 2) {
             throw new RuntimeException("Internal node " + nodeIdx + " has " + childEdgeIndices.size()
-                    + " remaining edges (expected 2)");
+                    + " remaining edges (expected <= 2)");
         }
 
-        for (int side = 0; side < 2; side++) {
+        for (int side = 0; side < childEdgeIndices.size(); side++) {
             int edgeIdx = childEdgeIndices.get(side);
             usedEdges.add(edgeIdx);
             BranchEdge be = bt.getEdge(edgeIdx);

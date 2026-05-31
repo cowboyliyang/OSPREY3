@@ -20,6 +20,8 @@ EPSILON=${EPSILON:-0.68}
 PAC_SAMPLES=${PAC_SAMPLES:-500}
 PAC_CONFIDENCE=${PAC_CONFIDENCE:-0.05}
 NUM_CPUS=${NUM_CPUS:-104}
+DP_CACHE=${DP_CACHE:-false}
+EXTRA_JVM_ARGS="${EXTRA_JVM_ARGS:-} -XX:-UseSuperWord"
 
 echo "=============================================="
 echo "PAC Partition Function Estimation"
@@ -30,6 +32,7 @@ echo "  EPSILON=$EPSILON"
 echo "  PAC_SAMPLES=$PAC_SAMPLES"
 echo "  PAC_CONFIDENCE=$PAC_CONFIDENCE  (=> $(echo "scale=0; (1-$PAC_CONFIDENCE)*100" | bc)% confidence)"
 echo "  NUM_CPUS=$NUM_CPUS"
+echo "  DP_CACHE=$DP_CACHE"
 echo "=============================================="
 
 cd /home/users/lz280/IdeaProjects/OSPREY3
@@ -50,12 +53,14 @@ echo ""
 JARGS="--add-opens java.base/java.util=ALL-UNNAMED \
        --add-opens java.base/java.lang=ALL-UNNAMED \
        --add-opens java.base/java.lang.invoke=ALL-UNNAMED \
-       -Xms8g -Xmx400g"
+       -Xms8g -Xmx400g \
+       $EXTRA_JVM_ARGS"
 
 $JAVA $JARGS \
     -Dbranchmarkstar.test.numFlexible="$NUM_FLEXIBLE" \
     -Dbranchmarkstar.test.epsilon="$EPSILON" \
     -Dbranchmarkstar.usePAC=true \
+    -Dbranchmarkstar.dp.cache="$DP_CACHE" \
     -Dbranchmarkstar.pac.samples="$PAC_SAMPLES" \
     -Dbranchmarkstar.pac.confidence="$PAC_CONFIDENCE" \
     -Dosprey.branchmarkstar.numCpus="$NUM_CPUS" \

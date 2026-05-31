@@ -20,6 +20,9 @@
 #                  GRISMAN_CPUS=104  COMPSCI_CPUS=128
 #                  GRISMAN_MEM=128G   COMPSCI_MEM=256G
 #                  JAVA_XMX=192g      JAVA_XMS=4g
+#                  DP_CACHE=false     EXTRA_JVM_ARGS="..."
+#                  GRISMAN_FULL_NODE=false GRISMAN_EXCLUDE="" GRISMAN_CONSTRAINT=a5000
+#                  (set GRISMAN_CONSTRAINT= to allow any grisman node)
 #                  TARGET=both|grisman|compsci   (single-design default: grisman)
 # ===================================================================
 set -euo pipefail
@@ -40,10 +43,14 @@ GRISMAN_MEM=${GRISMAN_MEM:-128G}
 COMPSCI_MEM=${COMPSCI_MEM:-256G}
 JAVA_XMX=${JAVA_XMX:-192g}
 JAVA_XMS=${JAVA_XMS:-4g}
+DP_CACHE=${DP_CACHE:-false}
+GRISMAN_FULL_NODE=${GRISMAN_FULL_NODE:-false}
+GRISMAN_EXCLUDE=${GRISMAN_EXCLUDE:-}
+GRISMAN_CONSTRAINT=${GRISMAN_CONSTRAINT-a5000}
 TARGET=${TARGET:-both}                 # both | grisman | compsci
 
 JAVA=/home/users/lz280/java/jdk-17.0.2+8/bin/java
-EXTRA_JVM_ARGS=${EXTRA_JVM_ARGS:-}
+EXTRA_JVM_ARGS="${EXTRA_JVM_ARGS:-} -XX:-UseSuperWord"
 JARGS="--add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.lang.invoke=ALL-UNNAMED -Xmx$JAVA_XMX -Xms$JAVA_XMS $EXTRA_JVM_ARGS"
 MAIN=edu.duke.cs.osprey.markstar.bench.GenericPDBBench
 
@@ -51,8 +58,19 @@ MAIN=edu.duke.cs.osprey.markstar.bench.GenericPDBBench
 # compsci asking for 128 cpus-per-task already restricts to the fitz nodes.
 slurm_flags() {
     local part=$1 cpus=$2 mem=$3
-    local f="--partition=$part --cpus-per-task=$cpus --mem=$mem --time=14-00:00:00 --mail-user=lz280@duke.edu --mail-type=END,FAIL"
-    if [ "$part" = "grisman" ]; then f="$f --account=grisman --constraint=a5000"; fi
+    local f="--partition=$part --time=14-00:00:00 --mail-user=lz280@duke.edu --mail-type=END,FAIL"
+    if [ "$part" = "grisman" ]; then
+        f="$f --account=grisman"
+        if [ "$GRISMAN_FULL_NODE" = "true" ]; then
+            f="$f --exclusive --mem=0"
+        else
+            f="$f --cpus-per-task=$cpus --mem=$mem"
+        fi
+        if [ -n "$GRISMAN_CONSTRAINT" ]; then f="$f --constraint=$GRISMAN_CONSTRAINT"; fi
+        if [ -n "$GRISMAN_EXCLUDE" ]; then f="$f --exclude=$GRISMAN_EXCLUDE"; fi
+    else
+        f="$f --cpus-per-task=$cpus --mem=$mem"
+    fi
     echo "$f"
 }
 
@@ -81,20 +99,25 @@ submit_one() {
 
     JID=$(sbatch $(slurm_flags "$part" "$cpus" "$mem") --job-name=pac_${did} \
         --output=$LOGDIR/pac_${did}_%j.out --error=$LOGDIR/pac_${did}_%j.err \
-        --wrap "$JAVA $JARGS \
+        --wrap "RUN_CPUS=\${SLURM_CPUS_ON_NODE:-$cpus}; $JAVA $JARGS \
             -Dosprey.bench.pdbPath=$pdbpath \
             -Dosprey.bench.mutable='$mutable' \
             -Dosprey.bench.flexible='$flexible' \
             -Dosprey.bench.method=pac \
             -Dosprey.bench.designId=$did \
             -Dosprey.bench.outputDir=$OUTDIR/results \
-            -Dosprey.bench.numCPUs=$cpus \
+            -Dosprey.bench.numCPUs=\$RUN_CPUS \
             -Dbranchmarkstar.usePAC=true \
+            -Dbranchmarkstar.dp.cache=$DP_CACHE \
             -Dbranchmarkstar.pac.samples=$PAC_SAMPLES \
             -Dbranchmarkstar.pac.confidence=$PAC_CONFIDENCE \
             -cp \"\$(cat $LOGDIR/.classpath_bench.txt)\" $MAIN 2>&1" \
         | awk '{print $4}')
-    echo "Submitted PAC $did ($pdb) [$part, ${cpus} CPUs, ${mem}, Xmx=${JAVA_XMX}]: $JID"
+    if [ "$part" = "grisman" ] && [ "$GRISMAN_FULL_NODE" = "true" ]; then
+        echo "Submitted PAC $did ($pdb) [$part, full-node, exclude=${GRISMAN_EXCLUDE:-none}, constraint=${GRISMAN_CONSTRAINT:-none}, Xmx=${JAVA_XMX}]: $JID"
+    else
+        echo "Submitted PAC $did ($pdb) [$part, ${cpus} CPUs, ${mem}, Xmx=${JAVA_XMX}]: $JID"
+    fi
 }
 
 if [ "$DESIGN" = "all" ]; then
