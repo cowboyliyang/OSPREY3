@@ -42,10 +42,10 @@ public class DecompSearchNode implements Comparable<DecompSearchNode> {
     /** An assigned edge: edge + chosen lambda-state index */
     public static class EdgeAssignment {
         public final RootedTreeEdge edge;
-        public final int mIdx;
+        public final long mIdx;
         public final int lambdaIdx;
 
-        public EdgeAssignment(RootedTreeEdge edge, int mIdx, int lambdaIdx) {
+        public EdgeAssignment(RootedTreeEdge edge, long mIdx, int lambdaIdx) {
             this.edge = edge;
             this.mIdx = mIdx;
             this.lambdaIdx = lambdaIdx;
@@ -55,9 +55,9 @@ public class DecompSearchNode implements Comparable<DecompSearchNode> {
     /** A pending edge: edge + determined M-state index */
     public static class PendingEdge {
         public final RootedTreeEdge edge;
-        public final int mIdx;
+        public final long mIdx;
 
-        public PendingEdge(RootedTreeEdge edge, int mIdx) {
+        public PendingEdge(RootedTreeEdge edge, long mIdx) {
             this.edge = edge;
             this.mIdx = mIdx;
         }
@@ -172,7 +172,7 @@ public class DecompSearchNode implements Comparable<DecompSearchNode> {
         // Get the pending edge being assigned
         PendingEdge pe = parent.pendingEdges.get(pendingEdgeIndex);
         RootedTreeEdge edge = pe.edge;
-        int mIdx = pe.mIdx;
+        long mIdx = pe.mIdx;
 
         // Add this edge assignment
         child.assignedEdges.add(new EdgeAssignment(edge, mIdx, lambdaIdx));
@@ -209,7 +209,7 @@ public class DecompSearchNode implements Comparable<DecompSearchNode> {
 
             for (RootedTreeEdge fEdge : edge.getFset()) {
                 int[] fMRCs = edge.getMstateForFullState(mRCsLocal, lambdaRCsLocal, fEdge);
-                int fMIdx = fEdge.computeIndexInA(fMRCs);
+                long fMIdx = fEdge.computeIndexInA(fMRCs);
                 child.pendingEdges.add(new PendingEdge(fEdge, fMIdx));
             }
         }

@@ -17,7 +17,13 @@ package edu.duke.cs.osprey.markstar.framework.branch;
 import edu.duke.cs.osprey.astar.conf.RCs;
 import edu.duke.cs.osprey.ematrix.EnergyMatrix;
 import java.util.*;
-import java.util.stream.IntStream;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.LongStream;
 
 /**
  * An edge in the rooted branch decomposition tree with incremental partition function DP.
@@ -60,20 +66,27 @@ public class RootedTreeEdge {
     private int[] mPositionsSorted;
     private int[] lambdaPositionsSorted;
     private RCs rcs;
+    private long mStateCount;
     private int mArraySize;
 
     // ========== Log-space partition function bounds per M-state ==========
 
-    private double[] logZLower;   // log(Z_lower) indexed by M-state
-    private double[] logZUpper;   // log(Z_upper) indexed by M-state
+    private DPTable dpTable;      // log(Z_lower/upper) indexed by M-state
 
     private static final double NEG_INF = Double.NEGATIVE_INFINITY;
     private static final String DP_PARALLEL_PROPERTY = "branchmarkstar.dp.parallel";
     private static final String DP_PARALLEL_MIN_M_STATES_PROPERTY = "branchmarkstar.dp.parallel.minMStates";
+    private static final String DP_PARALLEL_THREADS_PROPERTY = "branchmarkstar.dp.parallel.threads";
+    private static final String DP_COMPUTE_SHARD_SIZE_PROPERTY = "branchmarkstar.dp.computeShardSize";
+    private static final String DP_PROGRESS_PROPERTY = "branchmarkstar.dp.progress";
+    private static final int DEFAULT_DP_COMPUTE_SHARD_SIZE = 65_536;
     private static final String DP_MAX_M_STATES_PROPERTY = "branchmarkstar.dp.maxMStates";
     private static final String DP_MAX_MATERIALIZED_PAIRS_PROPERTY = "branchmarkstar.dp.maxMaterializedPairs";
+    private static final String DP_TABLE_MODE_PROPERTY = "branchmarkstar.dp.tableMode";
+    private static final String DP_SHARD_SIZE_PROPERTY = "branchmarkstar.dp.shardSize";
     private static final int DEFAULT_DP_PARALLEL_MIN_M_STATES = 1024;
     private static final long DEFAULT_DP_MAX_MATERIALIZED_PAIRS = 50_000_000L;
+    private static final int DEFAULT_DP_SHARD_SIZE = 1_048_576;
 
     // ========== Incremental lambda enumeration state ==========
 
@@ -124,13 +137,20 @@ public class RootedTreeEdge {
     public LinkedHashSet<Integer> getM() { return M; }
     public LinkedHashSet<Integer> getLambda() { return lambda; }
     public LinkedHashSet<Integer> getL() { return L; }
-    public double[] getLogZLower() { return logZLower; }
-    public double[] getLogZUpper() { return logZUpper; }
+    public double[] getLogZLower() { return dpTable == null ? null : dpTable.lowerArrayUnsafe(); }
+    public double[] getLogZUpper() { return dpTable == null ? null : dpTable.upperArrayUnsafe(); }
+    public double getLogZLower(long mIdx) { return dpTable.lower(mIdx); }
+    public double getLogZUpper(long mIdx) { return dpTable.upper(mIdx); }
+    public void setLogZ(long mIdx, double lower, double upper) { dpTable.set(mIdx, lower, upper); }
+    public boolean hasDPTable() { return dpTable != null; }
+    public boolean hasDenseDPTable() { return dpTable != null && dpTable.isDenseArrayBacked(); }
+    public long getDPTableBytes() { return dpTable == null ? estimateDPTableBytes(mStateCount) : dpTable.estimatedBytes(); }
     public RootedTreeNode getCompactLeftChild() { return compactLeftChild; }
     public RootedTreeNode getCompactRightChild() { return compactRightChild; }
     public void setCompactParent(RootedTreeEdge p) { this.compactParent = p; }
     public RootedTreeEdge getCompactParent() { return compactParent; }
-    public int getMArraySize() { return mArraySize; }
+    public int getMArraySize() { return requireDenseMStateCount(); }
+    public long getMStateCount() { return mStateCount; }
     public int[] getMPositionsSorted() { return mPositionsSorted; }
     public int[] getLambdaPositionsSorted() { return lambdaPositionsSorted; }
     public LinkedHashSet<RootedTreeEdge> getFset() { return Fset; }
@@ -264,11 +284,20 @@ public class RootedTreeEdge {
         mPositionsSorted = M.stream().mapToInt(Integer::intValue).sorted().toArray();
         lambdaPositionsSorted = lambda.stream().mapToInt(Integer::intValue).sorted().toArray();
 
-        mArraySize = checkedStateCount("M", mPositionsSorted, true);
+        mStateCount = checkedStateCountLong("M", mPositionsSorted, true);
+        mArraySize = mStateCount <= Integer.MAX_VALUE ? (int) mStateCount : -1;
         totalLambdaStates = checkedStateCount("lambda", lambdaPositionsSorted, false);
     }
 
     private int checkedStateCount(String label, int[] positions, boolean isMStateCount) {
+        long count = checkedStateCountLong(label, positions, isMStateCount);
+        if (count > Integer.MAX_VALUE) {
+            throw stateCountException(label, positions, count);
+        }
+        return (int) count;
+    }
+
+    private long checkedStateCountLong(String label, int[] positions, boolean isMStateCount) {
         long count = 1L;
         for (int pos : positions) {
             int n = rcs.getNum(pos);
@@ -276,13 +305,10 @@ public class RootedTreeEdge {
                 throw stateCountException(label, positions, Long.MAX_VALUE);
             }
             count *= n;
-            if (count > Integer.MAX_VALUE) {
-                throw stateCountException(label, positions, count);
-            }
         }
 
         long maxStates = isMStateCount
-                ? getConfigLong(DP_MAX_M_STATES_PROPERTY, Integer.MAX_VALUE)
+                ? getConfigLong(DP_MAX_M_STATES_PROPERTY, Long.MAX_VALUE)
                 : Integer.MAX_VALUE;
         if (count > maxStates) {
             throw new DPTableTooLargeException(label, count, positions,
@@ -291,7 +317,7 @@ public class RootedTreeEdge {
                             + ". Reduce branchwidth/rooting, enable a shard-backed DP table, "
                             + "or raise the limit only if memory allows.");
         }
-        return (int) count;
+        return count;
     }
 
     private DPTableTooLargeException stateCountException(String label, int[] positions, long count) {
@@ -302,27 +328,68 @@ public class RootedTreeEdge {
     }
 
     private void initializeArrays() {
-        logZLower = new double[mArraySize];
-        logZUpper = new double[mArraySize];
-        Arrays.fill(logZLower, NEG_INF);
-        Arrays.fill(logZUpper, NEG_INF);
+        dpTable = makeDPTable();
+        dpTable.fill(NEG_INF, NEG_INF);
 
-        enumeratedCount = new int[mArraySize];
+        enumeratedCount = mStateCount <= Integer.MAX_VALUE
+                ? new int[(int) mStateCount]
+                : null;
         // sortedLambdaIndices allocated lazily per M-state in initIncrementalEnumeration
+    }
+
+    private DPTable makeDPTable() {
+        String mode = getConfigProperty(DP_TABLE_MODE_PROPERTY, "auto").trim().toLowerCase(Locale.ROOT);
+        int shardSize = Math.max(1, getConfigInteger(DP_SHARD_SIZE_PROPERTY, DEFAULT_DP_SHARD_SIZE));
+        switch (mode) {
+            case "":
+            case "auto":
+                return mStateCount <= Integer.MAX_VALUE
+                        ? new DenseDPTable(mStateCount)
+                        : new ShardedDPTable(mStateCount, shardSize);
+            case "dense":
+                if (mStateCount > Integer.MAX_VALUE) {
+                    throw stateCountException("M", mPositionsSorted, mStateCount);
+                }
+                return new DenseDPTable(mStateCount);
+            case "sharded":
+            case "shard":
+                return new ShardedDPTable(mStateCount, shardSize);
+            default:
+                System.err.println("BranchMARK*: Unknown DP table mode '" + mode
+                        + "', using auto.");
+                return mStateCount <= Integer.MAX_VALUE
+                        ? new DenseDPTable(mStateCount)
+                        : new ShardedDPTable(mStateCount, shardSize);
+        }
+    }
+
+    private int requireDenseMStateCount() {
+        if (mArraySize < 0) {
+            throw new IllegalStateException("DP M-state count " + mStateCount
+                    + " exceeds dense int indexing; use getMStateCount() and DPTable access.");
+        }
+        return mArraySize;
+    }
+
+    private static long estimateDPTableBytes(long mStates) {
+        if (mStates > Long.MAX_VALUE / (2L * (long) Double.BYTES)) {
+            return Long.MAX_VALUE;
+        }
+        return 2L * mStates * (long) Double.BYTES;
     }
 
     // ========== M-state indexing ==========
 
-    public int computeIndexInA(int[] mRCIndices) {
+    public long computeIndexInA(int[] mRCIndices) {
         if (isRootEdge || mRCIndices == null || mPositionsSorted.length == 0) {
-            return 0;
+            return 0L;
         }
 
-        int index = mRCIndices[mPositionsSorted.length - 1];
-        int stride = 1;
+        long index = mRCIndices[mPositionsSorted.length - 1];
+        long stride = 1L;
         for (int i = mPositionsSorted.length - 2; i >= 0; i--) {
             stride *= rcs.getNum(mPositionsSorted[i + 1]);
-            index += mRCIndices[i] * stride;
+            index += (long) mRCIndices[i] * stride;
         }
         return index;
     }
@@ -353,7 +420,7 @@ public class RootedTreeEdge {
         return result;
     }
 
-    public int[] decodeMStatePublic(int mIndex) {
+    public int[] decodeMStatePublic(long mIndex) {
         return decodeMState(mIndex);
     }
 
@@ -361,12 +428,12 @@ public class RootedTreeEdge {
         return decodeLambdaState(lambdaIndex);
     }
 
-    private int[] decodeMState(int mIndex) {
+    private int[] decodeMState(long mIndex) {
         int[] mRCs = new int[mPositionsSorted.length];
-        int remaining = mIndex;
+        long remaining = mIndex;
         for (int i = mPositionsSorted.length - 1; i >= 0; i--) {
             int numRCs = rcs.getNum(mPositionsSorted[i]);
-            mRCs[i] = remaining % numRCs;
+            mRCs[i] = (int) (remaining % numRCs);
             remaining /= numRCs;
         }
         return mRCs;
@@ -559,6 +626,7 @@ public class RootedTreeEdge {
         sortedLambdaIndices = null;
 
         if (materializeFullEnergyTables) {
+            requireDenseMStateCount();
             checkMaterializedPairCount();
 
             // Allocate per-(mIdx, lambdaIdx) energy cache only for legacy paths
@@ -601,18 +669,17 @@ public class RootedTreeEdge {
         }
 
         // Set initial logZ bounds: k=0 for all M-states
-        Arrays.fill(logZLower, NEG_INF);
-        Arrays.fill(logZUpper, NEG_INF);
+        dpTable.fill(NEG_INF, NEG_INF);
         if (materializeFullEnergyTables) {
             // logZ_upper = tail bound for all K lambda-states in incremental mode.
             for (int mIdx = 0; mIdx < mArraySize; mIdx++) {
-                logZUpper[mIdx] = computeTailBound(mIdx, 0);
+                dpTable.set(mIdx, NEG_INF, computeTailBound(mIdx, 0));
             }
         }
     }
 
     private void checkMaterializedPairCount() {
-        long pairs = (long) mArraySize * (long) totalLambdaStates;
+        long pairs = mStateCount * (long) totalLambdaStates;
         long maxPairs = getConfigLong(DP_MAX_MATERIALIZED_PAIRS_PROPERTY,
                 DEFAULT_DP_MAX_MATERIALIZED_PAIRS);
         if (pairs > maxPairs) {
@@ -673,8 +740,8 @@ public class RootedTreeEdge {
             if (Fset != null) {
                 for (RootedTreeEdge fEdge : Fset) {
                     double bestChildUpper = NEG_INF;
-                    for (int fi = 0; fi < fEdge.mArraySize; fi++) {
-                        bestChildUpper = Math.max(bestChildUpper, fEdge.logZUpper[fi]);
+                    for (long fi = 0; fi < fEdge.getMStateCount(); fi++) {
+                        bestChildUpper = Math.max(bestChildUpper, fEdge.getLogZUpper(fi));
                     }
                     bestFSumUpper += bestChildUpper;
                 }
@@ -707,7 +774,7 @@ public class RootedTreeEdge {
             double logTermLower = -eRigid / cachedRT;
             double logTermUpper = -eMin / cachedRT;
 
-            logZLower[mIdx] = logSumExp(logZLower[mIdx], logTermLower);
+            dpTable.set(mIdx, logSumExp(dpTable.lower(mIdx), logTermLower), dpTable.upper(mIdx));
 
             // Upper = enumerated part + new tail
             // Recompute upper from scratch: enumerated terms + tail
@@ -718,7 +785,7 @@ public class RootedTreeEdge {
                 enumeratedUpper = logSumExp(enumeratedUpper, -fullEnergyMin[mIdx][li] / cachedRT);
             }
             double tailUpper = computeTailBound(mIdx, k + 1);
-            logZUpper[mIdx] = logSumExp(enumeratedUpper, tailUpper);
+            dpTable.set(mIdx, dpTable.lower(mIdx), logSumExp(enumeratedUpper, tailUpper));
 
         } else {
             // Non-leaf edge: need child logZ values
@@ -733,16 +800,16 @@ public class RootedTreeEdge {
             if (Fset != null) {
                 for (RootedTreeEdge fEdge : Fset) {
                     int[] fM = getMstateForFullState(mRCs, lambdaRCs, fEdge);
-                    int fIndex = fEdge.computeIndexInA(fM);
-                    fSumLower += fEdge.logZLower[fIndex];
-                    fSumUpper += fEdge.logZUpper[fIndex];
+                    long fIndex = fEdge.computeIndexInA(fM);
+                    fSumLower += fEdge.getLogZLower(fIndex);
+                    fSumUpper += fEdge.getLogZUpper(fIndex);
                 }
             }
 
             double logTermLower = -eRigid / cachedRT + fSumLower;
             double logTermUpper = -eMin / cachedRT + fSumUpper;
 
-            logZLower[mIdx] = logSumExp(logZLower[mIdx], logTermLower);
+            dpTable.set(mIdx, logSumExp(dpTable.lower(mIdx), logTermLower), dpTable.upper(mIdx));
 
             // Recompute upper: all enumerated terms + tail
             double enumeratedUpper = NEG_INF;
@@ -754,14 +821,14 @@ public class RootedTreeEdge {
                 if (Fset != null) {
                     for (RootedTreeEdge fEdge : Fset) {
                         int[] fM = getMstateForFullState(mRCs, liRCs, fEdge);
-                        int fIndex = fEdge.computeIndexInA(fM);
-                        liFSumUpper += fEdge.logZUpper[fIndex];
+                        long fIndex = fEdge.computeIndexInA(fM);
+                        liFSumUpper += fEdge.getLogZUpper(fIndex);
                     }
                 }
                 enumeratedUpper = logSumExp(enumeratedUpper, -liEMin / cachedRT + liFSumUpper);
             }
             double tailUpper = computeTailBound(mIdx, k + 1);
-            logZUpper[mIdx] = logSumExp(enumeratedUpper, tailUpper);
+            dpTable.set(mIdx, dpTable.lower(mIdx), logSumExp(enumeratedUpper, tailUpper));
         }
 
         enumeratedCount[mIdx] = k + 1;
@@ -797,9 +864,9 @@ public class RootedTreeEdge {
      * Get the error (logUpper - logLower) for a specific M-state.
      */
     public double getErrorForMState(int mIdx) {
-        if (logZUpper[mIdx] == NEG_INF && logZLower[mIdx] == NEG_INF) return 0.0;
-        if (logZLower[mIdx] == NEG_INF) return Double.MAX_VALUE;
-        return logZUpper[mIdx] - logZLower[mIdx];
+        if (dpTable.upper(mIdx) == NEG_INF && dpTable.lower(mIdx) == NEG_INF) return 0.0;
+        if (dpTable.lower(mIdx) == NEG_INF) return Double.MAX_VALUE;
+        return dpTable.upper(mIdx) - dpTable.lower(mIdx);
     }
 
     // ========== Recompute non-leaf edge bounds from children ==========
@@ -832,9 +899,9 @@ public class RootedTreeEdge {
                 if (Fset != null) {
                     for (RootedTreeEdge fEdge : Fset) {
                         int[] fM = getMstateForFullState(mRCs, lambdaRCs, fEdge);
-                        int fIndex = fEdge.computeIndexInA(fM);
-                        fSumLower += fEdge.logZLower[fIndex];
-                        fSumUpper += fEdge.logZUpper[fIndex];
+                        long fIndex = fEdge.computeIndexInA(fM);
+                        fSumLower += fEdge.getLogZLower(fIndex);
+                        fSumUpper += fEdge.getLogZUpper(fIndex);
                     }
                 }
 
@@ -846,8 +913,7 @@ public class RootedTreeEdge {
             double tail = computeTailBound(mIdx, k);
             newUpper = logSumExp(newUpper, tail);
 
-            logZLower[mIdx] = newLower;
-            logZUpper[mIdx] = newUpper;
+            dpTable.set(mIdx, newLower, newUpper);
         }
     }
 
@@ -908,9 +974,9 @@ public class RootedTreeEdge {
                 if (Fset != null) {
                     for (RootedTreeEdge fEdge : Fset) {
                         int[] fM = getMstateForFullState(mRCs, lambdaRCs, fEdge);
-                        int fIndex = fEdge.computeIndexInA(fM);
-                        fSumLower += fEdge.logZLower[fIndex];
-                        fSumUpper += fEdge.logZUpper[fIndex];
+                        long fIndex = fEdge.computeIndexInA(fM);
+                        fSumLower += fEdge.getLogZLower(fIndex);
+                        fSumUpper += fEdge.getLogZUpper(fIndex);
                     }
                 }
 
@@ -942,7 +1008,7 @@ public class RootedTreeEdge {
     /**
      * Decode a M-state index to global RC assignments for M positions.
      */
-    public int[] getMGlobalRCs(int mIdx) {
+    public int[] getMGlobalRCs(long mIdx) {
         int[] localRCs = decodeMState(mIdx);
         int[] globalRCs = new int[mPositionsSorted.length];
         for (int i = 0; i < mPositionsSorted.length; i++) {
@@ -955,21 +1021,21 @@ public class RootedTreeEdge {
      * Get the rigid and min energies for a specific (mIdx, lambdaIdx) on a leaf edge.
      * Used by BranchMARKStarBound for correction computation.
      */
-    public double getFullEnergyRigid(int mIdx, int lambdaIdx) {
+    public double getFullEnergyRigid(long mIdx, int lambdaIdx) {
         if (fullEnergyRigid != null) {
-            return fullEnergyRigid[mIdx][lambdaIdx];
+            return fullEnergyRigid[(int) mIdx][lambdaIdx];
         }
         return computeFullEnergy(mIdx, lambdaIdx, cachedRigidEmat, lambdaOnlyRigid);
     }
 
-    public double getFullEnergyMin(int mIdx, int lambdaIdx) {
+    public double getFullEnergyMin(long mIdx, int lambdaIdx) {
         if (fullEnergyMin != null) {
-            return fullEnergyMin[mIdx][lambdaIdx];
+            return fullEnergyMin[(int) mIdx][lambdaIdx];
         }
         return computeFullEnergy(mIdx, lambdaIdx, cachedMinEmat, lambdaOnlyMin);
     }
 
-    private double computeFullEnergy(int mIdx, int lambdaIdx,
+    private double computeFullEnergy(long mIdx, int lambdaIdx,
                                      EnergyMatrix emat, double[] lambdaOnlyEnergies) {
         int[] mRCs = decodeMState(mIdx);
         int[] lambdaRCs = decodeLambdaState(lambdaIdx);
@@ -996,11 +1062,11 @@ public class RootedTreeEdge {
     public void computeFullDP() {
         if (!isLambdaEdge) return;
 
-        IntStream mStates = IntStream.range(0, mArraySize);
         if (shouldParallelizeFullDP()) {
-            mStates = mStates.parallel();
+            computeFullDPSharded();
+        } else {
+            LongStream.range(0, mStateCount).forEach(this::computeFullDPForMState);
         }
-        mStates.forEach(this::computeFullDPForMState);
 
         // Mark all M-states as fully enumerated (for Phase 2 conformation generation)
         if (enumeratedCount != null) {
@@ -1010,11 +1076,123 @@ public class RootedTreeEdge {
 
     private boolean shouldParallelizeFullDP() {
         return getConfigBoolean(DP_PARALLEL_PROPERTY, true)
-                && mArraySize >= getConfigInteger(DP_PARALLEL_MIN_M_STATES_PROPERTY,
+                && mStateCount >= getConfigInteger(DP_PARALLEL_MIN_M_STATES_PROPERTY,
                         DEFAULT_DP_PARALLEL_MIN_M_STATES);
     }
 
-    private void computeFullDPForMState(int mIdx) {
+    /**
+     * Shard-scheduled parallel full DP (design 2.5).
+     *
+     * The M-state range [0, mStateCount) is split into contiguous shards of
+     * {@code computeShardSize} M-states. A bounded, fixed-size thread pool pulls
+     * shards off a shared atomic cursor (dynamic load balancing, so uneven shard
+     * cost does not let one shard monopolize a worker). Contiguous shards keep
+     * each worker's reads/writes local to a few backing arrays, which is friendly
+     * to both cache and the ShardedDPTable layout.
+     *
+     * Safety: each M-state writes a distinct dpTable index, child edges are
+     * already fully computed (post-order) and read-only here, and the log-sum-exp
+     * accumulators are per-M-state locals, so contiguous-range partitioning has no
+     * data races.
+     */
+    private void computeFullDPSharded() {
+        int threads = resolveDPThreads();
+        long shardSize = resolveComputeShardSize();
+        long numShards = (mStateCount + shardSize - 1L) / shardSize;
+        boolean progress = getConfigBoolean(DP_PROGRESS_PROPERTY, true);
+
+        if (numShards <= 1 || threads <= 1) {
+            LongStream.range(0, mStateCount).forEach(this::computeFullDPForMState);
+            return;
+        }
+
+        int workers = (int) Math.min(threads, numShards);
+        ExecutorService pool = Executors.newFixedThreadPool(workers, daemonThreadFactory("branchmarkstar-dp"));
+        AtomicLong nextShard = new AtomicLong(0);
+        AtomicLong completedShards = new AtomicLong(0);
+        long startNanos = System.nanoTime();
+        long logEvery = Math.max(1L, numShards / 20L);
+
+        if (progress) {
+            System.out.println("BranchMARK*: DP shard schedule start, mStates=" + mStateCount
+                    + ", shards=" + numShards + ", shardSize=" + shardSize
+                    + ", workers=" + workers);
+        }
+
+        List<Future<?>> futures = new ArrayList<>(workers);
+        for (int w = 0; w < workers; w++) {
+            futures.add(pool.submit(() -> {
+                long s;
+                while ((s = nextShard.getAndIncrement()) < numShards) {
+                    long shardStartNanos = System.nanoTime();
+                    long mStart = s * shardSize;
+                    long mEnd = Math.min(mStart + shardSize, mStateCount);
+                    for (long mIdx = mStart; mIdx < mEnd; mIdx++) {
+                        computeFullDPForMState(mIdx);
+                    }
+                    long done = completedShards.incrementAndGet();
+                    if (progress && (done % logEvery == 0 || done == numShards)) {
+                        double shardMs = (System.nanoTime() - shardStartNanos) / 1e6;
+                        double elapsedS = (System.nanoTime() - startNanos) / 1e9;
+                        System.out.println("BranchMARK*: DP shards " + done + "/" + numShards
+                                + " (" + String.format(Locale.ROOT, "%.1f", 100.0 * done / numShards)
+                                + "%), lastShard=" + String.format(Locale.ROOT, "%.1f", shardMs)
+                                + "ms, elapsed=" + String.format(Locale.ROOT, "%.1f", elapsedS) + "s");
+                    }
+                }
+            }));
+        }
+
+        try {
+            for (Future<?> f : futures) {
+                f.get();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("DP shard scheduling interrupted", e);
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException) {
+                throw (RuntimeException) cause;
+            }
+            if (cause instanceof Error) {
+                throw (Error) cause;
+            }
+            throw new RuntimeException("DP shard computation failed", cause);
+        } finally {
+            pool.shutdownNow();
+        }
+
+        if (progress) {
+            double totalS = (System.nanoTime() - startNanos) / 1e9;
+            System.out.println("BranchMARK*: DP shard schedule done, shards=" + numShards
+                    + ", elapsed=" + String.format(Locale.ROOT, "%.1f", totalS) + "s");
+        }
+    }
+
+    private int resolveDPThreads() {
+        int configured = getConfigInteger(DP_PARALLEL_THREADS_PROPERTY, 0);
+        if (configured > 0) {
+            return configured;
+        }
+        return Math.max(1, Runtime.getRuntime().availableProcessors());
+    }
+
+    private long resolveComputeShardSize() {
+        long shardSize = getConfigInteger(DP_COMPUTE_SHARD_SIZE_PROPERTY, DEFAULT_DP_COMPUTE_SHARD_SIZE);
+        return Math.max(1L, shardSize);
+    }
+
+    private static ThreadFactory daemonThreadFactory(String namePrefix) {
+        AtomicLong counter = new AtomicLong(0);
+        return runnable -> {
+            Thread t = new Thread(runnable, namePrefix + "-" + counter.getAndIncrement());
+            t.setDaemon(true);
+            return t;
+        };
+    }
+
+    private void computeFullDPForMState(long mIdx) {
         LogSumExpAccumulator lower = new LogSumExpAccumulator();
         LogSumExpAccumulator upper = new LogSumExpAccumulator();
 
@@ -1036,9 +1214,9 @@ public class RootedTreeEdge {
                 double fSumUpper = 0.0;
                 for (RootedTreeEdge fEdge : Fset) {
                     int[] fM = getMstateForFullState(mRCs, lambdaRCs, fEdge);
-                    int fIdx = fEdge.computeIndexInA(fM);
-                    fSumLower += fEdge.logZLower[fIdx];
-                    fSumUpper += fEdge.logZUpper[fIdx];
+                    long fIdx = fEdge.computeIndexInA(fM);
+                    fSumLower += fEdge.getLogZLower(fIdx);
+                    fSumUpper += fEdge.getLogZUpper(fIdx);
                 }
 
                 lower.add(-eRigid / cachedRT + fSumLower);
@@ -1046,8 +1224,7 @@ public class RootedTreeEdge {
             }
         }
 
-        logZLower[mIdx] = lower.value();
-        logZUpper[mIdx] = upper.value();
+        dpTable.set(mIdx, lower.value(), upper.value());
     }
 
     private static class LogSumExpAccumulator {

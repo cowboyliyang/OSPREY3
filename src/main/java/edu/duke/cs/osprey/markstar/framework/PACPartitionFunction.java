@@ -31,7 +31,13 @@ import java.math.BigDecimal;
 import java.math.MathContext;
 import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.IntConsumer;
 
 /**
  * PAC (Probably Approximately Correct) Partition Function Estimation
@@ -54,6 +60,17 @@ public class PACPartitionFunction {
     // Configuration
     private static final String PAC_SAMPLES_PROPERTY = "branchmarkstar.pac.samples";
     private static final String PAC_CONFIDENCE_PROPERTY = "branchmarkstar.pac.confidence";
+    private static final String PAC_ADAPTIVE_PROPERTY = "branchmarkstar.pac.adaptive";
+    private static final String PAC_MIN_SAMPLES_PROPERTY = "branchmarkstar.pac.minSamples";
+    private static final String PAC_MAX_SAMPLES_PROPERTY = "branchmarkstar.pac.maxSamples";
+    private static final String PAC_BATCH_SIZE_PROPERTY = "branchmarkstar.pac.batchSize";
+    private static final String PAC_TARGET_EPSILON_PROPERTY = "branchmarkstar.pac.targetEpsilon";
+    private static final String PAC_SAMPLING_BATCHED_PROPERTY = "branchmarkstar.pac.sampling.batched";
+    private static final String PAC_SAMPLING_PARALLEL_PROPERTY = "branchmarkstar.pac.sampling.parallel";
+    private static final String PAC_SAMPLING_THREADS_PROPERTY = "branchmarkstar.pac.sampling.threads";
+    private static final String PAC_SAMPLING_LARGE_LAMBDA_PROPERTY = "branchmarkstar.pac.sampling.largeLambdaThreshold";
+    private static final String PAC_SAMPLING_PROGRESS_PROPERTY = "branchmarkstar.pac.sampling.progress";
+    private static final String DP_PARALLEL_THREADS_PROPERTY = "branchmarkstar.dp.parallel.threads";
     private static final String DP_CACHE_ENABLED_PROPERTY = "branchmarkstar.dp.cache";
     private static final String DP_CACHE_MAX_ENTRIES_PROPERTY = "branchmarkstar.dp.cache.maxEntries";
     private static final String DP_CACHE_MAX_TABLE_BYTES_PROPERTY = "branchmarkstar.dp.cache.maxTableBytes";
@@ -61,6 +78,10 @@ public class PACPartitionFunction {
     private static final String DP_CACHE_SKIP_IF_M_STATES_PROPERTY = "branchmarkstar.dp.cache.skipIfMStates";
     private static final int DEFAULT_SAMPLES = 500;
     private static final double DEFAULT_CONFIDENCE = 0.05; // delta = 0.05 => 95% confidence
+    private static final int DEFAULT_ADAPTIVE_MIN_SAMPLES = 100;
+    private static final int DEFAULT_ADAPTIVE_BATCH_SIZE = 200;
+    private static final double DEFAULT_TARGET_EPSILON = 0.683;
+    private static final int DEFAULT_SAMPLING_LARGE_LAMBDA = 65_536;
     private static final int DEFAULT_DP_CACHE_MAX_ENTRIES = 20000;
     private static final long DEFAULT_DP_CACHE_MAX_TABLE_BYTES = 256L * 1024L * 1024L;
     private static final long DEFAULT_DP_CACHE_MAX_TOTAL_BYTES = 4L * 1024L * 1024L * 1024L;
@@ -85,6 +106,15 @@ public class PACPartitionFunction {
     // Configuration
     private final int numSamples;
     private final double delta; // confidence parameter
+    private final boolean adaptiveSampling;
+    private final int minSamples;
+    private final int maxSamples;
+    private final int batchSize;
+    private final double targetEpsilon;
+    private final boolean batchedSampling;
+    private final int samplingThreads;
+    private final int samplingLargeLambdaThreshold;
+    private final boolean samplingProgress;
     private final boolean dpCacheEnabled;
     private final int dpCacheMaxEntries;
     private final long dpCacheMaxTableBytes;
@@ -110,6 +140,7 @@ public class PACPartitionFunction {
     private double stdResidual;
 
     private final BoltzmannCalculator bc = new BoltzmannCalculator(PartitionFunction.decimalPrecision);
+    private final LocalRCMap[] localRCByGlobalRC;
 
     public PACPartitionFunction(RootedTreeNode rootedRoot,
                                  RootedTreeEdge rootedRootEdge,
@@ -119,6 +150,22 @@ public class PACPartitionFunction {
                                  ConfEnergyCalculator minimizingEcalc,
                                  RCs rcs,
                                  SimpleConfSpace confSpace) {
+        this(rootedRoot, rootedRootEdge,
+                branchMinimizingEmat, branchRigidEmat,
+                interactionGraph, minimizingEcalc,
+                rcs, confSpace,
+                Double.NaN);
+    }
+
+    public PACPartitionFunction(RootedTreeNode rootedRoot,
+                                 RootedTreeEdge rootedRootEdge,
+                                 EnergyMatrix branchMinimizingEmat,
+                                 EnergyMatrix branchRigidEmat,
+                                 InteractionGraph interactionGraph,
+                                 ConfEnergyCalculator minimizingEcalc,
+                                 RCs rcs,
+                                 SimpleConfSpace confSpace,
+                                 double requestedTargetEpsilon) {
         this.rootedRoot = rootedRoot;
         this.rootedRootEdge = rootedRootEdge;
         this.branchMinimizingEmat = branchMinimizingEmat;
@@ -132,6 +179,26 @@ public class PACPartitionFunction {
         this.numSamples = Math.max(1, getConfigInteger(PAC_SAMPLES_PROPERTY, DEFAULT_SAMPLES));
         String deltaStr = getConfigProperty(PAC_CONFIDENCE_PROPERTY, null);
         this.delta = (deltaStr != null) ? Double.parseDouble(deltaStr) : DEFAULT_CONFIDENCE;
+        this.adaptiveSampling = getConfigBoolean(PAC_ADAPTIVE_PROPERTY, false);
+        this.maxSamples = Math.max(1,
+                getConfigInteger(PAC_MAX_SAMPLES_PROPERTY, this.numSamples));
+        this.minSamples = Math.max(1, Math.min(this.maxSamples,
+                getConfigInteger(PAC_MIN_SAMPLES_PROPERTY,
+                        Math.min(DEFAULT_ADAPTIVE_MIN_SAMPLES, this.maxSamples))));
+        this.batchSize = Math.max(1,
+                getConfigInteger(PAC_BATCH_SIZE_PROPERTY,
+                        Math.min(DEFAULT_ADAPTIVE_BATCH_SIZE, this.maxSamples)));
+        double defaultTarget = Double.isFinite(requestedTargetEpsilon) && requestedTargetEpsilon > 0.0
+                ? requestedTargetEpsilon
+                : DEFAULT_TARGET_EPSILON;
+        this.targetEpsilon = Math.max(0.0,
+                getConfigDouble(PAC_TARGET_EPSILON_PROPERTY, defaultTarget));
+        this.batchedSampling = getConfigBoolean(PAC_SAMPLING_BATCHED_PROPERTY, true);
+        this.samplingThreads = resolveConfiguredSamplingThreads();
+        this.samplingLargeLambdaThreshold = Math.max(1,
+                getConfigInteger(PAC_SAMPLING_LARGE_LAMBDA_PROPERTY,
+                        DEFAULT_SAMPLING_LARGE_LAMBDA));
+        this.samplingProgress = getConfigBoolean(PAC_SAMPLING_PROGRESS_PROPERTY, true);
         this.dpCacheEnabled = getConfigBoolean(DP_CACHE_ENABLED_PROPERTY, true);
         this.dpCacheMaxEntries = Math.max(0,
                 getConfigInteger(DP_CACHE_MAX_ENTRIES_PROPERTY, DEFAULT_DP_CACHE_MAX_ENTRIES));
@@ -141,6 +208,7 @@ public class PACPartitionFunction {
                 getConfigBytes(DP_CACHE_MAX_TOTAL_BYTES_PROPERTY, DEFAULT_DP_CACHE_MAX_TOTAL_BYTES));
         this.dpCacheSkipIfMStates = Math.max(0L,
                 getConfigLong(DP_CACHE_SKIP_IF_M_STATES_PROPERTY, DEFAULT_DP_CACHE_SKIP_IF_M_STATES));
+        this.localRCByGlobalRC = buildLocalRCMaps(rcs);
     }
 
     private static class CachedDPTable {
@@ -170,6 +238,44 @@ public class PACPartitionFunction {
         CorrectedDPResult(double logZCorrected, DPCacheStats cacheStats) {
             this.logZCorrected = logZCorrected;
             this.cacheStats = cacheStats;
+        }
+    }
+
+    private static class LocalRCMap {
+        final int[] dense;
+        final Map<Integer, Integer> sparse;
+
+        LocalRCMap(int[] dense, Map<Integer, Integer> sparse) {
+            this.dense = dense;
+            this.sparse = sparse;
+        }
+
+        int get(int globalRC) {
+            if (dense != null) {
+                if (globalRC >= 0 && globalRC < dense.length) {
+                    return dense[globalRC];
+                }
+                return -1;
+            }
+            Integer local = sparse.get(globalRC);
+            return local == null ? -1 : local;
+        }
+    }
+
+    private static class SampleGroup {
+        final long mIdx;
+        int[] sampleIndices = new int[4];
+        int count = 0;
+
+        SampleGroup(long mIdx) {
+            this.mIdx = mIdx;
+        }
+
+        void add(int sampleIndex) {
+            if (count >= sampleIndices.length) {
+                sampleIndices = Arrays.copyOf(sampleIndices, sampleIndices.length * 2);
+            }
+            sampleIndices[count++] = sampleIndex;
         }
     }
 
@@ -204,6 +310,20 @@ public class PACPartitionFunction {
             return Long.parseLong(value.trim());
         } catch (NumberFormatException e) {
             System.err.println("[PAC] Invalid long for '" + key
+                    + "': '" + value + "', using " + defaultValue + ".");
+            return defaultValue;
+        }
+    }
+
+    private static double getConfigDouble(String key, double defaultValue) {
+        String value = getConfigProperty(key, null);
+        if (value == null || value.trim().isEmpty()) {
+            return defaultValue;
+        }
+        try {
+            return Double.parseDouble(value.trim());
+        } catch (NumberFormatException e) {
+            System.err.println("[PAC] Invalid double for '" + key
                     + "': '" + value + "', using " + defaultValue + ".");
             return defaultValue;
         }
@@ -266,6 +386,63 @@ public class PACPartitionFunction {
         return value == null ? defaultValue : Boolean.parseBoolean(value);
     }
 
+    private static int resolveConfiguredSamplingThreads() {
+        if (!getConfigBoolean(PAC_SAMPLING_PARALLEL_PROPERTY, true)) {
+            return 1;
+        }
+
+        int configured = getConfigInteger(PAC_SAMPLING_THREADS_PROPERTY, 0);
+        if (configured <= 0) {
+            configured = getConfigInteger(DP_PARALLEL_THREADS_PROPERTY, 0);
+        }
+        if (configured <= 0) {
+            configured = Runtime.getRuntime().availableProcessors();
+        }
+        return Math.max(1, configured);
+    }
+
+    private static LocalRCMap[] buildLocalRCMaps(RCs rcs) {
+        LocalRCMap[] maps = new LocalRCMap[rcs.getNumPos()];
+        for (int pos = 0; pos < rcs.getNumPos(); pos++) {
+            int numRCs = rcs.getNum(pos);
+            int maxRC = -1;
+            for (int local = 0; local < numRCs; local++) {
+                maxRC = Math.max(maxRC, rcs.get(pos, local));
+            }
+
+            if (maxRC >= 0 && maxRC <= Math.max(4096, numRCs * 8)) {
+                int[] dense = new int[maxRC + 1];
+                Arrays.fill(dense, -1);
+                for (int local = 0; local < numRCs; local++) {
+                    dense[rcs.get(pos, local)] = local;
+                }
+                maps[pos] = new LocalRCMap(dense, null);
+            } else {
+                Map<Integer, Integer> sparse = new HashMap<>(Math.max(16, numRCs * 2));
+                for (int local = 0; local < numRCs; local++) {
+                    sparse.put(rcs.get(pos, local), local);
+                }
+                maps[pos] = new LocalRCMap(null, sparse);
+            }
+        }
+        return maps;
+    }
+
+    private static long mix64(long z) {
+        z = (z ^ (z >>> 30)) * 0xbf58476d1ce4e5b9L;
+        z = (z ^ (z >>> 27)) * 0x94d049bb133111ebL;
+        return z ^ (z >>> 31);
+    }
+
+    private static ThreadFactory daemonThreadFactory(String namePrefix) {
+        AtomicInteger counter = new AtomicInteger(0);
+        return runnable -> {
+            Thread thread = new Thread(runnable, namePrefix + "-" + counter.getAndIncrement());
+            thread.setDaemon(true);
+            return thread;
+        };
+    }
+
     /**
      * Run the full PAC estimation pipeline.
      * Returns the epsilon achieved.
@@ -274,8 +451,8 @@ public class PACPartitionFunction {
         long startTime = System.currentTimeMillis();
 
         // Phase 0: Z_min from existing DP (already computed)
-        double logZMin = rootedRootEdge.getLogZUpper()[0];
-        double logZRigid = rootedRootEdge.getLogZLower()[0];
+        double logZMin = rootedRootEdge.getLogZUpper(0);
+        double logZRigid = rootedRootEdge.getLogZLower(0);
         logZMinOriginal = logZMin; // save before Phase 4 modifies DP tables
         System.out.println("[PAC] Phase 0: logZ_min=" + String.format("%.4f", logZMin)
                 + ", logZ_rigid=" + String.format("%.4f", logZRigid)
@@ -292,9 +469,21 @@ public class PACPartitionFunction {
             return epsilon;
         }
 
-        // Phase 1: Sample conformations from p(c) ∝ exp(-E_min/kT)
+        if (adaptiveSampling) {
+            runAdaptiveSamplingPAC(startTime, logZRigid);
+        } else {
+            runFixedSamplingPAC(startTime, logZRigid);
+        }
+
+        return epsilon;
+    }
+
+    private void runFixedSamplingPAC(long startTime, double logZRigid) {
+        Random rng = new Random(42); // reproducible
+
+        // Phase 1: Sample conformations from p(c) proportional to exp(-E_min/kT)
         long phase1Start = System.currentTimeMillis();
-        List<int[]> sampledConfs = sampleConformationsFromDP(numSamples);
+        List<int[]> sampledConfs = sampleConformationsFromDP(numSamples, rng);
         long phase1Time = System.currentTimeMillis() - phase1Start;
         System.out.println("[PAC] Phase 1: Sampled " + sampledConfs.size()
                 + " conformations in " + phase1Time + " ms");
@@ -307,37 +496,134 @@ public class PACPartitionFunction {
         System.out.println("[PAC] Phase 2: " + totalCCDCalls + " CCD minimizations in "
                 + phase2Time + " ms");
 
-        // Phase 3: Extract per-term eta corrections
+        runCorrectionAndBoundPhases(ccdResults, logZRigid, "Phase");
+        printFinalSummary(startTime);
+    }
+
+    private void runAdaptiveSamplingPAC(long startTime, double logZRigid) {
+        int adaptiveMax = Math.max(maxSamples, minSamples);
+        int adaptiveBatch = Math.min(batchSize, adaptiveMax);
+        System.out.println("[PAC] Adaptive sampling enabled: minSamples=" + minSamples
+                + ", maxSamples=" + adaptiveMax
+                + ", batchSize=" + adaptiveBatch
+                + ", targetEpsilon=" + String.format("%.6f", targetEpsilon));
+
+        Random rng = new Random(42);
+        List<CCDResult> allCCDResults = new ArrayList<>(adaptiveMax);
+        int requestedSamples = 0;
+        int round = 0;
+        long totalSamplingTime = 0L;
+        long totalCCDTime = 0L;
+        boolean proposalDPIsOriginal = true;
+
+        while (requestedSamples < adaptiveMax) {
+            round++;
+            int targetValidSamples = allCCDResults.isEmpty()
+                    ? Math.min(minSamples, adaptiveMax)
+                    : Math.min(allCCDResults.size() + adaptiveBatch, adaptiveMax);
+            int batchRequest = Math.max(1, targetValidSamples - allCCDResults.size());
+            batchRequest = Math.min(batchRequest, adaptiveMax - requestedSamples);
+
+            if (!proposalDPIsOriginal) {
+                restoreOriginalProposalDPForAdaptiveSampling();
+                proposalDPIsOriginal = true;
+            }
+
+            long phase1Start = System.currentTimeMillis();
+            List<int[]> batch = sampleConformationsFromDP(batchRequest, rng);
+            long phase1Time = System.currentTimeMillis() - phase1Start;
+            totalSamplingTime += phase1Time;
+            requestedSamples += batchRequest;
+            System.out.println("[PAC] Adaptive round " + round + ": sampled "
+                    + batch.size() + "/" + batchRequest
+                    + " candidate conformations in " + phase1Time + " ms"
+                    + ", requested=" + requestedSamples + "/" + adaptiveMax);
+
+            if (batch.isEmpty()) {
+                System.out.println("[PAC] Adaptive stop: no valid sampled conformations");
+                break;
+            }
+
+            long phase2Start = System.currentTimeMillis();
+            List<CCDResult> batchResults = runParallelCCD(batch);
+            long phase2Time = System.currentTimeMillis() - phase2Start;
+            totalCCDTime += phase2Time;
+            allCCDResults.addAll(batchResults);
+            totalCCDCalls = allCCDResults.size();
+            System.out.println("[PAC] Adaptive round " + round + ": "
+                    + batchResults.size() + " new CCD minimizations, "
+                    + totalCCDCalls + " total, phase2=" + phase2Time + " ms");
+
+            runCorrectionAndBoundPhases(allCCDResults, logZRigid,
+                    "Adaptive round " + round);
+            proposalDPIsOriginal = false;
+
+            if (totalCCDCalls >= minSamples && epsilon <= targetEpsilon) {
+                System.out.println("[PAC] Adaptive stop: epsilon="
+                        + String.format("%.6f", epsilon)
+                        + " <= target=" + String.format("%.6f", targetEpsilon)
+                        + " with " + totalCCDCalls + " CCD calls");
+                break;
+            }
+
+            if (batchResults.isEmpty()) {
+                System.out.println("[PAC] Adaptive stop: no valid new CCD samples");
+                break;
+            }
+        }
+
+        System.out.println("[PAC] Adaptive sampling summary: requestedSamples="
+                + requestedSamples + ", validCCD=" + totalCCDCalls
+                + ", samplingMs=" + totalSamplingTime
+                + ", ccdMs=" + totalCCDTime);
+        printFinalSummary(startTime);
+    }
+
+    private void restoreOriginalProposalDPForAdaptiveSampling() {
+        long restoreStart = System.currentTimeMillis();
+        RootedTreeEdge.postOrderInitIncremental(rootedRoot,
+                branchRigidEmat, branchMinimizingEmat, interactionGraph, RT);
+        RootedTreeEdge.postOrderComputeFullDP(rootedRoot);
+        System.out.println("[PAC] Adaptive restored original proposal DP in "
+                + (System.currentTimeMillis() - restoreStart) + " ms");
+    }
+
+    private void runCorrectionAndBoundPhases(List<CCDResult> ccdResults,
+                                             double logZRigid,
+                                             String labelPrefix) {
         long phase3Start = System.currentTimeMillis();
         EtaCorrections eta = extractEtaCorrections(ccdResults);
         long phase3Time = System.currentTimeMillis() - phase3Start;
-        System.out.println("[PAC] Phase 3: Eta extraction in " + phase3Time + " ms"
+        System.out.println("[PAC] " + labelPrefix + " 3: Eta extraction in " + phase3Time + " ms"
                 + ", oneBodyTerms=" + eta.oneBodyCount
                 + ", pairTerms=" + eta.pairCount);
 
-        // Phase 4: Build corrected emat and recompute DP
         long phase4Start = System.currentTimeMillis();
         EnergyMatrix correctedEmat = buildCorrectedEmat(eta);
         CorrectedDPResult correctedDP = recomputeDP(correctedEmat, eta);
         double logZCorrected = correctedDP.logZCorrected;
         long phase4Time = System.currentTimeMillis() - phase4Start;
-        System.out.println("[PAC] Phase 4: logZ_corrected=" + String.format("%.4f", logZCorrected)
-                + " (improvement over logZ_rigid: " + String.format("%.4f", logZCorrected - logZRigid) + ")"
+        System.out.println("[PAC] " + labelPrefix + " 4: logZ_corrected="
+                + String.format("%.4f", logZCorrected)
+                + " (improvement over logZ_rigid: "
+                + String.format("%.4f", logZCorrected - logZRigid) + ")"
                 + " in " + phase4Time + " ms"
                 + formatDPCacheStats(correctedDP.cacheStats));
 
-        // Phase 5: Compute residuals and PAC bound
         long phase5Start = System.currentTimeMillis();
         computePACBound(ccdResults, correctedEmat, logZCorrected);
         long phase5Time = System.currentTimeMillis() - phase5Start;
-
-        long totalTime = System.currentTimeMillis() - startTime;
-        System.out.println("[PAC] Phase 5: epsilon=" + String.format("%.6f", epsilon)
+        System.out.println("[PAC] " + labelPrefix + " 5: epsilon="
+                + String.format("%.6f", epsilon)
                 + ", meanPsi=" + String.format("%.6f", meanPsi)
                 + ", cvPsi=" + String.format("%.4f", cvPsi)
                 + ", meanResidual=" + String.format("%.4f", meanResidual) + " kcal/mol"
                 + ", stdResidual=" + String.format("%.4f", stdResidual) + " kcal/mol"
                 + " in " + phase5Time + " ms");
+    }
+
+    private void printFinalSummary(long startTime) {
+        long totalTime = System.currentTimeMillis() - startTime;
         System.out.println("[PAC] Total: " + totalTime + " ms, " + totalCCDCalls
                 + " CCD calls, epsilon=" + String.format("%.6f", epsilon)
                 + ", confidence=" + String.format("%.2f%%", (1.0 - delta) * 100));
@@ -345,8 +631,6 @@ public class PACPartitionFunction {
                 + ", upper=" + String.format("%.6e", zUpper.doubleValue())
                 + ", log10Lower=" + formatLog10(logZLowerPAC)
                 + ", log10Upper=" + formatLog10(logZUpperPAC));
-
-        return epsilon;
     }
 
     // ========== Phase 1: Ancestral sampling from DP ==========
@@ -358,42 +642,84 @@ public class PACPartitionFunction {
      * Top-down traversal: for each edge, sample lambda-state proportional to
      * exp(-fullEnergyMin[mIdx][lIdx]/RT), conditioned on the M-state from parent.
      */
-    private List<int[]> sampleConformationsFromDP(int n) {
-        Random rng = new Random(42); // reproducible
+    private List<int[]> sampleConformationsFromDP(int n, Random rng) {
+        if (!batchedSampling) {
+            return sampleConformationsFromDPLegacy(n, rng);
+        }
+
+        int numPos = rcs.getNumPos();
+        int[][] confs = new int[n][numPos];
+        for (int[] conf : confs) {
+            Arrays.fill(conf, -1);
+        }
+
+        SplittableRandom[] sampleRngs = new SplittableRandom[n];
+        long masterSeed = rng.nextLong();
+        for (int s = 0; s < n; s++) {
+            sampleRngs[s] = new SplittableRandom(mix64(masterSeed + 0x9E3779B97F4A7C15L * (long) s));
+        }
+
+        List<RootedTreeEdge> topDownOrder = buildTopDownOrder(rootedRootEdge);
+        ExecutorService samplingPool = samplingThreads > 1
+                ? Executors.newFixedThreadPool(samplingThreads,
+                        daemonThreadFactory("branchmarkstar-pac-sample"))
+                : null;
+
+        try {
+            for (RootedTreeEdge edge : topDownOrder) {
+                if (!edge.getIsLambdaEdge()) continue;
+
+                long edgeStart = System.currentTimeMillis();
+                Map<Long, SampleGroup> groups = groupSamplesByMIdx(edge, confs);
+                sampleEdgeGroups(edge, confs, sampleRngs, groups, samplingPool);
+                logSamplingEdgeProgress(edge, n, groups, System.currentTimeMillis() - edgeStart);
+            }
+        } finally {
+            if (samplingPool != null) {
+                samplingPool.shutdownNow();
+            }
+        }
+
+        List<int[]> conformations = new ArrayList<>(n);
+        for (int[] conf : confs) {
+            boolean valid = true;
+            for (int p = 0; p < numPos; p++) {
+                if (conf[p] < 0) {
+                    valid = false;
+                    break;
+                }
+            }
+            if (valid) {
+                conformations.add(conf);
+            }
+        }
+
+        return conformations;
+    }
+
+    private List<int[]> sampleConformationsFromDPLegacy(int n, Random rng) {
         int numPos = rcs.getNumPos();
         List<int[]> conformations = new ArrayList<>(n);
-
-        // Collect all lambda-edges in compact tree order (post-order gives leaves first)
-        List<RootedTreeEdge> lambdaEdges = new ArrayList<>();
-        RootedTreeEdge.collectLambdaEdges(rootedRoot, lambdaEdges);
-
-        // Build a top-down traversal order: root edge first, then children
         List<RootedTreeEdge> topDownOrder = buildTopDownOrder(rootedRootEdge);
 
         for (int s = 0; s < n; s++) {
             int[] conf = new int[numPos];
             Arrays.fill(conf, -1);
 
-            // Top-down: sample each edge's lambda-state given its M-state (from parent)
             for (RootedTreeEdge edge : topDownOrder) {
                 if (!edge.getIsLambdaEdge()) continue;
-
                 int[] mPositions = edge.getMPositionsSorted();
                 int[] lambdaPositions = edge.getLambdaPositionsSorted();
 
-                // Determine M-state from already-sampled positions
                 int[] mLocalRCs = new int[mPositions.length];
                 for (int i = 0; i < mPositions.length; i++) {
                     int globalRC = conf[mPositions[i]];
-                    // Convert global RC back to local index
                     mLocalRCs[i] = findLocalRCIndex(mPositions[i], globalRC);
                 }
-                int mIdx = edge.computeIndexInA(mLocalRCs);
+                long mIdx = edge.computeIndexInA(mLocalRCs);
 
-                // Sample lambda-state proportional to exp(-fullEnergyMin/RT)
                 int lIdx = sampleLambdaState(edge, mIdx, rng);
 
-                // Decode lambda-state and write to conf
                 int[] lambdaLocalRCs = edge.decodeLambdaStatePublic(lIdx);
                 for (int i = 0; i < lambdaPositions.length; i++) {
                     conf[lambdaPositions[i]] = rcs.get(lambdaPositions[i], lambdaLocalRCs[i]);
@@ -416,14 +742,372 @@ public class PACPartitionFunction {
         return conformations;
     }
 
+    private Map<Long, SampleGroup> groupSamplesByMIdx(RootedTreeEdge edge, int[][] confs) {
+        Map<Long, SampleGroup> groups = new HashMap<>();
+        int[] mPositions = edge.getMPositionsSorted();
+        int[] mLocalRCs = new int[mPositions.length];
+
+        for (int s = 0; s < confs.length; s++) {
+            for (int i = 0; i < mPositions.length; i++) {
+                int pos = mPositions[i];
+                int globalRC = confs[s][pos];
+                if (globalRC < 0) {
+                    throw new IllegalStateException("PAC sampling reached edge before M position "
+                            + pos + " was assigned");
+                }
+                mLocalRCs[i] = findLocalRCIndex(pos, globalRC);
+            }
+            long mIdx = edge.computeIndexInA(mLocalRCs);
+            groups.computeIfAbsent(mIdx, SampleGroup::new).add(s);
+        }
+
+        return groups;
+    }
+
+    private void sampleEdgeGroups(RootedTreeEdge edge, int[][] confs,
+                                  SplittableRandom[] sampleRngs,
+                                  Map<Long, SampleGroup> groups,
+                                  ExecutorService samplingPool) {
+        int totalLambda = edge.getTotalLambdaStates();
+        if (totalLambda <= 0) {
+            throw new IllegalStateException("Lambda edge has no lambda states");
+        }
+        if (totalLambda == 1) {
+            for (SampleGroup group : groups.values()) {
+                for (int i = 0; i < group.count; i++) {
+                    writeLambdaState(edge, 0, confs[group.sampleIndices[i]]);
+                }
+            }
+            return;
+        }
+
+        if (samplingPool == null || samplingThreads <= 1) {
+            for (SampleGroup group : groups.values()) {
+                sampleGroupSerial(edge, group, confs, sampleRngs);
+            }
+            return;
+        }
+
+        if (totalLambda >= samplingLargeLambdaThreshold) {
+            processSingletonGroupsParallel(edge, groups.values(), confs, sampleRngs, samplingPool);
+            for (SampleGroup group : groups.values()) {
+                if (group.count >= 2) {
+                    sampleGroupWithParallelCDF(edge, group, confs, sampleRngs, samplingPool);
+                }
+            }
+        } else {
+            processSmallGroupsParallel(edge, groups.values(), confs, sampleRngs, samplingPool);
+        }
+    }
+
+    private void processSingletonGroupsParallel(RootedTreeEdge edge,
+                                                Collection<SampleGroup> groups,
+                                                int[][] confs,
+                                                SplittableRandom[] sampleRngs,
+                                                ExecutorService samplingPool) {
+        List<Future<?>> futures = new ArrayList<>();
+        for (SampleGroup group : groups) {
+            if (group.count != 1) continue;
+            futures.add(samplingPool.submit(() -> {
+                int sampleIndex = group.sampleIndices[0];
+                int lIdx = sampleLambdaStateStreaming(edge, group.mIdx, sampleRngs[sampleIndex]);
+                writeLambdaState(edge, lIdx, confs[sampleIndex]);
+            }));
+        }
+        waitForSamplingFutures(futures);
+    }
+
+    private void processSmallGroupsParallel(RootedTreeEdge edge,
+                                            Collection<SampleGroup> groups,
+                                            int[][] confs,
+                                            SplittableRandom[] sampleRngs,
+                                            ExecutorService samplingPool) {
+        List<Future<?>> futures = new ArrayList<>(groups.size());
+        for (SampleGroup group : groups) {
+            futures.add(samplingPool.submit(() ->
+                    sampleGroupSerial(edge, group, confs, sampleRngs)));
+        }
+        waitForSamplingFutures(futures);
+    }
+
+    private void sampleGroupSerial(RootedTreeEdge edge, SampleGroup group,
+                                   int[][] confs, SplittableRandom[] sampleRngs) {
+        if (group.count == 1) {
+            int sampleIndex = group.sampleIndices[0];
+            int lIdx = sampleLambdaStateStreaming(edge, group.mIdx, sampleRngs[sampleIndex]);
+            writeLambdaState(edge, lIdx, confs[sampleIndex]);
+            return;
+        }
+
+        double[] cdf = buildConditionalCDFSerial(edge, group.mIdx);
+        sampleGroupFromCDF(edge, group, confs, sampleRngs, cdf);
+    }
+
+    private void sampleGroupWithParallelCDF(RootedTreeEdge edge, SampleGroup group,
+                                            int[][] confs, SplittableRandom[] sampleRngs,
+                                            ExecutorService samplingPool) {
+        double[] cdf = buildConditionalCDFParallel(edge, group.mIdx, samplingPool);
+        sampleGroupFromCDF(edge, group, confs, sampleRngs, cdf);
+    }
+
+    private void sampleGroupFromCDF(RootedTreeEdge edge, SampleGroup group,
+                                    int[][] confs, SplittableRandom[] sampleRngs,
+                                    double[] cdf) {
+        double total = cdf[cdf.length - 1];
+        if (!(total > 0.0) || !Double.isFinite(total)) {
+            for (int i = 0; i < group.count; i++) {
+                int sampleIndex = group.sampleIndices[i];
+                int lIdx = sampleLambdaStateStreaming(edge, group.mIdx, sampleRngs[sampleIndex]);
+                writeLambdaState(edge, lIdx, confs[sampleIndex]);
+            }
+            return;
+        }
+
+        for (int i = 0; i < group.count; i++) {
+            int sampleIndex = group.sampleIndices[i];
+            int lIdx = sampleFromCDF(cdf, total, sampleRngs[sampleIndex]);
+            writeLambdaState(edge, lIdx, confs[sampleIndex]);
+        }
+    }
+
+    private double[] buildConditionalCDFSerial(RootedTreeEdge edge, long mIdx) {
+        int totalLambda = edge.getTotalLambdaStates();
+        double[] cdf = new double[totalLambda];
+        int[] mRCs = edge.hasFsetChildren() ? edge.decodeMStatePublic(mIdx) : null;
+
+        double maxLog = Double.NEGATIVE_INFINITY;
+        for (int lIdx = 0; lIdx < totalLambda; lIdx++) {
+            double logWeight = computeLambdaLogWeight(edge, mIdx, mRCs, lIdx);
+            cdf[lIdx] = logWeight;
+            if (logWeight > maxLog) {
+                maxLog = logWeight;
+            }
+        }
+
+        if (!Double.isFinite(maxLog)) {
+            return cdf;
+        }
+
+        double running = 0.0;
+        for (int lIdx = 0; lIdx < totalLambda; lIdx++) {
+            running += Math.exp(cdf[lIdx] - maxLog);
+            cdf[lIdx] = running;
+        }
+        return cdf;
+    }
+
+    private double[] buildConditionalCDFParallel(RootedTreeEdge edge, long mIdx,
+                                                 ExecutorService samplingPool) {
+        int totalLambda = edge.getTotalLambdaStates();
+        double[] cdf = new double[totalLambda];
+        int chunks = Math.min(samplingThreads, totalLambda);
+        int[] mRCs = edge.hasFsetChildren() ? edge.decodeMStatePublic(mIdx) : null;
+        double[] chunkMax = new double[chunks];
+        Arrays.fill(chunkMax, Double.NEGATIVE_INFINITY);
+
+        runParallelChunks(samplingPool, chunks, chunk -> {
+            int start = chunkStart(totalLambda, chunks, chunk);
+            int end = chunkStart(totalLambda, chunks, chunk + 1);
+            double max = Double.NEGATIVE_INFINITY;
+            for (int lIdx = start; lIdx < end; lIdx++) {
+                double logWeight = computeLambdaLogWeight(edge, mIdx, mRCs, lIdx);
+                cdf[lIdx] = logWeight;
+                if (logWeight > max) {
+                    max = logWeight;
+                }
+            }
+            chunkMax[chunk] = max;
+        });
+
+        double maxLog = Double.NEGATIVE_INFINITY;
+        for (double max : chunkMax) {
+            if (max > maxLog) {
+                maxLog = max;
+            }
+        }
+        if (!Double.isFinite(maxLog)) {
+            return cdf;
+        }
+
+        final double globalMaxLog = maxLog;
+        double[] chunkSums = new double[chunks];
+        runParallelChunks(samplingPool, chunks, chunk -> {
+            int start = chunkStart(totalLambda, chunks, chunk);
+            int end = chunkStart(totalLambda, chunks, chunk + 1);
+            double sum = 0.0;
+            for (int lIdx = start; lIdx < end; lIdx++) {
+                double weight = Math.exp(cdf[lIdx] - globalMaxLog);
+                cdf[lIdx] = weight;
+                sum += weight;
+            }
+            chunkSums[chunk] = sum;
+        });
+
+        double[] chunkOffsets = new double[chunks];
+        double offset = 0.0;
+        for (int chunk = 0; chunk < chunks; chunk++) {
+            chunkOffsets[chunk] = offset;
+            offset += chunkSums[chunk];
+        }
+
+        runParallelChunks(samplingPool, chunks, chunk -> {
+            int start = chunkStart(totalLambda, chunks, chunk);
+            int end = chunkStart(totalLambda, chunks, chunk + 1);
+            double running = chunkOffsets[chunk];
+            for (int lIdx = start; lIdx < end; lIdx++) {
+                running += cdf[lIdx];
+                cdf[lIdx] = running;
+            }
+        });
+
+        return cdf;
+    }
+
+    private int sampleLambdaStateStreaming(RootedTreeEdge edge, long mIdx,
+                                           SplittableRandom rng) {
+        int totalLambda = edge.getTotalLambdaStates();
+        if (totalLambda <= 1) {
+            return 0;
+        }
+
+        int[] mRCs = edge.hasFsetChildren() ? edge.decodeMStatePublic(mIdx) : null;
+        int bestIdx = totalLambda - 1;
+        double bestScore = Double.NEGATIVE_INFINITY;
+
+        for (int lIdx = 0; lIdx < totalLambda; lIdx++) {
+            double logWeight = computeLambdaLogWeight(edge, mIdx, mRCs, lIdx);
+            if (Double.isNaN(logWeight)) {
+                continue;
+            }
+            double score = logWeight + sampleGumbel(rng);
+            if (score > bestScore) {
+                bestScore = score;
+                bestIdx = lIdx;
+            }
+        }
+        return bestIdx;
+    }
+
+    private double computeLambdaLogWeight(RootedTreeEdge edge, long mIdx,
+                                          int[] mRCs, int lIdx) {
+        if (!edge.hasFsetChildren()) {
+            return -edge.getFullEnergyMin(mIdx, lIdx) / RT;
+        }
+
+        int[] lambdaRCs = edge.decodeLambdaStatePublic(lIdx);
+        double localEnergy = computeLocalEnergy(edge, mRCs, lambdaRCs, branchMinimizingEmat);
+        double fSumUpper = 0.0;
+        if (edge.getFset() != null) {
+            for (RootedTreeEdge fEdge : edge.getFset()) {
+                int[] fM = edge.getMstateForFullState(mRCs, lambdaRCs, fEdge);
+                long fIdx = fEdge.computeIndexInA(fM);
+                fSumUpper += fEdge.getLogZUpper(fIdx);
+            }
+        }
+        return -localEnergy / RT + fSumUpper;
+    }
+
+    private void writeLambdaState(RootedTreeEdge edge, int lIdx, int[] conf) {
+        int[] lambdaPositions = edge.getLambdaPositionsSorted();
+        int[] lambdaLocalRCs = edge.decodeLambdaStatePublic(lIdx);
+        for (int i = 0; i < lambdaPositions.length; i++) {
+            conf[lambdaPositions[i]] = rcs.get(lambdaPositions[i], lambdaLocalRCs[i]);
+        }
+    }
+
+    private int sampleFromCDF(double[] cdf, double total, SplittableRandom rng) {
+        double target = rng.nextDouble() * total;
+        int lo = 0;
+        int hi = cdf.length - 1;
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (target < cdf[mid]) {
+                hi = mid;
+            } else {
+                lo = mid + 1;
+            }
+        }
+        return lo;
+    }
+
+    private double sampleGumbel(SplittableRandom rng) {
+        double u = rng.nextDouble();
+        if (u <= 0.0) {
+            u = Double.MIN_VALUE;
+        }
+        return -Math.log(-Math.log(u));
+    }
+
+    private int chunkStart(int total, int chunks, int chunk) {
+        return (int) (((long) total * (long) chunk) / (long) chunks);
+    }
+
+    private void runParallelChunks(ExecutorService pool, int chunks, IntConsumer task) {
+        List<Future<?>> futures = new ArrayList<>(chunks);
+        for (int chunk = 0; chunk < chunks; chunk++) {
+            final int c = chunk;
+            futures.add(pool.submit(() -> task.accept(c)));
+        }
+        waitForSamplingFutures(futures);
+    }
+
+    private void waitForSamplingFutures(List<Future<?>> futures) {
+        try {
+            for (Future<?> future : futures) {
+                future.get();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("PAC sampling interrupted", e);
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException) {
+                throw (RuntimeException) cause;
+            }
+            if (cause instanceof Error) {
+                throw (Error) cause;
+            }
+            throw new RuntimeException("PAC sampling failed", cause);
+        }
+    }
+
+    private void logSamplingEdgeProgress(RootedTreeEdge edge, int requestedSamples,
+                                         Map<Long, SampleGroup> groups,
+                                         long elapsedMs) {
+        if (!samplingProgress) {
+            return;
+        }
+
+        int totalLambda = edge.getTotalLambdaStates();
+        if (totalLambda < samplingLargeLambdaThreshold && elapsedMs < 1000L) {
+            return;
+        }
+
+        int singletonGroups = 0;
+        int maxGroup = 0;
+        for (SampleGroup group : groups.values()) {
+            if (group.count == 1) {
+                singletonGroups++;
+            }
+            maxGroup = Math.max(maxGroup, group.count);
+        }
+
+        System.out.println("[PAC] Phase 1 edge: lambdaStates=" + totalLambda
+                + ", samples=" + requestedSamples
+                + ", distinctMIdx=" + groups.size()
+                + ", singletonGroups=" + singletonGroups
+                + ", maxGroup=" + maxGroup
+                + ", threads=" + samplingThreads
+                + ", elapsed=" + elapsedMs + " ms");
+    }
+
     /**
      * Find the local RC index for a position given its global RC.
      */
     private int findLocalRCIndex(int pos, int globalRC) {
-        for (int localIdx = 0; localIdx < rcs.getNum(pos); localIdx++) {
-            if (rcs.get(pos, localIdx) == globalRC) {
-                return localIdx;
-            }
+        int local = localRCByGlobalRC[pos].get(globalRC);
+        if (local >= 0) {
+            return local;
         }
         throw new IllegalStateException("Global RC " + globalRC + " not found at position " + pos);
     }
@@ -433,7 +1117,7 @@ public class PACPartitionFunction {
      * For leaf edges, uses pre-computed fullEnergyMin.
      * For non-leaf edges, uses local energy + child logZ.
      */
-    private int sampleLambdaState(RootedTreeEdge edge, int mIdx, Random rng) {
+    private int sampleLambdaState(RootedTreeEdge edge, long mIdx, Random rng) {
         int totalLambda = edge.getTotalLambdaStates();
         double[] logWeights = new double[totalLambda];
 
@@ -454,8 +1138,8 @@ public class PACPartitionFunction {
                 if (edge.getFset() != null) {
                     for (RootedTreeEdge fEdge : edge.getFset()) {
                         int[] fM = edge.getMstateForFullState(mRCs, lambdaRCs, fEdge);
-                        int fIdx = fEdge.computeIndexInA(fM);
-                        fSumUpper += fEdge.getLogZUpper()[fIdx];
+                        long fIdx = fEdge.computeIndexInA(fM);
+                        fSumUpper += fEdge.getLogZUpper(fIdx);
                     }
                 }
                 logWeights[lIdx] = -localEnergy / RT + fSumUpper;
@@ -771,7 +1455,7 @@ public class PACPartitionFunction {
                 branchRigidEmat, correctedEmat, interactionGraph, RT);
         DPCacheStats stats = computeCorrectedDPTables(eta);
 
-        return new CorrectedDPResult(rootedRootEdge.getLogZUpper()[0], stats);
+        return new CorrectedDPResult(rootedRootEdge.getLogZUpper(0), stats);
     }
 
     private DPCacheStats computeCorrectedDPTables(EtaCorrections eta) {
@@ -797,6 +1481,13 @@ public class PACPartitionFunction {
 
         RootedTreeEdge edge = node.getChildOfEdge();
         if (edge == null || !edge.getIsLambdaEdge()) return;
+
+        if (!edge.hasDenseDPTable()) {
+            edge.computeFullDP();
+            edgeKeys.put(edge, buildCorrectedDPCacheKey(namespace, edge, eta, edgeKeys));
+            stats.skippedLarge++;
+            return;
+        }
 
         String key = buildCorrectedDPCacheKey(namespace, edge, eta, edgeKeys);
         CachedDPTable cached = getCorrectedCachedDPTable(key, edge.getMArraySize());

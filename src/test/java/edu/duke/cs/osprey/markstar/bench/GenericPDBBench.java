@@ -18,6 +18,7 @@ import edu.duke.cs.osprey.kstar.KStar;
 import edu.duke.cs.osprey.kstar.TestKStar;
 import edu.duke.cs.osprey.kstar.pfunc.GradientDescentPfunc;
 import edu.duke.cs.osprey.markstar.MARKStar;
+import edu.duke.cs.osprey.markstar.framework.BranchMARKStarBound;
 import edu.duke.cs.osprey.parallelism.Parallelism;
 import edu.duke.cs.osprey.restypes.ResidueTemplateLibrary;
 import edu.duke.cs.osprey.structure.Molecule;
@@ -35,7 +36,7 @@ import java.util.*;
  *   osprey.bench.ligandChains  — comma-separated chain IDs for ligand (e.g. "C")
  *   osprey.bench.mutable       — semicolon-separated mutable residue IDs (e.g. "A96;B85")
  *   osprey.bench.flexible      — semicolon-separated flexible residue IDs (e.g. "C7;C6;C5")
- *   osprey.bench.method        — kstar | markstar | gnn_s9 | gnn_s10 | gnn_s11
+ *   osprey.bench.method        — kstar | markstar | pac | dp_profile | gnn_s9 | gnn_s10 | gnn_s11
  *   osprey.bench.epsilon       — approximation ratio (default 0.683)
  *   osprey.bench.numCPUs       — number of CPUs (default 8)
  *   osprey.bench.designId      — design identifier for output
@@ -209,6 +210,9 @@ public class GenericPDBBench {
                 // the exact search loop and uses Rao-Blackwellized importance sampling.
                 System.setProperty("branchmarkstar.usePAC", "true");
                 runMARKStar(confSpaces, epsilon, parallelism, ematDir, designId, outputDir, false, true);
+                break;
+            case "dp_profile":
+                runDPProfile(confSpaces, parallelism, ematDir, designId);
                 break;
             case "gnn_s9":
                 runMARKStar(confSpaces, epsilon, parallelism, ematDir, designId, outputDir, true, false);
@@ -488,6 +492,98 @@ public class GenericPDBBench {
         String outputMethodName = System.getProperty("osprey.bench.method",
                 useGNN ? "gnn_s9" : "markstar");
         writeMARKStarResults(scores, designId, outputMethodName, outputDir, epsilon, markElapsed);
+    }
+
+    private static void runDPProfile(TestKStar.ConfSpaces confSpaces,
+                                      Parallelism parallelism, String ematDir,
+                                      String designId) {
+        if (System.getProperty("branchmarkstar.dp.cache") == null) {
+            System.setProperty("branchmarkstar.dp.cache", "false");
+        }
+
+        String stateProp = System.getProperty("osprey.dpProfile.state", "complex")
+                .trim().toLowerCase(Locale.ROOT);
+        int seqIndex = Integer.getInteger("osprey.dpProfile.seqIndex", 0);
+        int maxMut = Integer.getInteger("osprey.dpProfile.maxMut", 1);
+
+        SimpleConfSpace cs;
+        String stateName;
+        switch (stateProp) {
+            case "protein":
+                cs = confSpaces.protein;
+                stateName = "Protein";
+                break;
+            case "ligand":
+                cs = confSpaces.ligand;
+                stateName = "Ligand";
+                break;
+            case "complex":
+                cs = confSpaces.complex;
+                stateName = "Complex";
+                break;
+            default:
+                throw new IllegalArgumentException("Unknown osprey.dpProfile.state: " + stateProp);
+        }
+
+        List<Sequence> sequences = new ArrayList<>();
+        if (confSpaces.complex.seqSpace.containsWildTypeSequence()) {
+            sequences.add(confSpaces.complex.seqSpace.makeWildTypeSequence());
+        }
+        sequences.addAll(confSpaces.complex.seqSpace.getMutants(maxMut, true));
+        if (seqIndex < 0 || seqIndex >= sequences.size()) {
+            throw new IllegalArgumentException("osprey.dpProfile.seqIndex=" + seqIndex
+                    + " outside [0," + sequences.size() + ")");
+        }
+
+        Sequence globalSequence = sequences.get(seqIndex);
+        Sequence stateSequence = globalSequence.filter(cs.seqSpace);
+        System.out.println("\n=== DP Profile ===");
+        System.out.println("  Design: " + designId);
+        System.out.println("  State: " + stateName);
+        System.out.println("  Sequence index: " + seqIndex + " / " + (sequences.size() - 1));
+        System.out.println("  Sequence: " + globalSequence.toString(Sequence.Renderer.ResType));
+        System.out.println("  State sequence: " + stateSequence.toString(Sequence.Renderer.ResType));
+        System.out.println("  Positions: " + cs.positions.size());
+        System.out.println("  DP cache: " + System.getProperty("branchmarkstar.dp.cache"));
+
+        EnergyCalculator minimizingEcalc = new EnergyCalculator.Builder(
+                confSpaces.complex, confSpaces.ffparams)
+                .setParallelism(parallelism).build();
+        EnergyCalculator rigidEcalc = new EnergyCalculator.Builder(
+                confSpaces.complex, confSpaces.ffparams)
+                .setParallelism(parallelism).setIsMinimizing(false).build();
+
+        try {
+            ConfEnergyCalculator minimizingConfEcalc = new ConfEnergyCalculator.Builder(cs, minimizingEcalc)
+                    .setReferenceEnergies(new SimplerEnergyMatrixCalculator.Builder(cs, minimizingEcalc)
+                            .build().calcReferenceEnergies())
+                    .build();
+            ConfEnergyCalculator rigidConfEcalc = new ConfEnergyCalculator.Builder(cs, rigidEcalc)
+                    .setReferenceEnergies(new SimplerEnergyMatrixCalculator.Builder(cs, rigidEcalc)
+                            .build().calcReferenceEnergies())
+                    .build();
+
+            String cachePrefix = ematDir + "/markstar." + stateName.toLowerCase(Locale.ROOT);
+            EnergyMatrix rigidEmat = new SimplerEnergyMatrixCalculator.Builder(rigidConfEcalc)
+                    .setCacheFile(new File(cachePrefix + ".rigid.dat"))
+                    .build().calcEnergyMatrix();
+            EnergyMatrix minimizingEmat = new SimplerEnergyMatrixCalculator.Builder(minimizingConfEcalc)
+                    .setCacheFile(new File(cachePrefix + ".minimizing.dat"))
+                    .build().calcEnergyMatrix();
+
+            long t0 = System.currentTimeMillis();
+            new BranchMARKStarBound(cs, rigidEmat, minimizingEmat, minimizingConfEcalc,
+                    stateSequence.makeRCs(cs), parallelism, stateName);
+            long elapsedMs = System.currentTimeMillis() - t0;
+            System.out.println("[DP_PROFILE] done design=" + designId
+                    + " state=" + stateName
+                    + " seqIndex=" + seqIndex
+                    + " elapsedMs=" + elapsedMs
+                    + " threads=" + System.getProperty("branchmarkstar.dp.parallel.threads", "auto"));
+        } finally {
+            minimizingEcalc.tasks.waitForFinish();
+            rigidEcalc.tasks.waitForFinish();
+        }
     }
 
     /** CSV columns shared by K* / MARK* / GNN-S9 outputs. */

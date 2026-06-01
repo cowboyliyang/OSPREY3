@@ -100,7 +100,7 @@ public class LambdaAStar {
      * @param mIdx       the fixed M-state index
      * @param minEmat    minimizing energy matrix (for g+h scoring)
      */
-    public LambdaAStar(RootedTreeEdge edge, int mIdx, EnergyMatrix minEmat) {
+    public LambdaAStar(RootedTreeEdge edge, long mIdx, EnergyMatrix minEmat) {
         this.edge = edge;
         this.mLocalRCs = edge.decodeMStatePublic(mIdx);
         this.lambdaPositions = edge.getLambdaPositionsSorted();

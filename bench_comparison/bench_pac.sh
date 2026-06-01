@@ -4,8 +4,8 @@
 #
 # PAC = Probably Approximately Correct partition-function estimation via
 # Rao-Blackwellized importance sampling on the BranchMARK* tree.
-# It is CPU-bound (parallel CCD sampling), so we run on the highest-core
-# nodes available. CPU node survey:
+# It is CPU-bound in both DP-proposal sampling (Phase 1) and CCD minimization
+# (Phase 2), so we run on the highest-core nodes available. CPU node survey:
 #   grisman:  fennario-01..06 = 104 CPUs (+8x A5000)   <-- used here
 #             jerry1..7 / grisman-37/40 = only 48 CPUs
 #   compsci:  compsci-cluster-fitz-35..44 = 128 CPUs   (alt, set PARTITION=compsci)
@@ -17,6 +17,9 @@
 #
 # Usage: bash bench_pac.sh [design_id or "all"]
 #   env overrides: PAC_SAMPLES=500  PAC_CONFIDENCE=0.05
+#                  PAC_ADAPTIVE=true PAC_MIN_SAMPLES=100 PAC_BATCH_SIZE=200
+#                  PAC_SAMPLING_BATCHED=true PAC_SAMPLING_THREADS= PAC_SAMPLING_LARGE_LAMBDA=65536
+#                  ROOT_SPLIT=memory
 #                  GRISMAN_CPUS=104  COMPSCI_CPUS=128
 #                  GRISMAN_MEM=128G   COMPSCI_MEM=256G
 #                  JAVA_XMX=192g      JAVA_XMS=4g
@@ -37,6 +40,14 @@ DESIGN=${1:-2q1e}
 # --- tunables ---
 PAC_SAMPLES=${PAC_SAMPLES:-500}        # branchmarkstar.pac.samples
 PAC_CONFIDENCE=${PAC_CONFIDENCE:-0.05} # delta; 0.05 => 95% confidence
+PAC_ADAPTIVE=${PAC_ADAPTIVE:-true}
+PAC_MIN_SAMPLES=${PAC_MIN_SAMPLES:-100}
+PAC_MAX_SAMPLES=${PAC_MAX_SAMPLES:-$PAC_SAMPLES}
+PAC_BATCH_SIZE=${PAC_BATCH_SIZE:-200}
+PAC_TARGET_EPSILON=${PAC_TARGET_EPSILON:-}
+PAC_SAMPLING_BATCHED=${PAC_SAMPLING_BATCHED:-true}
+PAC_SAMPLING_THREADS=${PAC_SAMPLING_THREADS:-}
+PAC_SAMPLING_LARGE_LAMBDA=${PAC_SAMPLING_LARGE_LAMBDA:-65536}
 GRISMAN_CPUS=${GRISMAN_CPUS:-104}      # max out fennario
 COMPSCI_CPUS=${COMPSCI_CPUS:-128}      # max out fitz
 GRISMAN_MEM=${GRISMAN_MEM:-128G}
@@ -44,6 +55,7 @@ COMPSCI_MEM=${COMPSCI_MEM:-256G}
 JAVA_XMX=${JAVA_XMX:-192g}
 JAVA_XMS=${JAVA_XMS:-4g}
 DP_CACHE=${DP_CACHE:-false}
+ROOT_SPLIT=${ROOT_SPLIT:-memory}
 GRISMAN_FULL_NODE=${GRISMAN_FULL_NODE:-false}
 GRISMAN_EXCLUDE=${GRISMAN_EXCLUDE:-}
 GRISMAN_CONSTRAINT=${GRISMAN_CONSTRAINT-a5000}
@@ -108,9 +120,18 @@ submit_one() {
             -Dosprey.bench.outputDir=$OUTDIR/results \
             -Dosprey.bench.numCPUs=\$RUN_CPUS \
             -Dbranchmarkstar.usePAC=true \
+            -Dbranchmarkstar.rootSplit=$ROOT_SPLIT \
             -Dbranchmarkstar.dp.cache=$DP_CACHE \
             -Dbranchmarkstar.pac.samples=$PAC_SAMPLES \
             -Dbranchmarkstar.pac.confidence=$PAC_CONFIDENCE \
+            -Dbranchmarkstar.pac.adaptive=$PAC_ADAPTIVE \
+            -Dbranchmarkstar.pac.minSamples=$PAC_MIN_SAMPLES \
+            -Dbranchmarkstar.pac.maxSamples=$PAC_MAX_SAMPLES \
+            -Dbranchmarkstar.pac.batchSize=$PAC_BATCH_SIZE \
+            -Dbranchmarkstar.pac.targetEpsilon=$PAC_TARGET_EPSILON \
+            -Dbranchmarkstar.pac.sampling.batched=$PAC_SAMPLING_BATCHED \
+            -Dbranchmarkstar.pac.sampling.threads=$PAC_SAMPLING_THREADS \
+            -Dbranchmarkstar.pac.sampling.largeLambdaThreshold=$PAC_SAMPLING_LARGE_LAMBDA \
             -cp \"\$(cat $LOGDIR/.classpath_bench.txt)\" $MAIN 2>&1" \
         | awk '{print $4}')
     if [ "$part" = "grisman" ] && [ "$GRISMAN_FULL_NODE" = "true" ]; then

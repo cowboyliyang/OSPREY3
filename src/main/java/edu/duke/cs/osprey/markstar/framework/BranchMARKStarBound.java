@@ -522,12 +522,19 @@ public class BranchMARKStarBound extends MARKStarBound {
         final int reusableLambdaEdges;
         final double reusableLogWork;
         final double totalLogWork;
+        final long maxMStates;
+        final long totalMStates;
+        final long maxDPTableBytes;
+        final long totalDPTableBytes;
+        final double logDPWork;
 
         RootingCandidate(RootedTreeNode root, int splitEdgeIndex, double logTESS,
                          int lambdaEdges, int maxFsetSize, int branchingEdges,
                          int totalFsetEdges, int rootFsetSize,
                          int reusableLambdaEdges, double reusableLogWork,
-                         double totalLogWork) {
+                         double totalLogWork, long maxMStates, long totalMStates,
+                         long maxDPTableBytes, long totalDPTableBytes,
+                         double logDPWork) {
             this.root = root;
             this.splitEdgeIndex = splitEdgeIndex;
             this.logTESS = logTESS;
@@ -539,6 +546,11 @@ public class BranchMARKStarBound extends MARKStarBound {
             this.reusableLambdaEdges = reusableLambdaEdges;
             this.reusableLogWork = reusableLogWork;
             this.totalLogWork = totalLogWork;
+            this.maxMStates = maxMStates;
+            this.totalMStates = totalMStates;
+            this.maxDPTableBytes = maxDPTableBytes;
+            this.totalDPTableBytes = totalDPTableBytes;
+            this.logDPWork = logDPWork;
         }
 
         double reusableEdgeRatio() {
@@ -557,7 +569,16 @@ public class BranchMARKStarBound extends MARKStarBound {
     public BranchMARKStarBound(SimpleConfSpace confSpace, EnergyMatrix rigidEmat,
                                 EnergyMatrix minimizingEmat, ConfEnergyCalculator minimizingConfEcalc,
                                 RCs rcs, Parallelism parallelism) {
+        this(confSpace, rigidEmat, minimizingEmat, minimizingConfEcalc, rcs, parallelism, null);
+    }
+
+    public BranchMARKStarBound(SimpleConfSpace confSpace, EnergyMatrix rigidEmat,
+                                EnergyMatrix minimizingEmat, ConfEnergyCalculator minimizingConfEcalc,
+                                RCs rcs, Parallelism parallelism, String stateNameOverride) {
         super(confSpace, rigidEmat, minimizingEmat, minimizingConfEcalc, rcs, parallelism);
+        if (stateNameOverride != null && !stateNameOverride.trim().isEmpty()) {
+            this.stateName = stateNameOverride;
+        }
         this.confSpace = confSpace;
         this.cutoffStrategy = CutoffStrategy.fromProperty(
                 getConfigProperty(CUTOFF_STRATEGY_PROPERTY, null));
@@ -600,7 +621,7 @@ public class BranchMARKStarBound extends MARKStarBound {
                 getConfigInteger(EDGE_LOOKAHEAD_MAX_PENDING_EDGES_PROPERTY, 4));
         this.edgeLookaheadParallel = getConfigBoolean(
                 EDGE_LOOKAHEAD_PARALLEL_PROPERTY, true);
-        this.rootSplitStrategy = getConfigProperty(ROOT_SPLIT_PROPERTY, "legacy").trim();
+        this.rootSplitStrategy = getConfigProperty(ROOT_SPLIT_PROPERTY, "memory").trim();
         this.rootSplitMaxFset = Math.max(1,
                 getConfigInteger(ROOT_SPLIT_MAX_FSET_PROPERTY, 2));
         this.parallelInternal = getConfigBoolean(PARALLEL_INTERNAL_PROPERTY, true);
@@ -748,6 +769,11 @@ public class BranchMARKStarBound extends MARKStarBound {
                 + ", reusableLambdaEdges=" + rooting.reusableLambdaEdges
                 + ", reusableEdgeRatio=" + String.format("%.4f", rooting.reusableEdgeRatio())
                 + ", reusableWorkRatio=" + String.format("%.4f", rooting.reusableWorkRatio())
+                + ", maxMStates=" + rooting.maxMStates
+                + ", totalMStates=" + rooting.totalMStates
+                + ", maxDPTable=" + formatBytes(rooting.maxDPTableBytes)
+                + ", totalDPTable=" + formatBytes(rooting.totalDPTableBytes)
+                + ", logDPWork=" + String.format(Locale.ROOT, "%.2f", rooting.logDPWork)
                 + ")");
 
         rootedRootEdge = rootedRoot.getLeftChild().getChildOfEdge();
@@ -1108,7 +1134,10 @@ public class BranchMARKStarBound extends MARKStarBound {
         if (numEdges == 0) return null;
 
         String strategy = rootSplitStrategy.toLowerCase(Locale.ROOT);
-        if (strategy.isEmpty() || strategy.equals("legacy") || strategy.equals("edge0")) {
+        if (strategy.isEmpty() || strategy.equals("auto")) {
+            strategy = "memory";
+        }
+        if (strategy.equals("legacy") || strategy.equals("edge0")) {
             return evaluateRootSplit(rcs, 0, true);
         }
 
@@ -1119,8 +1148,19 @@ public class BranchMARKStarBound extends MARKStarBound {
             // fall through to named strategies
         }
 
+        boolean useReuseScoring = strategy.equals("reuse");
+        boolean useMemoryScoring = strategy.equals("memory")
+                || strategy.equals("mem")
+                || strategy.equals("dp")
+                || strategy.equals("dpmemory")
+                || strategy.equals("dp_memory");
+        boolean useWorkScoring = strategy.equals("work")
+                || strategy.equals("dpwork")
+                || strategy.equals("dp_work");
+
         if (!strategy.equals("branching") && !strategy.equals("maxfset")
-                && !strategy.equals("lookahead") && !strategy.equals("reuse")) {
+                && !strategy.equals("lookahead") && !useReuseScoring
+                && !useMemoryScoring && !useWorkScoring) {
             System.err.println("BranchMARK*: Unknown root split strategy '" + rootSplitStrategy
                     + "', using legacy split edge 0.");
             return evaluateRootSplit(rcs, 0, true);
@@ -1136,15 +1176,22 @@ public class BranchMARKStarBound extends MARKStarBound {
                         + "falling back to TESS/fset root scoring.");
             }
         }
-        boolean useReuseScoring = strategy.equals("reuse") && !mutablePositions.isEmpty();
+        useReuseScoring = useReuseScoring && !mutablePositions.isEmpty();
         RootingCandidate best = null;
         for (int splitIdx = 0; splitIdx < numEdges; splitIdx++) {
             RootingCandidate candidate = evaluateRootSplit(rcs, splitIdx, false);
             if (candidate == null) continue;
-            if (candidate.maxFsetSize > rootSplitMaxFset) continue;
-            boolean better = useReuseScoring
-                    ? isBetterReuseRooting(candidate, best, logNaive)
-                    : isBetterRooting(candidate, best, logNaive);
+            boolean better;
+            if (useMemoryScoring) {
+                better = isBetterMemoryRooting(candidate, best, logNaive);
+            } else if (useWorkScoring) {
+                better = isBetterWorkRooting(candidate, best, logNaive);
+            } else if (useReuseScoring) {
+                better = isBetterReuseRooting(candidate, best, logNaive);
+            } else {
+                if (candidate.maxFsetSize > rootSplitMaxFset) continue;
+                better = isBetterRooting(candidate, best, logNaive);
+            }
             if (better) {
                 best = candidate;
             }
@@ -1176,6 +1223,11 @@ public class BranchMARKStarBound extends MARKStarBound {
         int maxFsetSize = 0;
         int branchingEdges = 0;
         int totalFsetEdges = 0;
+        long maxMStates = 0L;
+        long totalMStates = 0L;
+        long maxDPTableBytes = 0L;
+        long totalDPTableBytes = 0L;
+        double logDPWork = Double.NEGATIVE_INFINITY;
         for (RootedTreeEdge edge : lambdaEdges) {
             int fsetSize = edge.getFset() == null ? 0 : edge.getFset().size();
             maxFsetSize = Math.max(maxFsetSize, fsetSize);
@@ -1183,6 +1235,16 @@ public class BranchMARKStarBound extends MARKStarBound {
                 branchingEdges++;
             }
             totalFsetEdges += fsetSize;
+
+            long mStates = Math.max(1L, edge.getMStateCount());
+            long lambdaStates = Math.max(1, edge.getTotalLambdaStates());
+            long tableBytes = estimateDPTableBytes(edge.getMStateCount());
+            maxMStates = Math.max(maxMStates, mStates);
+            totalMStates = saturatingAdd(totalMStates, mStates);
+            maxDPTableBytes = Math.max(maxDPTableBytes, tableBytes);
+            totalDPTableBytes = saturatingAdd(totalDPTableBytes, tableBytes);
+            logDPWork = RootedTreeEdge.logSumExp(logDPWork,
+                    Math.log((double) mStates) + Math.log((double) lambdaStates));
         }
 
         int rootFsetSize = rootEdge.getFset() == null ? 0 : rootEdge.getFset().size();
@@ -1190,7 +1252,8 @@ public class BranchMARKStarBound extends MARKStarBound {
         ReuseStats reuseStats = computeReuseStats(lambdaEdges, mutablePositions, rcs);
         return new RootingCandidate(root, splitEdgeIndex, rootEdge.computeLogTESS(),
                 lambdaEdges.size(), maxFsetSize, branchingEdges, totalFsetEdges, rootFsetSize,
-                reuseStats.reusableEdges, reuseStats.reusableLogWork, reuseStats.totalLogWork);
+                reuseStats.reusableEdges, reuseStats.reusableLogWork, reuseStats.totalLogWork,
+                maxMStates, totalMStates, maxDPTableBytes, totalDPTableBytes, logDPWork);
     }
 
     private static class ReuseStats {
@@ -2446,6 +2509,54 @@ public class BranchMARKStarBound extends MARKStarBound {
         int cleanWorkCmp = Double.compare(candidate.reusableLogWork, best.reusableLogWork);
         if (cleanWorkCmp != 0) return cleanWorkCmp > 0;
 
+        return isBetterMemoryRooting(candidate, best, logNaive);
+    }
+
+    private boolean isBetterMemoryRooting(RootingCandidate candidate, RootingCandidate best,
+                                          double logNaive) {
+        if (best == null) return true;
+
+        boolean candidateValid = Math.exp(candidate.logTESS - logNaive) <= TESS_FALLBACK_THRESHOLD;
+        boolean bestValid = Math.exp(best.logTESS - logNaive) <= TESS_FALLBACK_THRESHOLD;
+        if (candidateValid != bestValid) return candidateValid;
+
+        int maxTableCmp = Long.compare(candidate.maxDPTableBytes, best.maxDPTableBytes);
+        if (maxTableCmp != 0) return maxTableCmp < 0;
+
+        int totalTableCmp = Long.compare(candidate.totalDPTableBytes, best.totalDPTableBytes);
+        if (totalTableCmp != 0) return totalTableCmp < 0;
+
+        int workCmp = Double.compare(candidate.logDPWork, best.logDPWork);
+        if (workCmp != 0) return workCmp < 0;
+
+        boolean candidateCapped = candidate.maxFsetSize <= rootSplitMaxFset;
+        boolean bestCapped = best.maxFsetSize <= rootSplitMaxFset;
+        if (candidateCapped != bestCapped) return candidateCapped;
+
+        return isBetterRooting(candidate, best, logNaive);
+    }
+
+    private boolean isBetterWorkRooting(RootingCandidate candidate, RootingCandidate best,
+                                        double logNaive) {
+        if (best == null) return true;
+
+        boolean candidateValid = Math.exp(candidate.logTESS - logNaive) <= TESS_FALLBACK_THRESHOLD;
+        boolean bestValid = Math.exp(best.logTESS - logNaive) <= TESS_FALLBACK_THRESHOLD;
+        if (candidateValid != bestValid) return candidateValid;
+
+        int workCmp = Double.compare(candidate.logDPWork, best.logDPWork);
+        if (workCmp != 0) return workCmp < 0;
+
+        int maxTableCmp = Long.compare(candidate.maxDPTableBytes, best.maxDPTableBytes);
+        if (maxTableCmp != 0) return maxTableCmp < 0;
+
+        int totalTableCmp = Long.compare(candidate.totalDPTableBytes, best.totalDPTableBytes);
+        if (totalTableCmp != 0) return totalTableCmp < 0;
+
+        boolean candidateCapped = candidate.maxFsetSize <= rootSplitMaxFset;
+        boolean bestCapped = best.maxFsetSize <= rootSplitMaxFset;
+        if (candidateCapped != bestCapped) return candidateCapped;
+
         return isBetterRooting(candidate, best, logNaive);
     }
 
@@ -2478,7 +2589,7 @@ public class BranchMARKStarBound extends MARKStarBound {
         long totalCacheBytes = 0L;
         for (int edgeId = 0; edgeId < lambdaEdges.size(); edgeId++) {
             RootedTreeEdge edge = lambdaEdges.get(edgeId);
-            long finalBytes = estimateDPTableBytes(edge.getMArraySize());
+            long finalBytes = estimateDPTableBytes(edge.getMStateCount());
             long cacheBytes = (dpCacheEnabled && dpCacheMaxEntries > 0) ? finalBytes : 0L;
             totalFinalBytes = saturatingAdd(totalFinalBytes, finalBytes);
             totalCacheBytes = saturatingAdd(totalCacheBytes, cacheBytes);
@@ -2489,7 +2600,7 @@ public class BranchMARKStarBound extends MARKStarBound {
                     + ", state=" + stateName
                     + ", M=" + Arrays.toString(edge.getMPositionsSorted())
                     + ", lambda=" + Arrays.toString(edge.getLambdaPositionsSorted())
-                    + ", mArraySize=" + edge.getMArraySize()
+                    + ", mStateCount=" + edge.getMStateCount()
                     + ", totalLambdaStates=" + edge.getTotalLambdaStates()
                     + ", finalTableBytes=" + formatBytes(finalBytes)
                     + ", cacheCopyBytes=" + formatBytes(cacheBytes)
@@ -2546,6 +2657,13 @@ public class BranchMARKStarBound extends MARKStarBound {
 
         RootedTreeEdge edge = node.getChildOfEdge();
         if (edge == null || !edge.getIsLambdaEdge()) return;
+
+        if (!edge.hasDenseDPTable()) {
+            edge.computeFullDP();
+            edgeKeys.put(edge, buildDPCacheKey(namespace, edge, edgeKeys));
+            stats.skippedLarge++;
+            return;
+        }
 
         String key = buildDPCacheKey(namespace, edge, edgeKeys);
         CachedDPTable cached = getCachedDPTable(key, edge.getMArraySize());
@@ -2618,7 +2736,10 @@ public class BranchMARKStarBound extends MARKStarBound {
         dpTableCacheBytes -= cached.bytes;
     }
 
-    private static long estimateDPTableBytes(int mStates) {
+    private static long estimateDPTableBytes(long mStates) {
+        if (mStates > Long.MAX_VALUE / (2L * (long) Double.BYTES)) {
+            return Long.MAX_VALUE;
+        }
         return 2L * (long) mStates * (long) Double.BYTES;
     }
 
@@ -2736,14 +2857,14 @@ public class BranchMARKStarBound extends MARKStarBound {
             dpTablesReady = true;
             long dpInitTime = System.currentTimeMillis() - dpInitStart;
             // Diagnostic: report root edge DP values so we can spot -inf / 0 issues.
-            double[] rootLZL = rootedRootEdge.getLogZLower();
-            double[] rootLZU = rootedRootEdge.getLogZUpper();
-            String lzlStr = (rootLZL == null || rootLZL.length == 0) ? "null" : String.format("%.4f", rootLZL[0]);
-            String lzuStr = (rootLZU == null || rootLZU.length == 0) ? "null" : String.format("%.4f", rootLZU[0]);
+            String lzlStr = !rootedRootEdge.hasDPTable() || rootedRootEdge.getMStateCount() == 0
+                    ? "null" : String.format("%.4f", rootedRootEdge.getLogZLower(0));
+            String lzuStr = !rootedRootEdge.hasDPTable() || rootedRootEdge.getMStateCount() == 0
+                    ? "null" : String.format("%.4f", rootedRootEdge.getLogZUpper(0));
             System.out.println("BranchMARK*: DP tables computed in " + dpInitTime + " ms (SPARSE factored Z)"
                     + ", rootEdge logZ[0]: lower=" + lzlStr + ", upper=" + lzuStr
                     + ", rootEdge isLambdaEdge=" + rootedRootEdge.getIsLambdaEdge()
-                    + ", mArraySize=" + (rootLZU == null ? -1 : rootLZU.length)
+                    + ", mStateCount=" + rootedRootEdge.getMStateCount()
                     + formatDPCacheStats(dpCacheStats));
         } else {
             dpTablesReady = false;
@@ -3315,12 +3436,10 @@ public class BranchMARKStarBound extends MARKStarBound {
         double logZUpperSum = 0.0;
         double logZLowerSum = 0.0;
         for (DecompSearchNode.PendingEdge pe : node.pendingEdges) {
-            double[] logZL = pe.edge.getLogZLower();
-            double[] logZU = pe.edge.getLogZUpper();
-            if (logZL == null || logZU == null) return;
-            if (pe.mIdx < 0 || pe.mIdx >= logZU.length || pe.mIdx >= logZL.length) return;
-            double lzU = logZU[pe.mIdx];
-            double lzL = logZL[pe.mIdx];
+            if (!pe.edge.hasDPTable()) return;
+            if (pe.mIdx < 0 || pe.mIdx >= pe.edge.getMStateCount()) return;
+            double lzU = pe.edge.getLogZUpper(pe.mIdx);
+            double lzL = pe.edge.getLogZLower(pe.mIdx);
             if (Double.isNaN(lzU) || Double.isNaN(lzL)) return;
             // -inf logZ means subtree has no feasible completions; this prunes the node.
             if (lzU == Double.NEGATIVE_INFINITY) {
@@ -4706,7 +4825,8 @@ public class BranchMARKStarBound extends MARKStarBound {
                 rootedRoot, rootedRootEdge,
                 branchMinimizingEmat, branchRigidEmat,
                 interactionGraph, minimizingEcalc,
-                searchRCs, confSpace);
+                searchRCs, confSpace,
+                targetEpsilon);
 
         double pacEpsilon = pac.compute();
 

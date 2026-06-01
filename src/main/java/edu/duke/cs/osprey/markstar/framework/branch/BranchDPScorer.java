@@ -226,10 +226,8 @@ public class BranchDPScorer {
         postOrderComputeWithCache(seqRoot, rcs);
 
         // Return root edge bounds
-        double[] rootLower = seqRootEdge.getLogZLower();
-        double[] rootUpper = seqRootEdge.getLogZUpper();
-        if (rootLower != null && rootLower.length > 0) {
-            return new double[]{ rootLower[0], rootUpper[0] };
+        if (seqRootEdge.hasDPTable() && seqRootEdge.getMStateCount() > 0) {
+            return new double[]{ seqRootEdge.getLogZLower(0), seqRootEdge.getLogZUpper(0) };
         }
         return new double[]{ Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY };
     }
@@ -253,7 +251,7 @@ public class BranchDPScorer {
 
             // Check cache
             Map<String, double[][]> edgeCache = dpCache.get(edgeIdx);
-            if (edgeCache != null) {
+            if (edge.hasDenseDPTable() && edgeCache != null) {
                 double[][] cached = edgeCache.get(cacheKey);
                 if (cached != null && cached[0].length == edge.getMArraySize()) {
                     // Cache hit: copy values
@@ -267,6 +265,10 @@ public class BranchDPScorer {
 
             // Cache miss: compute
             edge.computeFullDP();
+
+            if (!edge.hasDenseDPTable()) {
+                return;
+            }
 
             // Store in cache
             if (edgeCache == null) {

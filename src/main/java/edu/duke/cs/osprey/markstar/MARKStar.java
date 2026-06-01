@@ -56,6 +56,7 @@ import edu.duke.cs.osprey.markstar.framework.MARKStarBoundGNNS10;
 import edu.duke.cs.osprey.markstar.framework.MARKStarBoundGNNS11;
 import edu.duke.cs.osprey.energy.approximation.branch.GNNSubtreeEnergyCalculator;
 import edu.duke.cs.osprey.parallelism.Parallelism;
+import edu.duke.cs.osprey.tools.MathTools;
 import edu.duke.cs.osprey.tools.Stopwatch;
 
 import java.io.File;
@@ -298,6 +299,27 @@ public class MARKStar {
 		Protein,
 		Ligand,
 		Complex
+	}
+
+	private static String formatPfuncValue(BigDecimal value) {
+		if (value == null) return "null";
+		if (value instanceof MathTools.MagicBigDecimal) return value.toString();
+		return String.format("%.6e", value);
+	}
+
+	private static String formatPfuncEpsilon(PartitionFunction.Values values) {
+		try {
+			return String.format("%.6f", values.getEffectiveEpsilon());
+		} catch (RuntimeException e) {
+			return "nan";
+		}
+	}
+
+	private static String formatPfuncSummary(PartitionFunction.Result result) {
+		return "status=" + result.status
+			+ " qstar=" + formatPfuncValue(result.values.qstar)
+			+ " qprime=" + formatPfuncValue(result.values.qprime)
+			+ " eps=" + formatPfuncEpsilon(result.values);
 	}
 
 	public class ConfSpaceInfo {
@@ -589,15 +611,9 @@ public class MARKStar {
 		PartitionFunction.Result wtProtein = protein.calcPfunc(0, BigDecimal.ZERO);
 		PartitionFunction.Result wtLigand = ligand.calcPfunc(0, BigDecimal.ZERO);
 		PartitionFunction.Result wtComplex = complex.calcPfunc(0, BigDecimal.ZERO);
-		System.out.println("[PFUNC seq 0 WT] protein: qstar=" + String.format("%.6e", wtProtein.values.qstar)
-			+ " qprime=" + String.format("%.6e", wtProtein.values.qprime)
-			+ " eps=" + String.format("%.6f", wtProtein.values.getEffectiveEpsilon()));
-		System.out.println("[PFUNC seq 0 WT] ligand:  qstar=" + String.format("%.6e", wtLigand.values.qstar)
-			+ " qprime=" + String.format("%.6e", wtLigand.values.qprime)
-			+ " eps=" + String.format("%.6f", wtLigand.values.getEffectiveEpsilon()));
-		System.out.println("[PFUNC seq 0 WT] complex: qstar=" + String.format("%.6e", wtComplex.values.qstar)
-			+ " qprime=" + String.format("%.6e", wtComplex.values.qprime)
-			+ " eps=" + String.format("%.6f", wtComplex.values.getEffectiveEpsilon()));
+		System.out.println("[PFUNC seq 0 WT] protein: " + formatPfuncSummary(wtProtein));
+		System.out.println("[PFUNC seq 0 WT] ligand:  " + formatPfuncSummary(wtLigand));
+		System.out.println("[PFUNC seq 0 WT] complex: " + formatPfuncSummary(wtComplex));
 		KStarScore wildTypeScore = scorer.score(0, wtProtein, wtLigand, wtComplex);
 		BigDecimal proteinStabilityThreshold = null;
 		BigDecimal ligandStabilityThreshold = null;
