@@ -591,8 +591,21 @@ public class PACPartitionFunction {
     private void runCorrectionAndBoundPhases(List<CCDResult> ccdResults,
                                              double logZRigid,
                                              String labelPrefix) {
+        // Sample splitting (required for the PAC guarantee): eta (Phase 3), the
+        // corrected DP (Phase 4) and the control-variate coefficient beta are
+        // learned on the training half; the empirical-Bernstein bound (Phase 5)
+        // is evaluated on the disjoint estimation half, which is therefore
+        // independent of eta and beta. n_e = |S_est| = floor(n_s / 2).
+        int total = ccdResults.size();
+        int nEst = total / 2;
+        int nTrain = total - nEst;
+        List<CCDResult> trainResults = ccdResults.subList(0, nTrain);
+        List<CCDResult> estResults = ccdResults.subList(nTrain, total);
+        System.out.println("[PAC] " + labelPrefix + " split: nTrain=" + nTrain
+                + ", nEst=" + nEst);
+
         long phase3Start = System.currentTimeMillis();
-        EtaCorrections eta = extractEtaCorrections(ccdResults);
+        EtaCorrections eta = extractEtaCorrections(trainResults);
         long phase3Time = System.currentTimeMillis() - phase3Start;
         System.out.println("[PAC] " + labelPrefix + " 3: Eta extraction in " + phase3Time + " ms"
                 + ", oneBodyTerms=" + eta.oneBodyCount
@@ -611,7 +624,8 @@ public class PACPartitionFunction {
                 + formatDPCacheStats(correctedDP.cacheStats));
 
         long phase5Start = System.currentTimeMillis();
-        computePACBound(ccdResults, correctedEmat, logZCorrected);
+        double beta = computeControlVariateBeta(trainResults, correctedEmat);
+        computePACBound(estResults, correctedEmat, logZCorrected, beta);
         long phase5Time = System.currentTimeMillis() - phase5Start;
         System.out.println("[PAC] " + labelPrefix + " 5: epsilon="
                 + String.format("%.6f", epsilon)
@@ -1459,16 +1473,14 @@ public class PACPartitionFunction {
     }
 
     private DPCacheStats computeCorrectedDPTables(EtaCorrections eta) {
-        if (!dpCacheEnabled || dpCacheMaxEntries == 0) {
-            RootedTreeEdge.postOrderComputeFullDP(rootedRoot);
-            return null;
-        }
-
-        DPCacheStats stats = new DPCacheStats();
-        IdentityHashMap<RootedTreeEdge, String> edgeKeys = new IdentityHashMap<>();
-        String namespace = makeCorrectedDPCacheNamespace();
-        postOrderComputeCorrectedDPWithCache(rootedRoot, namespace, eta, edgeKeys, stats);
-        return stats;
+        // The corrected-DP cache is structurally unhittable: its key embeds the raw
+        // double bits of the per-edge eta corrections (appendLocalEtaSignature), and
+        // eta is re-learned from random CCD samples on every pfunc / sequence /
+        // sample-split phase, so the floats never repeat bit-for-bit. Caching here is
+        // therefore pure overhead (key construction, hashing, storing tables that are
+        // never reused). Always take the direct path.
+        RootedTreeEdge.postOrderComputeFullDP(rootedRoot);
+        return null;
     }
 
     private void postOrderComputeCorrectedDPWithCache(RootedTreeNode node, String namespace,
@@ -1730,9 +1742,54 @@ public class PACPartitionFunction {
      *
      * Then Z = Z_min * mean(phi_cv), with Bernstein bound on phi_cv.
      */
+    /**
+     * Estimate the control-variate coefficient beta* = Cov(phi, alpha)/Var(alpha)
+     * on the training split S_tr. beta is scale-free, so the numerical weight
+     * shift used here need not match the one used in computePACBound on S_est.
+     */
+    private double computeControlVariateBeta(List<CCDResult> trainResults,
+                                             EnergyMatrix correctedEmat) {
+        int n = trainResults.size();
+        if (n <= 1) return 0.0;
+        double shift = Double.NEGATIVE_INFINITY;
+        double[] logPhi = new double[n];
+        double[] logAlpha = new double[n];
+        for (int i = 0; i < n; i++) {
+            CCDResult r = trainResults.get(i);
+            double g = r.eTrue - r.eMin;
+            double eta = computeFullConfPairwiseEnergy(r.conf, correctedEmat) - r.eMin;
+            logPhi[i] = -g / RT;
+            logAlpha[i] = -eta / RT;
+            shift = Math.max(shift, Math.max(logPhi[i], logAlpha[i]));
+        }
+        if (!Double.isFinite(shift)) return 0.0;
+
+        double sumPhi = 0, sumAlpha = 0;
+        double[] phi = new double[n];
+        double[] alpha = new double[n];
+        for (int i = 0; i < n; i++) {
+            phi[i] = Math.exp(logPhi[i] - shift);
+            alpha[i] = Math.exp(logAlpha[i] - shift);
+            sumPhi += phi[i];
+            sumAlpha += alpha[i];
+        }
+        double meanPhi = sumPhi / n;
+        double meanAlpha = sumAlpha / n;
+
+        double cov = 0, var = 0;
+        for (int i = 0; i < n; i++) {
+            double dPhi = phi[i] - meanPhi;
+            double dAlpha = alpha[i] - meanAlpha;
+            cov += dPhi * dAlpha;
+            var += dAlpha * dAlpha;
+        }
+        return (var > 1e-30) ? cov / var : 0.0;
+    }
+
     private void computePACBound(List<CCDResult> ccdResults,
                                   EnergyMatrix correctedEmat,
-                                  double logZCorrected) {
+                                  double logZCorrected,
+                                  double beta) {
         int N = ccdResults.size();
         if (N == 0) {
             setZeroBounds("PAC has no valid CCD samples");
@@ -1774,38 +1831,19 @@ public class PACPartitionFunction {
 
         double[] phiValues = new double[N];    // shifted by exp(-weightShift)
         double[] alphaValues = new double[N];  // shifted by exp(-weightShift)
+        double sumPhi = 0;
         for (int i = 0; i < N; i++) {
             phiValues[i] = Math.exp(logPhiValues[i] - weightShift);
             alphaValues[i] = Math.exp(logAlphaValues[i] - weightShift);
-        }
-
-        // Compute optimal beta for control variate: beta* = Cov(phi, alpha) / Var(alpha)
-        double sumPhi = 0, sumAlpha = 0;
-        for (int i = 0; i < N; i++) {
             sumPhi += phiValues[i];
-            sumAlpha += alphaValues[i];
         }
         double meanPhi = sumPhi / N;
-        double meanAlpha = sumAlpha / N;
 
-        double covPhiAlpha = 0, varAlpha = 0;
-        for (int i = 0; i < N; i++) {
-            double dPhi = phiValues[i] - meanPhi;
-            double dAlpha = alphaValues[i] - meanAlpha;
-            covPhiAlpha += dPhi * dAlpha;
-            varAlpha += dAlpha * dAlpha;
-        }
-        if (N > 1) {
-            covPhiAlpha /= (N - 1);
-            varAlpha /= (N - 1);
-        } else {
-            covPhiAlpha = 0.0;
-            varAlpha = 0.0;
-        }
-
-        double beta = (varAlpha > 1e-30) ? covPhiAlpha / varAlpha : 0.0;
-
-        // Compute control-variate-adjusted values: phi_cv = phi - beta*(alpha - E[alpha])
+        // beta was estimated on the disjoint training split (see
+        // computeControlVariateBeta), so these estimation samples are
+        // independent of beta and eta, as the PAC proof requires. beta is
+        // scale-free, hence consistent with the weight shift applied here.
+        // Control-variate-adjusted values: phi_cv = phi - beta*(alpha - E[alpha])
         double[] phiCV = new double[N];
         double sumCV = 0, sumCV2 = 0;
         double minCV = Double.MAX_VALUE, maxCV = -Double.MAX_VALUE;
@@ -1843,8 +1881,10 @@ public class PACPartitionFunction {
         // Variance reduction ratio
         double vrRatio = (varPhi > 1e-30) ? varCV / varPhi : 1.0;
 
-        // Bernstein bound on phi_cv (one-sided: we only need lower bound for Z_lower)
-        double deltaPer = delta / 3.0; // union bound over 3 pfuncs
+        // Empirical-Bernstein bound on phi_cv. The interval [meanCV +/- Delta]
+        // is two-sided, so budget delta over both tails (2) of all three
+        // partition functions (3) => 6 events.
+        double deltaPer = delta / 6.0; // 2 tails x 3 pfuncs = 6 events
         double boundDelta = solveBernsteinDelta(N, varCV, rangeCV, deltaPer);
         if (!Double.isFinite(meanCV) || !Double.isFinite(varCV)
                 || !Double.isFinite(rangeCV) || !Double.isFinite(boundDelta)) {
@@ -1870,13 +1910,7 @@ public class PACPartitionFunction {
         zLower = bigExpFromLog(logZLowerPAC);
         zUpper = bigExpFromLog(logZUpperPAC);
 
-        if (Double.isFinite(logZLowerPAC) && Double.isFinite(logZUpperPAC)) {
-            epsilon = 1.0 - Math.exp(logZLowerPAC - logZUpperPAC);
-            if (epsilon < 0.0 && epsilon > -1e-12) epsilon = 0.0;
-            if (epsilon > 1.0 && epsilon < 1.0 + 1e-12) epsilon = 1.0;
-        } else {
-            epsilon = 1.0;
-        }
+        epsilon = epsilonFromLogBounds(logZLowerPAC, logZUpperPAC);
 
         System.out.println("[PAC] Bernstein: Delta=" + String.format("%.6f", boundDelta)
                 + ", meanCV=" + String.format("%.6f", meanCV)
@@ -1893,26 +1927,45 @@ public class PACPartitionFunction {
     }
 
     /**
-     * Solve one-sided Bernstein inequality for Delta:
-     * exp(-N*Delta^2 / (2*s^2 + 2*Delta*range/3)) = delta_target
+     * PAC epsilon from log-space Z bounds (design 1.3). Computes
+     *   epsilon = 1 - Z_lower/Z_upper = 1 - exp(logZLower - logZUpper)
+     * from the log ratio, so it stays finite when |logZ| ~ 1e6 and exp(logZ)
+     * itself would underflow/overflow a double (the old direct-double path wrote
+     * Z=0 -> fake epsilon=NaN/1, e.g. 5dc4). Tiny FP excursions just outside
+     * [0,1] are snapped; non-finite bounds mean no usable bound -> epsilon = 1.
+     * Unit-tested in TestPACLogSpaceBounds.
+     */
+    static double epsilonFromLogBounds(double logZLower, double logZUpper) {
+        if (Double.isFinite(logZLower) && Double.isFinite(logZUpper)) {
+            double eps = 1.0 - Math.exp(logZLower - logZUpper);
+            if (eps < 0.0 && eps > -1e-12) eps = 0.0;
+            if (eps > 1.0 && eps < 1.0 + 1e-12) eps = 1.0;
+            return eps;
+        }
+        return 1.0;
+    }
+
+    /**
+     * Empirical Bernstein bound (Maurer & Pontil, 2009) for the one-sided
+     * deviation of the sample mean from E[phi_cv], at confidence deltaTarget:
      *
-     * One-sided (not two-sided) since we only need the lower bound on E[phi_cv].
+     *   E[X] - mean(X) <= sqrt(2 * s2 * ln(2/delta) / N)
+     *                     + 7 * range * ln(2/delta) / (3 * (N - 1))
+     *
+     * This is the *fully empirical* form. Unlike plugging an empirical variance
+     * into the variance-oracle Bernstein exponent, the second (range) term is
+     * the sample-variance penalty that keeps the bound valid when s2 is itself
+     * estimated from the same N samples. By symmetry the same Delta bounds the
+     * opposite tail (-X has identical empirical variance and range); the caller
+     * passes deltaTarget = delta/6 to cover both tails of all three partition
+     * functions (2 tails x 3 pfuncs = 6 events).
      */
     private double solveBernsteinDelta(int N, double s2, double range, double deltaTarget) {
-        double logRHS = Math.log(1.0 / deltaTarget); // one-sided: ln(1/delta), not ln(2/delta)
-
-        // Bisection on Delta
-        double lo = 0, hi = range + 10 * Math.sqrt(s2); // generous upper bound
-        for (int iter = 0; iter < 100; iter++) {
-            double mid = (lo + hi) / 2;
-            double lhs = (double) N * mid * mid / (2 * s2 + 2 * mid * range / 3);
-            if (lhs < logRHS) {
-                lo = mid;
-            } else {
-                hi = mid;
-            }
-        }
-        return hi;
+        if (N <= 1) return Double.POSITIVE_INFINITY;
+        double logTerm = Math.log(2.0 / deltaTarget);
+        double varTerm = Math.sqrt(Math.max(0.0, 2.0 * s2 * logTerm / N));
+        double rangeTerm = 7.0 * range * logTerm / (3.0 * (N - 1));
+        return varTerm + rangeTerm;
     }
 
     // ========== Utility methods ==========

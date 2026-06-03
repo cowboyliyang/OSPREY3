@@ -543,6 +543,19 @@ public class MARKStar {
 
 	private List<Sequence> sequences;
 
+	/** Magic-safe %.6e formatter: infinity (aborted/dry-run pfuncs) prints as a token instead of crashing. */
+	private static String fmtE(BigDecimal x) {
+		if (x == MathTools.BigPositiveInfinity) return "+inf";
+		if (x == MathTools.BigNegativeInfinity) return "-inf";
+		if (x instanceof MathTools.MagicBigDecimal) return x.toString();
+		return String.format("%.6e", x);
+	}
+
+	private static String fmtEps(PartitionFunction.Values v) {
+		if (v.qstar instanceof MathTools.MagicBigDecimal || v.qprime instanceof MathTools.MagicBigDecimal) return "n/a";
+		return String.format("%.6f", v.getEffectiveEpsilon());
+	}
+
 	public MARKStar(SimpleConfSpace protein, SimpleConfSpace ligand, SimpleConfSpace complex,
 					EnergyCalculator rigidEcalc, EnergyCalculator minimizingEcalc,
 					ConfEnergyCalculatorFactory confEcalcFactory, Settings settings) {
@@ -662,18 +675,18 @@ public class MARKStar {
 					complexResult = complex.calcPfunc(i, BigDecimal.ZERO);
 					long complexMs = System.currentTimeMillis() - cplxT0;
 					System.out.println("[PFUNC seq " + i + "] complex: time=" + complexMs + "ms"
-						+ " qstar=" + String.format("%.6e", complexResult.values.qstar)
-						+ " qprime=" + String.format("%.6e", complexResult.values.qprime)
-						+ " eps=" + String.format("%.6f", complexResult.values.getEffectiveEpsilon()));
+						+ " qstar=" + fmtE(complexResult.values.qstar)
+						+ " qprime=" + fmtE(complexResult.values.qprime)
+						+ " eps=" + fmtEps(complexResult.values));
 				}
 				System.out.println("[PFUNC seq " + i + "] ligand: time=" + ligandMs + "ms"
-					+ " qstar=" + String.format("%.6e", ligandResult.values.qstar)
-					+ " eps=" + String.format("%.6f", ligandResult.values.getEffectiveEpsilon()));
+					+ " qstar=" + fmtE(ligandResult.values.qstar)
+					+ " eps=" + fmtEps(ligandResult.values));
 			}
 			System.out.println("[PFUNC seq " + i + "] protein: time=" + proteinMs + "ms"
-				+ " qstar=" + String.format("%.6e", proteinResult.values.qstar)
-				+ " qprime=" + String.format("%.6e", proteinResult.values.qprime)
-				+ " eps=" + String.format("%.6f", proteinResult.values.getEffectiveEpsilon()));
+				+ " qstar=" + fmtE(proteinResult.values.qstar)
+				+ " qprime=" + fmtE(proteinResult.values.qprime)
+				+ " eps=" + fmtEps(proteinResult.values));
 
 			// DEBUG: print pfunc details
 			System.out.println("[DEBUG seq " + i + "] seq=" + sequences.get(i).toString(Sequence.Renderer.ResType)

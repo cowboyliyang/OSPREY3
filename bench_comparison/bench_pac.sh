@@ -60,6 +60,7 @@ GRISMAN_FULL_NODE=${GRISMAN_FULL_NODE:-false}
 GRISMAN_EXCLUDE=${GRISMAN_EXCLUDE:-}
 GRISMAN_CONSTRAINT=${GRISMAN_CONSTRAINT-a5000}
 TARGET=${TARGET:-both}                 # both | grisman | compsci
+EXCLUDE=${EXCLUDE:-}                    # space-separated design ids to skip (for "all")
 
 JAVA=/home/users/lz280/java/jdk-17.0.2+8/bin/java
 EXTRA_JVM_ARGS="${EXTRA_JVM_ARGS:-} -XX:-UseSuperWord"
@@ -144,6 +145,9 @@ submit_one() {
 if [ "$DESIGN" = "all" ]; then
     i=0
     for did in $(grep -v "^#" "$SPECS" | grep -v "^[[:space:]]*$" | cut -d',' -f1); do
+        skip=false
+        for ex in $EXCLUDE; do if [ "$did" = "$ex" ]; then skip=true; break; fi; done
+        if [ "$skip" = "true" ]; then echo "Skipping excluded design: $did"; continue; fi
         case "$TARGET" in
             grisman) submit_one "$did" grisman "$GRISMAN_CPUS" ;;
             compsci) submit_one "$did" compsci "$COMPSCI_CPUS" ;;

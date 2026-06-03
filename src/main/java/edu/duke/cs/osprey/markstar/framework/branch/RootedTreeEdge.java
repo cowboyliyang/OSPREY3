@@ -14,6 +14,7 @@
 
 package edu.duke.cs.osprey.markstar.framework.branch;
 
+import com.sun.jna.Native;
 import edu.duke.cs.osprey.astar.conf.RCs;
 import edu.duke.cs.osprey.ematrix.EnergyMatrix;
 import java.util.*;
@@ -73,6 +74,19 @@ public class RootedTreeEdge {
 
     private DPTable dpTable;      // log(Z_lower/upper) indexed by M-state
 
+    // Option C (non-leaf DP kernel): precomputed child-fold plans. Built once,
+    // before the (possibly parallel) DP loop, then read-only across DP workers.
+    // null => fold disabled for this edge (legacy getMstateForFullState path).
+    private ChildFoldPlan[] childFoldPlans;
+    private boolean childFoldHoistInvariant;
+
+    // Option A: native kernel toggle (resolved once before the DP loop) + per-thread
+    // scratch row buffers reused across edges/M-states to avoid per-call allocation.
+    private boolean nativeKernelEnabled;
+    private static final ThreadLocal<double[]> NATIVE_LOWER_BUF = ThreadLocal.withInitial(() -> new double[0]);
+    private static final ThreadLocal<double[]> NATIVE_UPPER_BUF = ThreadLocal.withInitial(() -> new double[0]);
+    private static final ThreadLocal<double[]> NATIVE_OUT_BUF = ThreadLocal.withInitial(() -> new double[2]);
+
     private static final double NEG_INF = Double.NEGATIVE_INFINITY;
     private static final String DP_PARALLEL_PROPERTY = "branchmarkstar.dp.parallel";
     private static final String DP_PARALLEL_MIN_M_STATES_PROPERTY = "branchmarkstar.dp.parallel.minMStates";
@@ -87,6 +101,12 @@ public class RootedTreeEdge {
     private static final int DEFAULT_DP_PARALLEL_MIN_M_STATES = 1024;
     private static final long DEFAULT_DP_MAX_MATERIALIZED_PAIRS = 50_000_000L;
     private static final int DEFAULT_DP_SHARD_SIZE = 1_048_576;
+    // Option C: non-leaf child-table folding (pure Java, no SIMD/JIT-vector risk).
+    private static final String DP_FOLD_CHILDREN_PROPERTY = "branchmarkstar.dp.foldChildren";
+    private static final String DP_FOLD_HOIST_PROPERTY = "branchmarkstar.dp.foldChildren.hoistInvariant";
+    // Option A: native SIMD log-sum-exp kernel. Default OFF (wired but dormant:
+    // libOspreyLogSumExp.so is built/validated separately, see src/main/c/).
+    private static final String DP_NATIVE_KERNEL_PROPERTY = "branchmarkstar.dp.nativeKernel";
 
     // ========== Incremental lambda enumeration state ==========
 
@@ -1062,6 +1082,19 @@ public class RootedTreeEdge {
     public void computeFullDP() {
         if (!isLambdaEdge) return;
 
+        // Build the read-only child-fold plan before any parallel dispatch.
+        ensureChildFoldPlans();
+
+        // Option A: resolve the native kernel toggle once. If requested but the
+        // .so is missing/unloadable, log and fall back to the Java path so a
+        // flag flip without a built library degrades gracefully (compile-only).
+        nativeKernelEnabled = getConfigBoolean(DP_NATIVE_KERNEL_PROPERTY, false);
+        if (nativeKernelEnabled && !ensureNativeKernelLoaded()) {
+            System.out.println("BranchMARK*: native DP kernel requested but libOspreyLogSumExp "
+                    + "unavailable; falling back to Java DP path");
+            nativeKernelEnabled = false;
+        }
+
         if (shouldParallelizeFullDP()) {
             computeFullDPSharded();
         } else {
@@ -1193,17 +1226,91 @@ public class RootedTreeEdge {
     }
 
     private void computeFullDPForMState(long mIdx) {
+        if (nativeKernelEnabled) {
+            computeFullDPForMStateNative(mIdx);
+            return;
+        }
+
         LogSumExpAccumulator lower = new LogSumExpAccumulator();
         LogSumExpAccumulator upper = new LogSumExpAccumulator();
 
         if (!hasFsetChildren()) {
             // Leaf edge: stream lambda states without materializing [M x lambda].
+            if (fullEnergyRigid != null && fullEnergyMin != null) {
+                // Materialized: read the contiguous per-M rows directly.
+                double[] rigidRow = fullEnergyRigid[(int) mIdx];
+                double[] minRow = fullEnergyMin[(int) mIdx];
+                for (int lIdx = 0; lIdx < totalLambdaStates; lIdx++) {
+                    lower.add(-rigidRow[lIdx] / cachedRT);
+                    upper.add(-minRow[lIdx] / cachedRT);
+                }
+            } else {
+                // Streamed: hoist the M-state decode (constant across the lambda loop) and
+                // decode each lambda-state ONCE for both rigid and min energy. The previous
+                // getFullEnergyRigid/getFullEnergyMin path re-decoded the M-state twice and
+                // the lambda-state twice per element. This is bit-for-bit identical (same
+                // operations, same order) — it only removes redundant decode work/allocations.
+                int[] mRCs = decodeMState(mIdx);
+                for (int lIdx = 0; lIdx < totalLambdaStates; lIdx++) {
+                    int[] lambdaRCs = decodeLambdaState(lIdx);
+                    double eRigid = (lambdaOnlyRigid != null
+                            ? lambdaOnlyRigid[lIdx]
+                            : computeLambdaOnlyEnergy(lambdaRCs, cachedRigidEmat, cachedG))
+                            + computeLambdaMEnergy(mRCs, lambdaRCs, cachedRigidEmat, cachedG);
+                    double eMin = (lambdaOnlyMin != null
+                            ? lambdaOnlyMin[lIdx]
+                            : computeLambdaOnlyEnergy(lambdaRCs, cachedMinEmat, cachedG))
+                            + computeLambdaMEnergy(mRCs, lambdaRCs, cachedMinEmat, cachedG);
+                    lower.add(-eRigid / cachedRT);
+                    upper.add(-eMin / cachedRT);
+                }
+            }
+        } else if (childFoldPlans != null) {
+            // Non-leaf edge (Option C): fold in child bounds with a precomputed plan.
+            // The plan replaces the per-element getMstateForFullState() int[]
+            // allocation + linear search with a direct mixed-radix index, and
+            // hoists each child's M-only ("base") index out of the lambda loop.
+            int[] mRCs = decodeMState(mIdx);
+            int nChildren = childFoldPlans.length;
+
+            long[] baseIdx = new long[nChildren];
+            double constLower = 0.0;
+            double constUpper = 0.0;
+            for (int c = 0; c < nChildren; c++) {
+                ChildFoldPlan plan = childFoldPlans[c];
+                baseIdx[c] = plan.baseIndex(mRCs);
+                if (childFoldHoistInvariant && !plan.lambdaDependent) {
+                    // λ-invariant child: constant fIdx across the whole lambda
+                    // loop, so gather its bounds once. NOTE: this changes the
+                    // FP add order vs the legacy/unfolded path, so it is not
+                    // strictly bit-identical (validate like Step 1).
+                    constLower += plan.child.getLogZLower(baseIdx[c]);
+                    constUpper += plan.child.getLogZUpper(baseIdx[c]);
+                }
+            }
+
             for (int lIdx = 0; lIdx < totalLambdaStates; lIdx++) {
-                lower.add(-getFullEnergyRigid(mIdx, lIdx) / cachedRT);
-                upper.add(-getFullEnergyMin(mIdx, lIdx) / cachedRT);
+                int[] lambdaRCs = decodeLambdaState(lIdx);
+                double eRigid = computeLocalEnergy(mRCs, lambdaRCs, cachedRigidEmat, cachedG);
+                double eMin = computeLocalEnergy(mRCs, lambdaRCs, cachedMinEmat, cachedG);
+
+                double fSumLower = constLower;
+                double fSumUpper = constUpper;
+                for (int c = 0; c < nChildren; c++) {
+                    ChildFoldPlan plan = childFoldPlans[c];
+                    if (childFoldHoistInvariant && !plan.lambdaDependent) {
+                        continue; // already folded into constLower/constUpper
+                    }
+                    long fIdx = baseIdx[c] + plan.lambdaIndex(lambdaRCs);
+                    fSumLower += plan.child.getLogZLower(fIdx);
+                    fSumUpper += plan.child.getLogZUpper(fIdx);
+                }
+
+                lower.add(-eRigid / cachedRT + fSumLower);
+                upper.add(-eMin / cachedRT + fSumUpper);
             }
         } else {
-            // Non-leaf edge: fold in child bounds (children already computed via post-order).
+            // Non-leaf edge (legacy path): fold disabled or unmapped child slot.
             int[] mRCs = decodeMState(mIdx);
             for (int lIdx = 0; lIdx < totalLambdaStates; lIdx++) {
                 int[] lambdaRCs = decodeLambdaState(lIdx);
@@ -1225,6 +1332,123 @@ public class RootedTreeEdge {
         }
 
         dpTable.set(mIdx, lower.value(), upper.value());
+    }
+
+    /**
+     * Option A: native-kernel variant of {@link #computeFullDPForMState}. Reuses
+     * the exact same per-lambda value expressions (and the Option C fold plan for
+     * non-leaf edges), but materializes the per-row lower/upper value vectors into
+     * reusable scratch buffers and offloads the log-sum-exp reduction to the
+     * native SIMD kernel. One fused native call per M-state amortizes JNA overhead.
+     *
+     * NOT bit-identical to the streaming-accumulator path (different summation
+     * order in the reduction) — this is the documented Option A caveat; validate
+     * bounds before trusting. Default OFF.
+     */
+    private void computeFullDPForMStateNative(long mIdx) {
+        int n = totalLambdaStates;
+        double[] vLower = NATIVE_LOWER_BUF.get();
+        double[] vUpper = NATIVE_UPPER_BUF.get();
+        if (vLower.length < n) { vLower = new double[n]; NATIVE_LOWER_BUF.set(vLower); }
+        if (vUpper.length < n) { vUpper = new double[n]; NATIVE_UPPER_BUF.set(vUpper); }
+
+        if (!hasFsetChildren()) {
+            if (fullEnergyRigid != null && fullEnergyMin != null) {
+                double[] rigidRow = fullEnergyRigid[(int) mIdx];
+                double[] minRow = fullEnergyMin[(int) mIdx];
+                for (int lIdx = 0; lIdx < n; lIdx++) {
+                    vLower[lIdx] = -rigidRow[lIdx] / cachedRT;
+                    vUpper[lIdx] = -minRow[lIdx] / cachedRT;
+                }
+            } else {
+                int[] mRCs = decodeMState(mIdx);
+                for (int lIdx = 0; lIdx < n; lIdx++) {
+                    int[] lambdaRCs = decodeLambdaState(lIdx);
+                    double eRigid = (lambdaOnlyRigid != null
+                            ? lambdaOnlyRigid[lIdx]
+                            : computeLambdaOnlyEnergy(lambdaRCs, cachedRigidEmat, cachedG))
+                            + computeLambdaMEnergy(mRCs, lambdaRCs, cachedRigidEmat, cachedG);
+                    double eMin = (lambdaOnlyMin != null
+                            ? lambdaOnlyMin[lIdx]
+                            : computeLambdaOnlyEnergy(lambdaRCs, cachedMinEmat, cachedG))
+                            + computeLambdaMEnergy(mRCs, lambdaRCs, cachedMinEmat, cachedG);
+                    vLower[lIdx] = -eRigid / cachedRT;
+                    vUpper[lIdx] = -eMin / cachedRT;
+                }
+            }
+        } else {
+            int[] mRCs = decodeMState(mIdx);
+            if (childFoldPlans != null) {
+                int nChildren = childFoldPlans.length;
+                long[] baseIdx = new long[nChildren];
+                for (int c = 0; c < nChildren; c++) {
+                    baseIdx[c] = childFoldPlans[c].baseIndex(mRCs);
+                }
+                for (int lIdx = 0; lIdx < n; lIdx++) {
+                    int[] lambdaRCs = decodeLambdaState(lIdx);
+                    double eRigid = computeLocalEnergy(mRCs, lambdaRCs, cachedRigidEmat, cachedG);
+                    double eMin = computeLocalEnergy(mRCs, lambdaRCs, cachedMinEmat, cachedG);
+                    double fSumLower = 0.0;
+                    double fSumUpper = 0.0;
+                    for (int c = 0; c < nChildren; c++) {
+                        ChildFoldPlan plan = childFoldPlans[c];
+                        long fIdx = baseIdx[c] + plan.lambdaIndex(lambdaRCs);
+                        fSumLower += plan.child.getLogZLower(fIdx);
+                        fSumUpper += plan.child.getLogZUpper(fIdx);
+                    }
+                    vLower[lIdx] = -eRigid / cachedRT + fSumLower;
+                    vUpper[lIdx] = -eMin / cachedRT + fSumUpper;
+                }
+            } else {
+                for (int lIdx = 0; lIdx < n; lIdx++) {
+                    int[] lambdaRCs = decodeLambdaState(lIdx);
+                    double eRigid = computeLocalEnergy(mRCs, lambdaRCs, cachedRigidEmat, cachedG);
+                    double eMin = computeLocalEnergy(mRCs, lambdaRCs, cachedMinEmat, cachedG);
+                    double fSumLower = 0.0;
+                    double fSumUpper = 0.0;
+                    for (RootedTreeEdge fEdge : Fset) {
+                        int[] fM = getMstateForFullState(mRCs, lambdaRCs, fEdge);
+                        long fIdx = fEdge.computeIndexInA(fM);
+                        fSumLower += fEdge.getLogZLower(fIdx);
+                        fSumUpper += fEdge.getLogZUpper(fIdx);
+                    }
+                    vLower[lIdx] = -eRigid / cachedRT + fSumLower;
+                    vUpper[lIdx] = -eMin / cachedRT + fSumUpper;
+                }
+            }
+        }
+
+        double[] out = NATIVE_OUT_BUF.get();
+        NativeLogSumExp.osprey_logsumexp2_f64(vLower, vUpper, n, out);
+        dpTable.set(mIdx, out[0], out[1]);
+    }
+
+    /**
+     * JNA binding for the Option A native kernel (libOspreyLogSumExp). Registered
+     * lazily and defensively via {@link #ensureNativeKernelLoaded()} so a missing
+     * .so cannot poison class init — it just disables the native path.
+     */
+    private static final class NativeLogSumExp {
+        static native int osprey_logsumexp_version();
+        static native double osprey_logsumexp_f64(double[] vals, long n);
+        static native void osprey_logsumexp2_f64(double[] lower, double[] upper, long n, double[] out2);
+    }
+
+    private static volatile boolean nativeKernelRegistered = false;
+    private static volatile boolean nativeKernelUnavailable = false;
+
+    private static synchronized boolean ensureNativeKernelLoaded() {
+        if (nativeKernelRegistered) return true;
+        if (nativeKernelUnavailable) return false;
+        try {
+            Native.register(NativeLogSumExp.class, "OspreyLogSumExp");
+            NativeLogSumExp.osprey_logsumexp_version(); // probe the symbol
+            nativeKernelRegistered = true;
+            return true;
+        } catch (Throwable t) {
+            nativeKernelUnavailable = true;
+            return false;
+        }
     }
 
     private static class LogSumExpAccumulator {
@@ -1253,6 +1477,180 @@ public class RootedTreeEdge {
             if (max == NEG_INF) return NEG_INF;
             return max + Math.log(scaledSum);
         }
+    }
+
+    /**
+     * Direct independent-position DP for a 0-edge interaction graph (no pairwise
+     * terms). Z then factorizes per position, so
+     *   logZ = sum_pos logsumexp_rc( -E(pos, rc) / RT ),
+     * computed exactly in O(sum cardinalities) instead of the O(prod cardinalities)
+     * generic joint leaf DP. Returns {logZLower (rigid emat), logZUpper (min emat)},
+     * matching the leaf-DP convention (lower uses rigid, upper uses min).
+     *
+     * Validated against brute-force joint enumeration in TestZeroEdgeDP. Wired
+     * behind {@code branchmarkstar.dp.zeroEdgeDirect} (default off) at the 0-edge
+     * fallback in BranchMARKStarBound.
+     */
+    public static double[] independentPositionLogZ(EnergyMatrix rigidEmat, EnergyMatrix minEmat,
+                                                   RCs rcs, int[] positions, double RT) {
+        double logZLower = 0.0;
+        double logZUpper = 0.0;
+        for (int pos : positions) {
+            LogSumExpAccumulator lo = new LogSumExpAccumulator();
+            LogSumExpAccumulator hi = new LogSumExpAccumulator();
+            int n = rcs.getNum(pos);
+            for (int i = 0; i < n; i++) {
+                int rc = rcs.get(pos, i);
+                lo.add(-rigidEmat.getOneBody(pos, rc) / RT);
+                hi.add(-minEmat.getOneBody(pos, rc) / RT);
+            }
+            logZLower += lo.value();
+            logZUpper += hi.value();
+        }
+        return new double[]{logZLower, logZUpper};
+    }
+
+    /**
+     * Precomputed plan to fold one child edge's logZ bounds into this (non-leaf)
+     * edge's DP. Replaces the per-element getMstateForFullState() linear search +
+     * int[] allocation with a direct mixed-radix index built from the parent's
+     * already-decoded M/lambda RC arrays.
+     *
+     * For child M-slot i, computeIndexInA() weights it by
+     *   stride[i] = product_{k>i} rcs.getNum(child.mPositionsSorted[k]).
+     * By the branch-decomposition invariant each child M-position is one of the
+     * parent's M-positions or lambda-positions, so the index splits into an
+     * M-only "base" (constant across the lambda loop) plus a lambda-dependent
+     * part. A child with no lambda-sourced slots has a constant index across the
+     * whole lambda loop ("λ-invariant") and can be hoisted out entirely.
+     */
+    private static final class ChildFoldPlan {
+        final RootedTreeEdge child;
+        final int[] mSrcIdx;    // parent mRCs index for each M-sourced child slot
+        final long[] mStride;   // mixed-radix stride for each M-sourced child slot
+        final int[] lamSrcIdx;  // parent lambdaRCs index for each λ-sourced child slot
+        final long[] lamStride; // mixed-radix stride for each λ-sourced child slot
+        final boolean lambdaDependent;
+
+        ChildFoldPlan(RootedTreeEdge child, int[] mSrcIdx, long[] mStride,
+                      int[] lamSrcIdx, long[] lamStride) {
+            this.child = child;
+            this.mSrcIdx = mSrcIdx;
+            this.mStride = mStride;
+            this.lamSrcIdx = lamSrcIdx;
+            this.lamStride = lamStride;
+            this.lambdaDependent = lamStride.length > 0;
+        }
+
+        long baseIndex(int[] mRCs) {
+            long idx = 0L;
+            for (int t = 0; t < mStride.length; t++) {
+                idx += (long) mRCs[mSrcIdx[t]] * mStride[t];
+            }
+            return idx;
+        }
+
+        long lambdaIndex(int[] lambdaRCs) {
+            long idx = 0L;
+            for (int t = 0; t < lamStride.length; t++) {
+                idx += (long) lambdaRCs[lamSrcIdx[t]] * lamStride[t];
+            }
+            return idx;
+        }
+    }
+
+    /**
+     * Build the child-fold plans once, before the (possibly parallel) DP loop.
+     * The result is read-only afterwards, so it is safe to share across DP
+     * worker threads. Disabled (null plans => legacy path) when
+     * {@code branchmarkstar.dp.foldChildren=false}, when there are no F-set
+     * children, or when any child M-position is not covered by this edge's
+     * M ∪ lambda (in which case the legacy getMstateForFullState() path is used
+     * unchanged, preserving behavior on malformed/edge-case decompositions).
+     */
+    private void ensureChildFoldPlans() {
+        childFoldHoistInvariant = getConfigBoolean(DP_FOLD_HOIST_PROPERTY, false);
+        if (!getConfigBoolean(DP_FOLD_CHILDREN_PROPERTY, true) || !hasFsetChildren()) {
+            childFoldPlans = null;
+            return;
+        }
+
+        ChildFoldPlan[] plans = new ChildFoldPlan[Fset.size()];
+        int ci = 0;
+        for (RootedTreeEdge fEdge : Fset) {
+            ChildFoldPlan plan = buildChildFoldPlan(fEdge);
+            if (plan == null) {
+                childFoldPlans = null; // unmapped slot -> fall back to legacy path
+                return;
+            }
+            plans[ci++] = plan;
+        }
+        childFoldPlans = plans;
+
+        if (getConfigBoolean(DP_PROGRESS_PROPERTY, true)) {
+            int invariant = 0;
+            for (ChildFoldPlan p : plans) {
+                if (!p.lambdaDependent) invariant++;
+            }
+            System.out.println("BranchMARK*: childFold lambdaStates=" + totalLambdaStates
+                    + ", mStates=" + mStateCount + ", children=" + plans.length
+                    + ", lambdaInvariant=" + invariant
+                    + ", lambdaDependent=" + (plans.length - invariant)
+                    + ", hoist=" + childFoldHoistInvariant);
+        }
+    }
+
+    private ChildFoldPlan buildChildFoldPlan(RootedTreeEdge child) {
+        int[] childM = child.mPositionsSorted;
+        int len = childM.length;
+
+        // Mixed-radix stride per child M-slot (matches child.computeIndexInA):
+        // stride[len-1] = 1; stride[i] = product_{k>i} rcs.getNum(childM[k]).
+        long[] stride = new long[len];
+        if (len > 0) {
+            stride[len - 1] = 1L;
+            for (int i = len - 2; i >= 0; i--) {
+                stride[i] = stride[i + 1] * child.rcs.getNum(childM[i + 1]);
+            }
+        }
+
+        int[] mSrcTmp = new int[len];
+        long[] mStrideTmp = new long[len];
+        int mCount = 0;
+        int[] lamSrcTmp = new int[len];
+        long[] lamStrideTmp = new long[len];
+        int lamCount = 0;
+
+        for (int i = 0; i < len; i++) {
+            int targetPos = childM[i];
+            // Search parent M first, then parent lambda (matches getMstateForFullState).
+            int j = indexOf(mPositionsSorted, targetPos);
+            if (j >= 0) {
+                mSrcTmp[mCount] = j;
+                mStrideTmp[mCount] = stride[i];
+                mCount++;
+                continue;
+            }
+            j = indexOf(lambdaPositionsSorted, targetPos);
+            if (j >= 0) {
+                lamSrcTmp[lamCount] = j;
+                lamStrideTmp[lamCount] = stride[i];
+                lamCount++;
+                continue;
+            }
+            return null; // child M-position outside parent M ∪ lambda -> bail to legacy
+        }
+
+        return new ChildFoldPlan(child,
+                Arrays.copyOf(mSrcTmp, mCount), Arrays.copyOf(mStrideTmp, mCount),
+                Arrays.copyOf(lamSrcTmp, lamCount), Arrays.copyOf(lamStrideTmp, lamCount));
+    }
+
+    private static int indexOf(int[] arr, int value) {
+        for (int i = 0; i < arr.length; i++) {
+            if (arr[i] == value) return i;
+        }
+        return -1;
     }
 
     /**

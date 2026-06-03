@@ -74,7 +74,10 @@ public class BranchMARKStarBound extends MARKStarBound {
     private static final String EDGE_LOOKAHEAD_MAX_PENDING_EDGES_PROPERTY = "branchmarkstar.edgeSelection.maxPendingEdges";
     private static final String EDGE_LOOKAHEAD_PARALLEL_PROPERTY = "branchmarkstar.edgeSelection.parallelLookahead";
     private static final String ROOT_SPLIT_PROPERTY = "branchmarkstar.rootSplit";
+    // 0-edge (no pairwise) graphs: exact independent-position DP. Default off.
+    private static final String ZERO_EDGE_DIRECT_PROPERTY = "branchmarkstar.dp.zeroEdgeDirect";
     private static final String ROOT_SPLIT_MAX_FSET_PROPERTY = "branchmarkstar.rootSplit.maxFset";
+    private static final String DRY_RUN_PROPERTY = "branchmarkstar.dp.dryRun";
     private static final String MUTABLE_POSITIONS_PROPERTY = "branchmarkstar.mutablePositions";
     private static final String PARALLEL_INTERNAL_PROPERTY = "branchmarkstar.parallel.internal";
     private static final String PARALLEL_ENUMERATION_PROPERTY = "branchmarkstar.parallel.enumeration";
@@ -253,6 +256,7 @@ public class BranchMARKStarBound extends MARKStarBound {
     private final long dpCacheMaxTotalBytes;
     private final long dpCacheSkipIfMStates;
     private final boolean pacRestoreDP;
+    private final boolean dryRun;
     private DPTableTooLargeException dpTooLargeException = null;
     /**
      * Energy matrices used by ALL pfunc-relevant operations under SPARSE mode:
@@ -621,7 +625,8 @@ public class BranchMARKStarBound extends MARKStarBound {
                 getConfigInteger(EDGE_LOOKAHEAD_MAX_PENDING_EDGES_PROPERTY, 4));
         this.edgeLookaheadParallel = getConfigBoolean(
                 EDGE_LOOKAHEAD_PARALLEL_PROPERTY, true);
-        this.rootSplitStrategy = getConfigProperty(ROOT_SPLIT_PROPERTY, "memory").trim();
+        this.rootSplitStrategy = getConfigProperty(ROOT_SPLIT_PROPERTY, "work").trim();
+        this.dryRun = getConfigBoolean(DRY_RUN_PROPERTY, false);
         this.rootSplitMaxFset = Math.max(1,
                 getConfigInteger(ROOT_SPLIT_MAX_FSET_PROPERTY, 2));
         this.parallelInternal = getConfigBoolean(PARALLEL_INTERNAL_PROPERTY, true);
@@ -755,6 +760,24 @@ public class BranchMARKStarBound extends MARKStarBound {
         }
         rootedRoot = rooting != null ? rooting.root : null;
         if (rootedRoot == null) {
+            // 0-edge graph (no pairwise interactions): Z factorizes per position.
+            // Default off; when enabled, report the exact independent-position DP
+            // bound as a diagnostic. Building a live rootedRootEdge + PAC sampling
+            // for this degenerate case is future work (see doc 1.2), so we still
+            // fall back to standard MARK* for the actual run.
+            if (branchDecomposition.getTree().getNumEdges() == 0
+                    && getConfigBoolean(ZERO_EDGE_DIRECT_PROPERTY, false)) {
+                double rtForDP = BoltzmannCalculator.RClassic * BoltzmannCalculator.TClassic;
+                int numPos = interactionGraph.getNumPositions();
+                int[] positions = new int[numPos];
+                for (int i = 0; i < numPos; i++) positions[i] = i;
+                double[] z = RootedTreeEdge.independentPositionLogZ(
+                        branchRigidEmat, branchMinimizingEmat, rcs, positions, rtForDP);
+                System.out.println("BranchMARK*: 0-edge direct independent-position DP:"
+                        + " logZLower=" + String.format(Locale.ROOT, "%.4f", z[0])
+                        + ", logZUpper=" + String.format(Locale.ROOT, "%.4f", z[1])
+                        + " (diagnostic; falling back to standard MARK* for the run)");
+            }
             System.out.println("BranchMARK*: Empty tree, falling back to standard MARK*.");
             useBranchDecomposition = false;
             return;
@@ -787,6 +810,22 @@ public class BranchMARKStarBound extends MARKStarBound {
                 + ", logNaive=" + String.format("%.2f", logNaive)
                 + ", ratio=" + String.format("%.4f", tessRatio));
         logDPMemoryPredictions("initial", logTESS);
+
+        if (dryRun) {
+            System.out.println("BranchMARK*: DRYRUN summary"
+                    + " rootSplit=" + rootSplitStrategy
+                    + " splitEdge=" + selectedRootSplitIndex
+                    + " branchwidth=" + branchwidth
+                    + " lambdaEdges=" + rooting.lambdaEdges
+                    + " maxMStates=" + rooting.maxMStates
+                    + " totalMStates=" + rooting.totalMStates
+                    + " maxDPTableBytes=" + rooting.maxDPTableBytes
+                    + " totalDPTableBytes=" + rooting.totalDPTableBytes
+                    + " logDPWork=" + String.format(Locale.ROOT, "%.4f", rooting.logDPWork)
+                    + " logTESS=" + String.format(Locale.ROOT, "%.4f", logTESS)
+                    + " logNaive=" + String.format(Locale.ROOT, "%.4f", logNaive));
+            return;
+        }
 
         if (tessRatio > TESS_FALLBACK_THRESHOLD) {
             if (useSparsePfunc) {
@@ -2696,9 +2735,8 @@ public class BranchMARKStarBound extends MARKStarBound {
     private boolean putCachedDPTable(String key, double[] lower, double[] upper,
                                      DPCacheStats stats) {
         long tableBytes = estimateDPTableBytes(lower.length);
-        if (lower.length >= dpCacheSkipIfMStates
-                || tableBytes > dpCacheMaxTableBytes
-                || tableBytes > dpCacheMaxTotalBytes) {
+        if (dpCacheShouldSkip(lower.length, tableBytes, dpCacheSkipIfMStates,
+                dpCacheMaxTableBytes, dpCacheMaxTotalBytes)) {
             stats.skippedLarge++;
             return false;
         }
@@ -2736,11 +2774,24 @@ public class BranchMARKStarBound extends MARKStarBound {
         dpTableCacheBytes -= cached.bytes;
     }
 
-    private static long estimateDPTableBytes(long mStates) {
+    static long estimateDPTableBytes(long mStates) {
         if (mStates > Long.MAX_VALUE / (2L * (long) Double.BYTES)) {
             return Long.MAX_VALUE;
         }
         return 2L * (long) mStates * (long) Double.BYTES;
+    }
+
+    /**
+     * Whether a DP table is too large to put in the byte-limited cache (design
+     * 1.1): skip if its M-state count reaches skipIfMStates, or its estimated
+     * byte size exceeds either the per-table or the total cache budget. Pure
+     * decision function (no state); unit-tested in TestDPCacheBudget.
+     */
+    static boolean dpCacheShouldSkip(long tableLen, long tableBytes, long skipIfMStates,
+                                     long maxTableBytes, long maxTotalBytes) {
+        return tableLen >= skipIfMStates
+                || tableBytes > maxTableBytes
+                || tableBytes > maxTotalBytes;
     }
 
     private static String formatBytes(long bytes) {
@@ -4672,6 +4723,14 @@ public class BranchMARKStarBound extends MARKStarBound {
 
     @Override
     public void compute(int maxNumConfs) {
+        if (dryRun) {
+            System.out.println("BranchMARK*: DRYRUN abort (no DP/CCD computed); rootSplit="
+                    + rootSplitStrategy);
+            values = new Values();
+            values.qprime = MathTools.BigPositiveInfinity;
+            setStatus(Status.Aborted);
+            return;
+        }
         if (dpTooLargeException != null) {
             reportDPTooLarge(dpTooLargeException);
             values = new Values();
