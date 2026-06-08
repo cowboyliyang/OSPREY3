@@ -19,6 +19,7 @@ NUM_FLEXIBLE=${NUM_FLEXIBLE:-10}
 EPSILON=${EPSILON:-0.68}
 PAC_SAMPLES=${PAC_SAMPLES:-500}
 PAC_CONFIDENCE=${PAC_CONFIDENCE:-0.05}
+PAC_RESIDUAL_BOUND=${PAC_RESIDUAL_BOUND:-0.5}
 NUM_CPUS=${NUM_CPUS:-104}
 DP_CACHE=${DP_CACHE:-false}
 EXTRA_JVM_ARGS="${EXTRA_JVM_ARGS:-} -XX:-UseSuperWord"
@@ -31,6 +32,7 @@ echo "  NUM_FLEXIBLE=$NUM_FLEXIBLE"
 echo "  EPSILON=$EPSILON"
 echo "  PAC_SAMPLES=$PAC_SAMPLES"
 echo "  PAC_CONFIDENCE=$PAC_CONFIDENCE  (=> $(echo "scale=0; (1-$PAC_CONFIDENCE)*100" | bc)% confidence)"
+echo "  PAC_RESIDUAL_BOUND=$PAC_RESIDUAL_BOUND kcal/mol"
 echo "  NUM_CPUS=$NUM_CPUS"
 echo "  DP_CACHE=$DP_CACHE"
 echo "=============================================="
@@ -60,6 +62,7 @@ $JAVA $JARGS \
     -Dbranchmarkstar.test.numFlexible="$NUM_FLEXIBLE" \
     -Dbranchmarkstar.test.epsilon="$EPSILON" \
     -Dbranchmarkstar.usePAC=true \
+    -Dbranchmarkstar.pac.residualBound="$PAC_RESIDUAL_BOUND" \
     -Dbranchmarkstar.dp.cache="$DP_CACHE" \
     -Dbranchmarkstar.pac.samples="$PAC_SAMPLES" \
     -Dbranchmarkstar.pac.confidence="$PAC_CONFIDENCE" \

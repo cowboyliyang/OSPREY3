@@ -16,9 +16,9 @@
 # For "all", designs are round-robined across the two partitions for max throughput.
 #
 # Usage: bash bench_pac.sh [design_id or "all"]
-#   env overrides: PAC_SAMPLES=500  PAC_CONFIDENCE=0.05
-#                  PAC_ADAPTIVE=true PAC_MIN_SAMPLES=100 PAC_BATCH_SIZE=200
-#                  PAC_SAMPLING_BATCHED=true PAC_SAMPLING_THREADS= PAC_SAMPLING_LARGE_LAMBDA=65536
+#   env overrides: PAC_SAMPLES=500  PAC_CONFIDENCE=0.05  PAC_RESIDUAL_BOUND=0.5
+#                  PAC_TRAIN_SAMPLES= PAC_PILOT_SAMPLES= PAC_MAX_EST_SAMPLES=
+#                  PAC_SAMPLING_BATCHED=true PAC_SAMPLING_GPU=false PAC_SAMPLING_THREADS= PAC_SAMPLING_LARGE_LAMBDA=65536
 #                  ROOT_SPLIT=memory
 #                  GRISMAN_CPUS=104  COMPSCI_CPUS=128
 #                  GRISMAN_MEM=128G   COMPSCI_MEM=256G
@@ -40,12 +40,13 @@ DESIGN=${1:-2q1e}
 # --- tunables ---
 PAC_SAMPLES=${PAC_SAMPLES:-500}        # branchmarkstar.pac.samples
 PAC_CONFIDENCE=${PAC_CONFIDENCE:-0.05} # delta; 0.05 => 95% confidence
-PAC_ADAPTIVE=${PAC_ADAPTIVE:-true}
-PAC_MIN_SAMPLES=${PAC_MIN_SAMPLES:-100}
-PAC_MAX_SAMPLES=${PAC_MAX_SAMPLES:-$PAC_SAMPLES}
-PAC_BATCH_SIZE=${PAC_BATCH_SIZE:-200}
+PAC_RESIDUAL_BOUND=${PAC_RESIDUAL_BOUND:-0.5} # deterministic |xi| bound, kcal/mol
 PAC_TARGET_EPSILON=${PAC_TARGET_EPSILON:-}
+PAC_TRAIN_SAMPLES=${PAC_TRAIN_SAMPLES:-}
+PAC_PILOT_SAMPLES=${PAC_PILOT_SAMPLES:-}
+PAC_MAX_EST_SAMPLES=${PAC_MAX_EST_SAMPLES:-}
 PAC_SAMPLING_BATCHED=${PAC_SAMPLING_BATCHED:-true}
+PAC_SAMPLING_GPU=${PAC_SAMPLING_GPU:-false}
 PAC_SAMPLING_THREADS=${PAC_SAMPLING_THREADS:-}
 PAC_SAMPLING_LARGE_LAMBDA=${PAC_SAMPLING_LARGE_LAMBDA:-65536}
 GRISMAN_CPUS=${GRISMAN_CPUS:-104}      # max out fennario
@@ -59,11 +60,16 @@ ROOT_SPLIT=${ROOT_SPLIT:-memory}
 GRISMAN_FULL_NODE=${GRISMAN_FULL_NODE:-false}
 GRISMAN_EXCLUDE=${GRISMAN_EXCLUDE:-}
 GRISMAN_CONSTRAINT=${GRISMAN_CONSTRAINT-a5000}
+DP_GPU=${DP_GPU:-false}                 # true => GPU full-DP fast path (dp.gpu)
+GRISMAN_GPUS=${GRISMAN_GPUS:-}          # non-empty => --gres=gpu:a5000:N on grisman
 TARGET=${TARGET:-both}                 # both | grisman | compsci
 EXCLUDE=${EXCLUDE:-}                    # space-separated design ids to skip (for "all")
 
 JAVA=/home/users/lz280/java/jdk-17.0.2+8/bin/java
 EXTRA_JVM_ARGS="${EXTRA_JVM_ARGS:-} -XX:-UseSuperWord"
+if [ "$DP_GPU" = "true" ]; then
+    EXTRA_JVM_ARGS="$EXTRA_JVM_ARGS -Dbranchmarkstar.dp.gpu=true -Dbranchmarkstar.dp.gpu.multiGpu=true -Dbranchmarkstar.dp.gpu.persistentContext=true"
+fi
 JARGS="--add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.lang.invoke=ALL-UNNAMED -Xmx$JAVA_XMX -Xms$JAVA_XMS $EXTRA_JVM_ARGS"
 MAIN=edu.duke.cs.osprey.markstar.bench.GenericPDBBench
 
@@ -81,6 +87,7 @@ slurm_flags() {
         fi
         if [ -n "$GRISMAN_CONSTRAINT" ]; then f="$f --constraint=$GRISMAN_CONSTRAINT"; fi
         if [ -n "$GRISMAN_EXCLUDE" ]; then f="$f --exclude=$GRISMAN_EXCLUDE"; fi
+        if [ -n "$GRISMAN_GPUS" ]; then f="$f --gres=gpu:a5000:$GRISMAN_GPUS"; fi
     else
         f="$f --cpus-per-task=$cpus --mem=$mem"
     fi
@@ -121,16 +128,17 @@ submit_one() {
             -Dosprey.bench.outputDir=$OUTDIR/results \
             -Dosprey.bench.numCPUs=\$RUN_CPUS \
             -Dbranchmarkstar.usePAC=true \
+            -Dbranchmarkstar.pac.residualBound=$PAC_RESIDUAL_BOUND \
             -Dbranchmarkstar.rootSplit=$ROOT_SPLIT \
             -Dbranchmarkstar.dp.cache=$DP_CACHE \
             -Dbranchmarkstar.pac.samples=$PAC_SAMPLES \
             -Dbranchmarkstar.pac.confidence=$PAC_CONFIDENCE \
-            -Dbranchmarkstar.pac.adaptive=$PAC_ADAPTIVE \
-            -Dbranchmarkstar.pac.minSamples=$PAC_MIN_SAMPLES \
-            -Dbranchmarkstar.pac.maxSamples=$PAC_MAX_SAMPLES \
-            -Dbranchmarkstar.pac.batchSize=$PAC_BATCH_SIZE \
             -Dbranchmarkstar.pac.targetEpsilon=$PAC_TARGET_EPSILON \
+            -Dbranchmarkstar.pac.trainSamples=$PAC_TRAIN_SAMPLES \
+            -Dbranchmarkstar.pac.pilotSamples=$PAC_PILOT_SAMPLES \
+            -Dbranchmarkstar.pac.maxEstSamples=$PAC_MAX_EST_SAMPLES \
             -Dbranchmarkstar.pac.sampling.batched=$PAC_SAMPLING_BATCHED \
+            -Dbranchmarkstar.pac.sampling.gpu=$PAC_SAMPLING_GPU \
             -Dbranchmarkstar.pac.sampling.threads=$PAC_SAMPLING_THREADS \
             -Dbranchmarkstar.pac.sampling.largeLambdaThreshold=$PAC_SAMPLING_LARGE_LAMBDA \
             -cp \"\$(cat $LOGDIR/.classpath_bench.txt)\" $MAIN 2>&1" \

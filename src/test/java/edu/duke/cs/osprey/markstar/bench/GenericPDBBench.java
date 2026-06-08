@@ -207,7 +207,7 @@ public class GenericPDBBench {
             case "pac":
                 // PAC (Probably Approximately Correct) estimation runs on top of the
                 // BranchMARK* tree. Force the PAC flag on so BranchMARKStarBound bypasses
-                // the exact search loop and uses Rao-Blackwellized importance sampling.
+                // the exact search loop and uses the two-stage PACK* estimator.
                 System.setProperty("branchmarkstar.usePAC", "true");
                 runMARKStar(confSpaces, epsilon, parallelism, ematDir, designId, outputDir, false, true);
                 break;

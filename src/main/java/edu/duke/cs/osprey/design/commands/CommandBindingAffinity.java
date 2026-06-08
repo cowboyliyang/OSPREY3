@@ -80,6 +80,9 @@ public class CommandBindingAffinity extends RunnableCommand {
     @Parameter(names = "--branchmarkstar-pac-confidence", description = "PAC confidence level for BranchMARK* PAC mode. Uses the BranchMARK* default when omitted.")
     public double branchMarkstarPacConfidence = Double.NaN;
 
+    @Parameter(names = "--branchmarkstar-pac-residual-bound", description = "Deterministic absolute residual-energy bound |xi| in kcal/mol. Required for a strict PAC certificate.")
+    public double branchMarkstarPacResidualBound = Double.NaN;
+
     // === GNN Strategy 8 (leaf + subtree GNN) — only used with --use-branchmarkstar ===
     @Parameter(names = "--gnn-strategy", description = "GNN strategy ID (0=off, 8=leaf+subtree). Only effective with --use-branchmarkstar.")
     public int gnnStrategy = 0;
@@ -168,6 +171,10 @@ public class CommandBindingAffinity extends RunnableCommand {
             }
             if (!Double.isNaN(branchMarkstarPacConfidence) && branchMarkstarPacConfidence > 0) {
                 System.setProperty("branchmarkstar.pac.confidence", Double.toString(branchMarkstarPacConfidence));
+            }
+            if (!Double.isNaN(branchMarkstarPacResidualBound) && branchMarkstarPacResidualBound >= 0) {
+                System.setProperty("branchmarkstar.pac.residualBound",
+                        Double.toString(branchMarkstarPacResidualBound));
             }
         }
 

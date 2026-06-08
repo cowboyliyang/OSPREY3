@@ -38,6 +38,8 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.IntConsumer;
+import java.io.File;
+import java.io.PrintWriter;
 
 /**
  * PAC (Probably Approximately Correct) Partition Function Estimation
@@ -60,16 +62,22 @@ public class PACPartitionFunction {
     // Configuration
     private static final String PAC_SAMPLES_PROPERTY = "branchmarkstar.pac.samples";
     private static final String PAC_CONFIDENCE_PROPERTY = "branchmarkstar.pac.confidence";
-    private static final String PAC_ADAPTIVE_PROPERTY = "branchmarkstar.pac.adaptive";
-    private static final String PAC_MIN_SAMPLES_PROPERTY = "branchmarkstar.pac.minSamples";
-    private static final String PAC_MAX_SAMPLES_PROPERTY = "branchmarkstar.pac.maxSamples";
-    private static final String PAC_BATCH_SIZE_PROPERTY = "branchmarkstar.pac.batchSize";
     private static final String PAC_TARGET_EPSILON_PROPERTY = "branchmarkstar.pac.targetEpsilon";
     private static final String PAC_SAMPLING_BATCHED_PROPERTY = "branchmarkstar.pac.sampling.batched";
     private static final String PAC_SAMPLING_PARALLEL_PROPERTY = "branchmarkstar.pac.sampling.parallel";
     private static final String PAC_SAMPLING_THREADS_PROPERTY = "branchmarkstar.pac.sampling.threads";
     private static final String PAC_SAMPLING_LARGE_LAMBDA_PROPERTY = "branchmarkstar.pac.sampling.largeLambdaThreshold";
     private static final String PAC_SAMPLING_PROGRESS_PROPERTY = "branchmarkstar.pac.sampling.progress";
+    private static final String PAC_SAMPLING_GPU_PROPERTY = "branchmarkstar.pac.sampling.gpu";
+    // Tier-1 two-stage estimator: learn eta on a train split (from p_m), solve the
+    // corrected DP ONCE, then sample the estimation set from p_eta and reweight only
+    // the residual xi = E_true - E_eta. Sample size N* is computed up-front from a
+    // pilot by inverting empirical Bernstein (no per-round DP re-solve / restore).
+    private static final String PAC_TRAIN_SAMPLES_PROPERTY = "branchmarkstar.pac.trainSamples";
+    private static final String PAC_PILOT_SAMPLES_PROPERTY = "branchmarkstar.pac.pilotSamples";
+    private static final String PAC_MAX_EST_SAMPLES_PROPERTY = "branchmarkstar.pac.maxEstSamples";
+    private static final String PAC_NSTAR_INFLATE_PROPERTY = "branchmarkstar.pac.nstarInflate";
+    private static final String PAC_RESIDUAL_BOUND_PROPERTY = "branchmarkstar.pac.residualBound";
     private static final String DP_PARALLEL_THREADS_PROPERTY = "branchmarkstar.dp.parallel.threads";
     private static final String DP_CACHE_ENABLED_PROPERTY = "branchmarkstar.dp.cache";
     private static final String DP_CACHE_MAX_ENTRIES_PROPERTY = "branchmarkstar.dp.cache.maxEntries";
@@ -78,10 +86,11 @@ public class PACPartitionFunction {
     private static final String DP_CACHE_SKIP_IF_M_STATES_PROPERTY = "branchmarkstar.dp.cache.skipIfMStates";
     private static final int DEFAULT_SAMPLES = 500;
     private static final double DEFAULT_CONFIDENCE = 0.05; // delta = 0.05 => 95% confidence
-    private static final int DEFAULT_ADAPTIVE_MIN_SAMPLES = 100;
-    private static final int DEFAULT_ADAPTIVE_BATCH_SIZE = 200;
     private static final double DEFAULT_TARGET_EPSILON = 0.683;
     private static final int DEFAULT_SAMPLING_LARGE_LAMBDA = 65_536;
+    private static final double DEFAULT_TRAIN_FRACTION = 0.5;
+    private static final double DEFAULT_PILOT_FRACTION = 0.1;
+    private static final double DEFAULT_NSTAR_INFLATE = 1.3;
     private static final int DEFAULT_DP_CACHE_MAX_ENTRIES = 20000;
     private static final long DEFAULT_DP_CACHE_MAX_TABLE_BYTES = 256L * 1024L * 1024L;
     private static final long DEFAULT_DP_CACHE_MAX_TOTAL_BYTES = 4L * 1024L * 1024L * 1024L;
@@ -106,15 +115,19 @@ public class PACPartitionFunction {
     // Configuration
     private final int numSamples;
     private final double delta; // confidence parameter
-    private final boolean adaptiveSampling;
-    private final int minSamples;
-    private final int maxSamples;
-    private final int batchSize;
     private final double targetEpsilon;
     private final boolean batchedSampling;
+    private final boolean gpuSampling;
     private final int samplingThreads;
     private final int samplingLargeLambdaThreshold;
     private final boolean samplingProgress;
+    private final int trainSamples;
+    private final int pilotSamples;
+    private final int maxEstSamples;
+    private double clipLogCap = Double.NaN; // clip threshold fixed on the pilot (PAC: chosen before S2)
+    private double logZMinDet = Double.POSITIVE_INFINITY; // log q_m: deterministic, assumption-free upper bound on log q
+    private final double nstarInflate;
+    private final double residualBoundKcal;
     private final boolean dpCacheEnabled;
     private final int dpCacheMaxEntries;
     private final long dpCacheMaxTableBytes;
@@ -128,9 +141,6 @@ public class PACPartitionFunction {
     private double logZLowerPAC;
     private double logZUpperPAC;
     private int totalCCDCalls;
-
-    // Original logZ_min before Phase 4 modifies DP tables
-    private double logZMinOriginal;
 
     // Statistics
     private double meanPsi;
@@ -179,26 +189,29 @@ public class PACPartitionFunction {
         this.numSamples = Math.max(1, getConfigInteger(PAC_SAMPLES_PROPERTY, DEFAULT_SAMPLES));
         String deltaStr = getConfigProperty(PAC_CONFIDENCE_PROPERTY, null);
         this.delta = (deltaStr != null) ? Double.parseDouble(deltaStr) : DEFAULT_CONFIDENCE;
-        this.adaptiveSampling = getConfigBoolean(PAC_ADAPTIVE_PROPERTY, false);
-        this.maxSamples = Math.max(1,
-                getConfigInteger(PAC_MAX_SAMPLES_PROPERTY, this.numSamples));
-        this.minSamples = Math.max(1, Math.min(this.maxSamples,
-                getConfigInteger(PAC_MIN_SAMPLES_PROPERTY,
-                        Math.min(DEFAULT_ADAPTIVE_MIN_SAMPLES, this.maxSamples))));
-        this.batchSize = Math.max(1,
-                getConfigInteger(PAC_BATCH_SIZE_PROPERTY,
-                        Math.min(DEFAULT_ADAPTIVE_BATCH_SIZE, this.maxSamples)));
         double defaultTarget = Double.isFinite(requestedTargetEpsilon) && requestedTargetEpsilon > 0.0
                 ? requestedTargetEpsilon
                 : DEFAULT_TARGET_EPSILON;
         this.targetEpsilon = Math.max(0.0,
                 getConfigDouble(PAC_TARGET_EPSILON_PROPERTY, defaultTarget));
         this.batchedSampling = getConfigBoolean(PAC_SAMPLING_BATCHED_PROPERTY, true);
+        this.gpuSampling = getConfigBoolean(PAC_SAMPLING_GPU_PROPERTY, false);
         this.samplingThreads = resolveConfiguredSamplingThreads();
         this.samplingLargeLambdaThreshold = Math.max(1,
                 getConfigInteger(PAC_SAMPLING_LARGE_LAMBDA_PROPERTY,
                         DEFAULT_SAMPLING_LARGE_LAMBDA));
         this.samplingProgress = getConfigBoolean(PAC_SAMPLING_PROGRESS_PROPERTY, true);
+        int twoStageBudget = Math.max(6, this.numSamples);
+        int defaultTrainSamples = Math.max(2, (int) Math.floor(twoStageBudget * DEFAULT_TRAIN_FRACTION));
+        int defaultPilotSamples = Math.max(2, (int) Math.floor(twoStageBudget * DEFAULT_PILOT_FRACTION));
+        int defaultMaxEstSamples = Math.max(2, twoStageBudget - defaultTrainSamples - defaultPilotSamples);
+        this.trainSamples = Math.max(2, getConfigInteger(PAC_TRAIN_SAMPLES_PROPERTY, defaultTrainSamples));
+        this.pilotSamples = Math.max(2, getConfigInteger(PAC_PILOT_SAMPLES_PROPERTY, defaultPilotSamples));
+        this.maxEstSamples = Math.max(2,
+                getConfigInteger(PAC_MAX_EST_SAMPLES_PROPERTY, defaultMaxEstSamples));
+        this.nstarInflate = Math.max(1.0, getConfigDouble(PAC_NSTAR_INFLATE_PROPERTY, DEFAULT_NSTAR_INFLATE));
+        double configuredResidualBound = getConfigDouble(PAC_RESIDUAL_BOUND_PROPERTY, Double.NaN);
+        this.residualBoundKcal = configuredResidualBound >= 0.0 ? configuredResidualBound : Double.NaN;
         this.dpCacheEnabled = getConfigBoolean(DP_CACHE_ENABLED_PROPERTY, true);
         this.dpCacheMaxEntries = Math.max(0,
                 getConfigInteger(DP_CACHE_MAX_ENTRIES_PROPERTY, DEFAULT_DP_CACHE_MAX_ENTRIES));
@@ -453,7 +466,6 @@ public class PACPartitionFunction {
         // Phase 0: Z_min from existing DP (already computed)
         double logZMin = rootedRootEdge.getLogZUpper(0);
         double logZRigid = rootedRootEdge.getLogZLower(0);
-        logZMinOriginal = logZMin; // save before Phase 4 modifies DP tables
         System.out.println("[PAC] Phase 0: logZ_min=" + String.format("%.4f", logZMin)
                 + ", logZ_rigid=" + String.format("%.4f", logZRigid)
                 + ", gap=" + String.format("%.4f", logZMin - logZRigid));
@@ -469,171 +481,17 @@ public class PACPartitionFunction {
             return epsilon;
         }
 
-        if (adaptiveSampling) {
-            runAdaptiveSamplingPAC(startTime, logZRigid);
-        } else {
-            runFixedSamplingPAC(startTime, logZRigid);
-        }
+        System.out.println("[PAC-2stage] Strict pilot holdout is enabled"
+                + ", samples(train/pilot/maxEst)="
+                + trainSamples + "/" + pilotSamples + "/" + maxEstSamples
+                + ", residualBound="
+                + (Double.isFinite(residualBoundKcal)
+                ? String.format("%.4f kcal/mol", residualBoundKcal)
+                : "not configured"));
+        this.logZMinDet = logZMin; // q_m >= q always (E_m <= E_true): assumption-free upper-bound fallback
+        runTwoStagePAC(startTime, logZRigid);
 
         return epsilon;
-    }
-
-    private void runFixedSamplingPAC(long startTime, double logZRigid) {
-        Random rng = new Random(42); // reproducible
-
-        // Phase 1: Sample conformations from p(c) proportional to exp(-E_min/kT)
-        long phase1Start = System.currentTimeMillis();
-        List<int[]> sampledConfs = sampleConformationsFromDP(numSamples, rng);
-        long phase1Time = System.currentTimeMillis() - phase1Start;
-        System.out.println("[PAC] Phase 1: Sampled " + sampledConfs.size()
-                + " conformations in " + phase1Time + " ms");
-
-        // Phase 2: Parallel CCD minimization
-        long phase2Start = System.currentTimeMillis();
-        List<CCDResult> ccdResults = runParallelCCD(sampledConfs);
-        long phase2Time = System.currentTimeMillis() - phase2Start;
-        totalCCDCalls = ccdResults.size();
-        System.out.println("[PAC] Phase 2: " + totalCCDCalls + " CCD minimizations in "
-                + phase2Time + " ms");
-
-        runCorrectionAndBoundPhases(ccdResults, logZRigid, "Phase");
-        printFinalSummary(startTime);
-    }
-
-    private void runAdaptiveSamplingPAC(long startTime, double logZRigid) {
-        int adaptiveMax = Math.max(maxSamples, minSamples);
-        int adaptiveBatch = Math.min(batchSize, adaptiveMax);
-        System.out.println("[PAC] Adaptive sampling enabled: minSamples=" + minSamples
-                + ", maxSamples=" + adaptiveMax
-                + ", batchSize=" + adaptiveBatch
-                + ", targetEpsilon=" + String.format("%.6f", targetEpsilon));
-
-        Random rng = new Random(42);
-        List<CCDResult> allCCDResults = new ArrayList<>(adaptiveMax);
-        int requestedSamples = 0;
-        int round = 0;
-        long totalSamplingTime = 0L;
-        long totalCCDTime = 0L;
-        boolean proposalDPIsOriginal = true;
-
-        while (requestedSamples < adaptiveMax) {
-            round++;
-            int targetValidSamples = allCCDResults.isEmpty()
-                    ? Math.min(minSamples, adaptiveMax)
-                    : Math.min(allCCDResults.size() + adaptiveBatch, adaptiveMax);
-            int batchRequest = Math.max(1, targetValidSamples - allCCDResults.size());
-            batchRequest = Math.min(batchRequest, adaptiveMax - requestedSamples);
-
-            if (!proposalDPIsOriginal) {
-                restoreOriginalProposalDPForAdaptiveSampling();
-                proposalDPIsOriginal = true;
-            }
-
-            long phase1Start = System.currentTimeMillis();
-            List<int[]> batch = sampleConformationsFromDP(batchRequest, rng);
-            long phase1Time = System.currentTimeMillis() - phase1Start;
-            totalSamplingTime += phase1Time;
-            requestedSamples += batchRequest;
-            System.out.println("[PAC] Adaptive round " + round + ": sampled "
-                    + batch.size() + "/" + batchRequest
-                    + " candidate conformations in " + phase1Time + " ms"
-                    + ", requested=" + requestedSamples + "/" + adaptiveMax);
-
-            if (batch.isEmpty()) {
-                System.out.println("[PAC] Adaptive stop: no valid sampled conformations");
-                break;
-            }
-
-            long phase2Start = System.currentTimeMillis();
-            List<CCDResult> batchResults = runParallelCCD(batch);
-            long phase2Time = System.currentTimeMillis() - phase2Start;
-            totalCCDTime += phase2Time;
-            allCCDResults.addAll(batchResults);
-            totalCCDCalls = allCCDResults.size();
-            System.out.println("[PAC] Adaptive round " + round + ": "
-                    + batchResults.size() + " new CCD minimizations, "
-                    + totalCCDCalls + " total, phase2=" + phase2Time + " ms");
-
-            runCorrectionAndBoundPhases(allCCDResults, logZRigid,
-                    "Adaptive round " + round);
-            proposalDPIsOriginal = false;
-
-            if (totalCCDCalls >= minSamples && epsilon <= targetEpsilon) {
-                System.out.println("[PAC] Adaptive stop: epsilon="
-                        + String.format("%.6f", epsilon)
-                        + " <= target=" + String.format("%.6f", targetEpsilon)
-                        + " with " + totalCCDCalls + " CCD calls");
-                break;
-            }
-
-            if (batchResults.isEmpty()) {
-                System.out.println("[PAC] Adaptive stop: no valid new CCD samples");
-                break;
-            }
-        }
-
-        System.out.println("[PAC] Adaptive sampling summary: requestedSamples="
-                + requestedSamples + ", validCCD=" + totalCCDCalls
-                + ", samplingMs=" + totalSamplingTime
-                + ", ccdMs=" + totalCCDTime);
-        printFinalSummary(startTime);
-    }
-
-    private void restoreOriginalProposalDPForAdaptiveSampling() {
-        long restoreStart = System.currentTimeMillis();
-        RootedTreeEdge.postOrderInitIncremental(rootedRoot,
-                branchRigidEmat, branchMinimizingEmat, interactionGraph, RT);
-        RootedTreeEdge.postOrderComputeFullDP(rootedRoot);
-        System.out.println("[PAC] Adaptive restored original proposal DP in "
-                + (System.currentTimeMillis() - restoreStart) + " ms");
-    }
-
-    private void runCorrectionAndBoundPhases(List<CCDResult> ccdResults,
-                                             double logZRigid,
-                                             String labelPrefix) {
-        // Sample splitting (required for the PAC guarantee): eta (Phase 3), the
-        // corrected DP (Phase 4) and the control-variate coefficient beta are
-        // learned on the training half; the empirical-Bernstein bound (Phase 5)
-        // is evaluated on the disjoint estimation half, which is therefore
-        // independent of eta and beta. n_e = |S_est| = floor(n_s / 2).
-        int total = ccdResults.size();
-        int nEst = total / 2;
-        int nTrain = total - nEst;
-        List<CCDResult> trainResults = ccdResults.subList(0, nTrain);
-        List<CCDResult> estResults = ccdResults.subList(nTrain, total);
-        System.out.println("[PAC] " + labelPrefix + " split: nTrain=" + nTrain
-                + ", nEst=" + nEst);
-
-        long phase3Start = System.currentTimeMillis();
-        EtaCorrections eta = extractEtaCorrections(trainResults);
-        long phase3Time = System.currentTimeMillis() - phase3Start;
-        System.out.println("[PAC] " + labelPrefix + " 3: Eta extraction in " + phase3Time + " ms"
-                + ", oneBodyTerms=" + eta.oneBodyCount
-                + ", pairTerms=" + eta.pairCount);
-
-        long phase4Start = System.currentTimeMillis();
-        EnergyMatrix correctedEmat = buildCorrectedEmat(eta);
-        CorrectedDPResult correctedDP = recomputeDP(correctedEmat, eta);
-        double logZCorrected = correctedDP.logZCorrected;
-        long phase4Time = System.currentTimeMillis() - phase4Start;
-        System.out.println("[PAC] " + labelPrefix + " 4: logZ_corrected="
-                + String.format("%.4f", logZCorrected)
-                + " (improvement over logZ_rigid: "
-                + String.format("%.4f", logZCorrected - logZRigid) + ")"
-                + " in " + phase4Time + " ms"
-                + formatDPCacheStats(correctedDP.cacheStats));
-
-        long phase5Start = System.currentTimeMillis();
-        double beta = computeControlVariateBeta(trainResults, correctedEmat);
-        computePACBound(estResults, correctedEmat, logZCorrected, beta);
-        long phase5Time = System.currentTimeMillis() - phase5Start;
-        System.out.println("[PAC] " + labelPrefix + " 5: epsilon="
-                + String.format("%.6f", epsilon)
-                + ", meanPsi=" + String.format("%.6f", meanPsi)
-                + ", cvPsi=" + String.format("%.4f", cvPsi)
-                + ", meanResidual=" + String.format("%.4f", meanResidual) + " kcal/mol"
-                + ", stdResidual=" + String.format("%.4f", stdResidual) + " kcal/mol"
-                + " in " + phase5Time + " ms");
     }
 
     private void printFinalSummary(long startTime) {
@@ -645,6 +503,740 @@ public class PACPartitionFunction {
                 + ", upper=" + String.format("%.6e", zUpper.doubleValue())
                 + ", log10Lower=" + formatLog10(logZLowerPAC)
                 + ", log10Upper=" + formatLog10(logZUpperPAC));
+    }
+
+    // ========== Tier-1 two-stage estimator (p_eta proposal + residual reweight) ==========
+
+    /**
+     * Two-stage PAC estimator.
+     *
+     *   Z = q_eta * E_{p_eta}[ exp(-xi/RT) ],   xi = E_true - E_eta   (exact identity)
+     *
+     * Stage A (train, from p_m): learn eta, build the corrected emat and solve the
+     * corrected DP ONCE -> p_eta (proposal) and q_eta = exp(logZCorrected).
+     * Stage B (est, from p_eta): draw a held-out pilot, estimate the residual-leg
+     * variance, invert empirical Bernstein to get the required N* up-front, then
+     * draw a fresh estimation set of that fixed size in a single shot. No per-round
+     * DP re-solve and no proposal restore.
+     *
+     * Sample-splitting: eta/p_eta are functions of the train split only, so the
+     * estimation samples (and their residual weights) are independent of eta and of
+     * the pilot given the train split, so conditioned on the pilot the final N is
+     * fixed, exactly as the empirical-Bernstein PAC guarantee requires.
+     */
+    private void runTwoStagePAC(long startTime, double logZRigid) {
+        Random rng = new Random(42); // reproducible
+
+        // ---- Stage A: train from p_m -> eta, corrected DP (p_eta, q_eta) ----
+        long tA = System.currentTimeMillis();
+        List<int[]> trainConfs = sampleConformationsFromDP(trainSamples, rng);
+        List<CCDResult> trainCCD = runParallelCCD(trainConfs);
+        System.out.println("[PAC-2stage] Stage A train: " + trainCCD.size()
+                + " CCD from p_m in " + (System.currentTimeMillis() - tA) + " ms");
+        if (trainCCD.isEmpty()) {
+            setZeroBounds("two-stage: no valid train samples");
+            printFinalSummary(startTime);
+            return;
+        }
+
+        EtaCorrections eta = extractEtaCorrections(trainCCD);
+        EnergyMatrix correctedEmat = buildCorrectedEmat(eta);
+        maybeDumpTrainingSamples(trainCCD, eta, correctedEmat);
+        long tDP = System.currentTimeMillis();
+        CorrectedDPResult correctedDP = recomputeDP(correctedEmat, eta); // loads p_eta into the tree
+        double logZCorrected = correctedDP.logZCorrected;
+        System.out.println("[PAC-2stage] corrected DP solved ONCE: logZ_corrected="
+                + String.format("%.4f", logZCorrected)
+                + " (improvement over logZ_rigid: " + String.format("%.4f", logZCorrected - logZRigid) + ")"
+                + " in " + (System.currentTimeMillis() - tDP) + " ms"
+                + ", oneBodyTerms=" + eta.oneBodyCount + ", pairTerms=" + eta.pairCount);
+        if (!Double.isFinite(logZCorrected)) {
+            setZeroBounds("two-stage: corrected logZ is non-finite");
+            printFinalSummary(startTime);
+            return;
+        }
+
+        // ---- Stage B pilot from p_eta -> estimate residual-leg stats -> N* ----
+        // The tree now holds the corrected DP, so sampleConformationsFromDP draws p_eta.
+        long tPilot = System.currentTimeMillis();
+        int nPilot = Math.min(pilotSamples, maxEstSamples);
+        List<CCDResult> pilotCCD = new ArrayList<>(runParallelCCD(sampleConformationsFromDP(nPilot, rng)));
+        System.out.println("[PAC-2stage] Stage B pilot: " + pilotCCD.size()
+                + " CCD from p_eta in " + (System.currentTimeMillis() - tPilot) + " ms");
+        if (pilotCCD.isEmpty()) {
+            setZeroBounds("two-stage: no valid pilot samples");
+            printFinalSummary(startTime);
+            return;
+        }
+
+        // ---- distribution-shift refinement (smart iteration) ----
+        // eta is learned on p_m, but the corrected p_eta can concentrate mass on
+        // rotamers p_m never sampled (eta untrained there -> systematic residual,
+        // meanW collapse). When the p_eta pilot reveals this, re-learn eta on
+        // train(p_m) + pilot(p_eta) -- which now covers the shifted region -- and
+        // re-solve the DP once. The old pilot is reused (no new train batch), so the
+        // only added cost is one DP solve plus a fresh pilot. The final estimation
+        // set is still drawn fresh from the refined p_eta, so sample-splitting (and
+        // thus the PAC guarantee) is preserved.
+        int extraRefineCCD = 0;
+        boolean iterate = getConfigBoolean("branchmarkstar.pac.iterate", true);
+        double collapseThresh = getConfigDouble("branchmarkstar.pac.iterate.meanWThreshold", 0.3);
+        double driftFracThresh = getConfigDouble("branchmarkstar.pac.iterate.driftFraction", 0.2);
+        int minTrainCount = getConfigInteger("branchmarkstar.pac.iterate.minTrainCount", 5);
+        int maxRounds = getConfigInteger("branchmarkstar.pac.iterate.maxRounds", 4);
+        if (iterate) {
+            // Multi-round (EM-style) distribution-shift refinement. eta is learned on p_m,
+            // but the corrected p_eta can concentrate mass on rotamers p_m never sampled
+            // (eta untrained there -> systematic residual, meanW collapse). Each round folds
+            // the current pilot (drawn from the current p_eta) into a growing TRAINING pool,
+            // re-learns eta on the pool -- which now covers the shifted region -- re-solves the
+            // DP, and draws a FRESH pilot from the refined p_eta. Because re-learning eta moves
+            // p_eta (a moving target), one round rarely suffices; we iterate until drift/collapse
+            // clears or maxRounds. Two OR-combined detectors:
+            //  (1) drift: fraction of pilot mass on (pos,rc) cells eta trained < minTrainCount
+            //      times -- the root cause, robust to rare huge-weight (negative-xi) outliers.
+            //  (2) collapse: absolute meanW near 0 (backstop for pure positive-xi cases).
+            // The final estimation set is still drawn fresh from the final p_eta, so
+            // sample-splitting (and the PAC guarantee) is preserved.
+            List<CCDResult> trainPool = new ArrayList<>(trainCCD);
+            for (int round = 1; round <= maxRounds; round++) {
+                double meanWPilot = estimateMeanW(pilotCCD, correctedEmat);
+                double driftFrac = pilotUndertrainedFraction(pilotCCD, eta, minTrainCount);
+                boolean collapse = Double.isFinite(meanWPilot) && meanWPilot < collapseThresh;
+                boolean drift = driftFrac >= driftFracThresh;
+                System.out.println("[PAC-2stage] refinement check (round " + round + "/" + maxRounds
+                        + "): meanWPilot=" + String.format("%.4f", meanWPilot)
+                        + ", driftFrac=" + String.format("%.3f", driftFrac)
+                        + " (collapse=" + collapse + ", drift=" + drift + ")");
+                if (!(collapse || drift)) break;
+
+                // fold the current pilot (from the current p_eta) into the training pool
+                trainPool.addAll(pilotCCD);
+                extraRefineCCD += pilotCCD.size();
+                EtaCorrections eta2 = extractEtaCorrections(trainPool);
+                EnergyMatrix correctedEmat2 = buildCorrectedEmat(eta2);
+                CorrectedDPResult correctedDP2 = recomputeDP(correctedEmat2, eta2); // loads refined p_eta into the tree
+                if (!Double.isFinite(correctedDP2.logZCorrected)) {
+                    System.out.println("[PAC-2stage] refinement round " + round
+                            + ": DP non-finite, keeping previous eta");
+                    break;
+                }
+                eta = eta2;
+                correctedEmat = correctedEmat2;
+                logZCorrected = correctedDP2.logZCorrected;
+                long tRef = System.currentTimeMillis();
+                List<CCDResult> pilotNew =
+                        new ArrayList<>(runParallelCCD(sampleConformationsFromDP(nPilot, rng)));
+                double meanWNew = estimateMeanW(pilotNew, correctedEmat);
+                System.out.println("[PAC-2stage] distribution-shift refinement round " + round
+                        + ": meanW " + String.format("%.4f", meanWPilot) + " -> " + String.format("%.4f", meanWNew)
+                        + ", logZcorr -> " + String.format("%.4f", logZCorrected)
+                        + ", trainPool=" + trainPool.size()
+                        + " (1 DP solve + fresh pilot in " + (System.currentTimeMillis() - tRef) + " ms)");
+                if (pilotNew.isEmpty()) break;
+                pilotCCD = pilotNew;
+            }
+        }
+
+        int nStar = computeRequiredEstSamples(pilotCCD, correctedEmat);
+        nStar = Math.max(2, Math.min(nStar, maxEstSamples));
+
+        long tEst = System.currentTimeMillis();
+        List<CCDResult> estCCD = runParallelCCD(sampleConformationsFromDP(nStar, rng));
+        System.out.println("[PAC-2stage] Stage B fresh estimation: " + estCCD.size() + "/" + nStar
+                + " CCD from p_eta in " + (System.currentTimeMillis() - tEst) + " ms"
+                + " (pilot held out)");
+        totalCCDCalls = trainCCD.size() + pilotCCD.size() + estCCD.size() + extraRefineCCD;
+
+        // ---- clip threshold (if enabled) is fixed on the held-out pilot, BEFORE the
+        // estimation weights S2 are observed, so the clipped weights stay i.i.d. given c ----
+        if (getConfigBoolean("branchmarkstar.pac.clip", false)) {
+            double clipQuantile = getConfigDouble("branchmarkstar.pac.clipQuantile", 0.9);
+            double[] plogW = new double[pilotCCD.size()];
+            for (int i = 0; i < plogW.length; i++) {
+                CCDResult r = pilotCCD.get(i);
+                plogW[i] = -(r.eTrue - computeFullConfPairwiseEnergy(r.conf, correctedEmat)) / RT;
+            }
+            clipLogCap = quantile(plogW, clipQuantile);
+            System.out.println("[PAC-2stage] clip threshold from pilot: logCap="
+                    + String.format("%.4f", clipLogCap) + " (clipQ=" + clipQuantile
+                    + ", nPilot=" + plogW.length + ")");
+        }
+
+        // ---- residual-leg empirical-Bernstein bound: Z = q_eta * E_{p_eta}[exp(-xi/RT)] ----
+        computePACBoundResidual(estCCD, correctedEmat, logZCorrected);
+        printFinalSummary(startTime);
+    }
+
+    /**
+     * Compute the estimation sample size N* needed to reach targetEpsilon, by
+     * inverting the empirical Bernstein bound on the residual-leg weight
+     * w = exp(-xi/RT) using pilot estimates of its mean/variance and a
+     * deterministic residual-weight range.
+     *
+     * epsilon = 2*Delta/(meanW + Delta)  =>  target Delta = eps*meanW/(2-eps).
+     * Returns the smallest N in [2, maxEstSamples] whose Bernstein Delta <= target.
+     * The pilot variance is inflated by nstarInflate for a conservative choice.
+     */
+    private int computeRequiredEstSamples(List<CCDResult> pilot, EnergyMatrix correctedEmat) {
+        int n = pilot.size();
+        if (n <= 1) return maxEstSamples;
+        boolean clip = getConfigBoolean("branchmarkstar.pac.clip", false);
+        double shift = Double.NEGATIVE_INFINITY;
+        double[] logW = new double[n];
+        for (int i = 0; i < n; i++) {
+            CCDResult r = pilot.get(i);
+            double xi = r.eTrue - computeFullConfPairwiseEnergy(r.conf, correctedEmat);
+            logW[i] = -xi / RT;
+            shift = Math.max(shift, logW[i]);
+        }
+        if (!Double.isFinite(shift)) return maxEstSamples;
+        // Under clipping, mirror the final estimator: shift by the clip threshold
+        // logCap (a logW quantile) and use the deterministic range = 1.
+        if (clip) {
+            double clipQuantile = getConfigDouble("branchmarkstar.pac.clipQuantile", 0.9);
+            shift = quantile(logW, clipQuantile);
+            if (!Double.isFinite(shift)) return maxEstSamples;
+        }
+        double sum = 0, sum2 = 0, mn = Double.MAX_VALUE, mx = -Double.MAX_VALUE;
+        double sumU = 0, sumU2 = 0; int nClip = 0;
+        for (int i = 0; i < n; i++) {
+            double w = clip ? Math.exp(Math.min(logW[i], shift) - shift) : Math.exp(logW[i] - shift);
+            sum += w; sum2 += w * w;
+            mn = Math.min(mn, w); mx = Math.max(mx, w);
+            if (clip) {
+                double u = Math.max(0.0, Math.exp(logW[i] - shift) - 1.0); // clip-excess in units of c
+                sumU += u; sumU2 += u * u;
+                if (logW[i] > shift) nClip++;
+            }
+        }
+        double mean = sum / n;
+        if (!(mean > 0)) return maxEstSamples;
+        double var = Math.max(0.0, (sum2 - n * mean * mean) / (n - 1)) * nstarInflate;
+        double sampleRange = mx - mn;
+        double deltaPer = delta / 6.0; // 2 tails x 3 pfuncs
+
+        int nStar;
+        if (clip) {
+            // Predict the FULL clipped epsilon at candidate N, INCLUDING the clip-bias
+            // upper term; otherwise N is undersized and biasUpper dominates the real eps.
+            double meanU = sumU / n;
+            double varU = (n > 1 ? Math.max(0.0, (sumU2 - n * meanU * meanU) / (n - 1)) : 0.0) * nstarInflate;
+            double pHat = (double) nClip / n;
+            double uRange = (Double.isFinite(residualBoundKcal) && residualBoundKcal / RT - shift > 0)
+                    ? Math.expm1(residualBoundKcal / RT - shift) : 0.0;
+            nStar = solveClipSizing(mean, var, meanU, varU, uRange, pHat, deltaPer);
+            System.out.println("[PAC-2stage] N* calc(clip): pilot=" + n
+                    + ", meanWc=" + String.format("%.6f", mean)
+                    + ", varWc=" + String.format("%.6f", var)
+                    + ", meanExcess=" + String.format("%.6f", meanU)
+                    + ", uRange=" + String.format("%.4f", uRange)
+                    + ", pClip=" + String.format("%.3f", pHat)
+                    + ", targetEps=" + String.format("%.4f", targetEpsilon)
+                    + ", predEps@N*=" + String.format("%.4f",
+                        predictClipEps(nStar, mean, var, meanU, varU, uRange, pHat, deltaPer))
+                    + " -> N*_est=" + nStar + " (cap " + maxEstSamples + ")");
+            return nStar;
+        }
+
+        double range = resolveResidualRangeForBernstein(shift, sampleRange, "N* sizing");
+        double targetDelta = targetEpsilon * mean / (2.0 - targetEpsilon);
+        if (solveBernsteinDelta(maxEstSamples, var, range, deltaPer) > targetDelta) {
+            nStar = maxEstSamples; // even the cap cannot reach target
+        } else {
+            int lo = 2, hi = maxEstSamples;
+            while (lo < hi) {
+                int mid = (lo + hi) >>> 1;
+                if (solveBernsteinDelta(mid, var, range, deltaPer) <= targetDelta) hi = mid;
+                else lo = mid + 1;
+            }
+            nStar = lo;
+        }
+        System.out.println("[PAC-2stage] N* calc: pilot=" + n
+                + ", meanW=" + String.format("%.6f", mean)
+                + ", varW(inflated)=" + String.format("%.6f", var)
+                + ", rangeW=" + String.format("%.6f", range)
+                + ", sampleRangeW=" + String.format("%.6f", sampleRange)
+                + ", targetEps=" + String.format("%.4f", targetEpsilon)
+                + ", targetDelta=" + String.format("%.6f", targetDelta)
+                + " -> N*_est=" + nStar + " (cap " + maxEstSamples + ")");
+        return nStar;
+    }
+
+    // Smallest N whose predicted clipped epsilon <= a SAFETY-margin'd target. Two reasons
+    // the raw point prediction undersizes: the pilot (meanU/varU) is noisy, and aiming for
+    // predEps == target leaves zero headroom, so the realized eps lands just over target.
+    // We therefore size to sizeTarget = targetEpsilon * sizeSafety (< target). If even maxEst
+    // cannot reach the REAL target, sampling will never converge this pfunc (heavy tail), so we
+    // draw only a modest unreachableCap and let the run report honestly loose / fall back to q_m,
+    // instead of wastefully drawing the full maxEst.
+    // predictClipEps is monotone decreasing in N (Delta and bias both shrink), so binary search is valid.
+    private int solveClipSizing(double mean, double var, double meanU, double varU,
+                                double uRange, double pHat, double deltaPer) {
+        double sizeSafety = getConfigDouble("branchmarkstar.pac.sizeSafety", 0.9);
+        double sizeTarget = targetEpsilon * sizeSafety;
+        int unreachableCap = getConfigInteger("branchmarkstar.pac.unreachableCap",
+                Math.min(maxEstSamples, Math.max(2 * pilotSamples, 400)));
+        double epsAtCap = predictClipEps(maxEstSamples, mean, var, meanU, varU, uRange, pHat, deltaPer);
+        if (epsAtCap > targetEpsilon) {
+            return Math.min(maxEstSamples, unreachableCap); // unreachable by sampling -> don't waste the full budget
+        }
+        if (epsAtCap > sizeTarget) {
+            return maxEstSamples; // reachable at target but the safety margin needs the whole budget
+        }
+        int lo = 2, hi = maxEstSamples;
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (predictClipEps(mid, mean, var, meanU, varU, uRange, pHat, deltaPer) <= sizeTarget) hi = mid;
+            else lo = mid + 1;
+        }
+        return lo;
+    }
+
+    // Sampling-only clipped epsilon at sample size N (ignores the q_m cap, which only tightens):
+    //   eps = 1 - max(0,mean-D) / (mean + D + bias),
+    //   D = Bernstein(N,var,range=1), bias = min(uRange*(pHat+Hoeffding), meanU + Bernstein(N,varU,uRange)).
+    private double predictClipEps(int N, double mean, double var, double meanU, double varU,
+                                  double uRange, double pHat, double deltaPer) {
+        double d = solveBernsteinDelta(N, var, 1.0, deltaPer);
+        double bias = 0.0;
+        if (uRange > 0) {
+            double biasWorst = uRange * Math.min(1.0, pHat + hoeffdingHalfWidth(N, deltaPer));
+            double biasEmp = meanU + solveBernsteinDelta(N, varU, uRange, deltaPer);
+            bias = Math.min(biasWorst, biasEmp);
+        }
+        double lower = Math.max(0.0, mean - d);
+        double upper = mean + d + bias;
+        if (!(upper > 0)) return 1.0;
+        return 1.0 - lower / upper;
+    }
+
+    private double resolveResidualRangeForBernstein(double shift, double sampleRange, String context) {
+        double rangeBound = shiftedResidualWeightRangeBound(shift);
+        if (Double.isFinite(rangeBound) && rangeBound >= sampleRange) {
+            return rangeBound;
+        } else if (Double.isFinite(rangeBound)) {
+            System.out.println("[PAC-2stage] WARNING: branchmarkstar.pac.residualBound is smaller than "
+                    + "the observed residual-weight range; " + context
+                    + " uses the sample range and is empirical, not a strict PAC certificate.");
+            return sampleRange;
+        }
+        System.out.println("[PAC-2stage] WARNING: no finite branchmarkstar.pac.residualBound is configured; "
+                + context + " uses the sample range and is empirical, not a strict PAC certificate.");
+        return sampleRange;
+    }
+
+    // meanW = E_{p_eta}[exp(-xi/RT)] estimated on a sample, computed via the
+    // log-sum-exp shift to avoid overflow. Used as a collapse detector: meanW near 0
+    // means q_eta badly overestimates q (eta trained off the p_eta distribution).
+    private double estimateMeanW(List<CCDResult> samples, EnergyMatrix correctedEmat) {
+        int n = samples.size();
+        if (n == 0) return 0.0;
+        double shift = Double.NEGATIVE_INFINITY;
+        double[] logW = new double[n];
+        for (int i = 0; i < n; i++) {
+            CCDResult r = samples.get(i);
+            double xi = r.eTrue - computeFullConfPairwiseEnergy(r.conf, correctedEmat);
+            logW[i] = -xi / RT;
+            shift = Math.max(shift, logW[i]);
+        }
+        if (!Double.isFinite(shift)) return 0.0;
+        double sum = 0;
+        for (int i = 0; i < n; i++) sum += Math.exp(logW[i] - shift);
+        double logMeanW = shift + Math.log(sum / n);
+        return logMeanW < 50.0 ? Math.exp(logMeanW) : Double.MAX_VALUE;
+    }
+
+    // Fraction of pilot samples that touch an under-trained one-body cell: a
+    // (pos,rc) the training distribution p_m sampled fewer than minCount times.
+    // This is the root-cause signal for distribution-shift collapse -- p_eta has
+    // concentrated mass on rotamers eta never learned -- and unlike absolute
+    // meanW it is robust to rare huge-weight (negative-xi) outliers. Re-learning
+    // eta on train+pilot covers exactly these cells, so a high fraction also
+    // predicts the refinement will help.
+    private double pilotUndertrainedFraction(List<CCDResult> pilot, EtaCorrections eta, int minCount) {
+        if (pilot.isEmpty()) return 0.0;
+        int hit = 0;
+        for (CCDResult r : pilot) {
+            for (int pos = 0; pos < r.conf.length; pos++) {
+                int rc = r.conf[pos];
+                if (rc < 0) continue;
+                if (eta.oneBodyCounts[pos][rc] < minCount) { hit++; break; }
+            }
+        }
+        return (double) hit / pilot.size();
+    }
+
+    private double shiftedResidualWeightRangeBound(double shift) {
+        if (!Double.isFinite(residualBoundKcal)) return Double.NaN;
+        double x = residualBoundKcal / RT;
+        double hi = Math.exp(x - shift);
+        double lo = Math.exp(-x - shift);
+        double range = hi - lo;
+        return range >= 0.0 ? range : Double.NaN;
+    }
+
+    // ===== Diagnostic dump for multi-body residual attribution =====
+    // Enabled by -Dbranchmarkstar.pac.dumpDir=<dir>. Writes, per pfunc, the
+    // per-sample residual xi = E_true - E_eta (pairwise part already removed) plus
+    // the branch-decomposition bags, so offline analysis can locate the 3-body
+    // interactions that the pairwise eta cannot absorb.
+    private static final AtomicInteger PAC_DUMP_COUNTER = new AtomicInteger(0);
+
+    private void maybeDumpResidualSamples(List<CCDResult> est, double[] xi,
+                                          double logZCorrected,
+                                          double meanXi, double stdXi) {
+        String dir = getConfigProperty("branchmarkstar.pac.dumpDir", null);
+        if (dir == null || dir.trim().isEmpty()) return;
+        try {
+            File d = new File(dir.trim());
+            d.mkdirs();
+            int n = PAC_DUMP_COUNTER.incrementAndGet();
+            int numPos = rcs.getNumPos();
+            File rf = new File(d, String.format("residual_%04d.tsv", n));
+            try (PrintWriter w = new PrintWriter(rf)) {
+                w.printf("# logZcorr=%.6f N=%d numPos=%d meanXi=%.6f stdXi=%.6f%n",
+                        logZCorrected, est.size(), numPos, meanXi, stdXi);
+                w.println("# idx\tconf(comma)\teTrue\teEta\txi");
+                for (int i = 0; i < est.size(); i++) {
+                    CCDResult r = est.get(i);
+                    StringBuilder c = new StringBuilder();
+                    for (int p = 0; p < r.conf.length; p++) {
+                        if (p > 0) c.append(',');
+                        c.append(r.conf[p]);
+                    }
+                    double eEta = r.eTrue - xi[i];
+                    w.printf("%d\t%s\t%.6f\t%.6f\t%.6f%n", i, c, r.eTrue, eEta, xi[i]);
+                }
+            }
+            File bf = new File(d, String.format("bags_%04d.tsv", n));
+            try (PrintWriter w = new PrintWriter(bf)) {
+                w.println("# edgeIdx\tlambda(comma)\tM(comma)");
+                List<RootedTreeEdge> order = buildTopDownOrder(rootedRootEdge);
+                int e = 0;
+                for (RootedTreeEdge edge : order) {
+                    w.printf("%d\t%s\t%s%n", e++,
+                            joinInts(edge.getLambda()), joinInts(edge.getM()));
+                }
+            }
+            System.out.println("[PAC-2stage] residual dump -> " + rf.getName()
+                    + " (N=" + est.size() + ", logZcorr=" + String.format("%.4f", logZCorrected)
+                    + ", meanXi=" + String.format("%.4f", meanXi) + ")");
+        } catch (Exception ex) {
+            System.err.println("[PAC-2stage] residual dump failed: " + ex.getMessage());
+        }
+    }
+
+    private static final AtomicInteger PAC_TRAIN_COUNTER = new AtomicInteger(0);
+
+    private void maybeDumpTrainingSamples(List<CCDResult> train, EtaCorrections eta,
+                                          EnergyMatrix correctedEmat) {
+        String dir = getConfigProperty("branchmarkstar.pac.dumpDir", null);
+        if (dir == null || dir.trim().isEmpty()) return;
+        try {
+            File d = new File(dir.trim());
+            d.mkdirs();
+            int n = PAC_TRAIN_COUNTER.incrementAndGet();
+            int numPos = rcs.getNumPos();
+            File tf = new File(d, String.format("train_%04d.tsv", n));
+            try (PrintWriter w = new PrintWriter(tf)) {
+                w.printf("# trainN=%d numPos=%d (p_m samples)%n", train.size(), numPos);
+                w.println("# idx\tconf(comma)\teTrue\teMin\teEta\txiTrain");
+                for (int i = 0; i < train.size(); i++) {
+                    CCDResult r = train.get(i);
+                    StringBuilder c = new StringBuilder();
+                    for (int p = 0; p < r.conf.length; p++) {
+                        if (p > 0) c.append(',');
+                        c.append(r.conf[p]);
+                    }
+                    double eEta = computeFullConfPairwiseEnergy(r.conf, correctedEmat);
+                    w.printf("%d\t%s\t%.6f\t%.6f\t%.6f\t%.6f%n",
+                            i, c, r.eTrue, r.eMin, eEta, r.eTrue - eEta);
+                }
+            }
+            File ef = new File(d, String.format("eta_%04d.tsv", n));
+            try (PrintWriter w = new PrintWriter(ef)) {
+                w.println("# pos\trc\tetaOneBody\ttrainCount");
+                for (int p = 0; p < eta.oneBody.length; p++) {
+                    for (int rc = 0; rc < eta.oneBody[p].length; rc++) {
+                        int cnt = eta.oneBodyCounts[p][rc];
+                        if (cnt > 0) {
+                            w.printf("%d\t%d\t%.6f\t%d%n", p, rc, eta.oneBody[p][rc] / cnt, cnt);
+                        }
+                    }
+                }
+            }
+            System.out.println("[PAC-2stage] training dump -> " + tf.getName()
+                    + " (trainN=" + train.size() + ")");
+        } catch (Exception ex) {
+            System.err.println("[PAC-2stage] training dump failed: " + ex.getMessage());
+        }
+    }
+
+    private static String joinInts(java.util.Collection<Integer> s) {
+        StringBuilder b = new StringBuilder();
+        boolean first = true;
+        for (Integer v : s) {
+            if (!first) b.append(',');
+            b.append(v);
+            first = false;
+        }
+        return b.toString();
+    }
+
+    /**
+     * Final residual-leg bound: estimand w = exp(-xi/RT), xi = E_true - E_eta, with
+     * samples drawn from p_eta. Z = q_eta * E_{p_eta}[w], so
+     *   logZ = logZCorrected + log(meanW +/- Delta),  Delta = empirical Bernstein.
+     * The deterministic factor q_eta needs no bound; only the residual leg does.
+     */
+    private void computePACBoundResidual(List<CCDResult> estResults,
+                                         EnergyMatrix correctedEmat,
+                                         double logZCorrected) {
+        int N = estResults.size();
+        if (N == 0) {
+            setZeroBounds("two-stage: no estimation samples");
+            return;
+        }
+        if (getConfigBoolean("branchmarkstar.pac.clip", false)) {
+            double clipQuantile = getConfigDouble("branchmarkstar.pac.clipQuantile", 0.9);
+            computePACBoundResidualClipped(estResults, correctedEmat, logZCorrected, clipQuantile);
+            return;
+        }
+        double shift = Double.NEGATIVE_INFINITY;
+        double[] logW = new double[N];
+        double[] xi = new double[N];
+        for (int i = 0; i < N; i++) {
+            CCDResult r = estResults.get(i);
+            xi[i] = r.eTrue - computeFullConfPairwiseEnergy(r.conf, correctedEmat);
+            logW[i] = -xi[i] / RT;
+            shift = Math.max(shift, logW[i]);
+        }
+        if (!Double.isFinite(shift)) {
+            setZeroBounds("two-stage: residual weights are non-finite");
+            return;
+        }
+        double sum = 0, sum2 = 0, mn = Double.MAX_VALUE, mx = -Double.MAX_VALUE;
+        for (int i = 0; i < N; i++) {
+            double w = Math.exp(logW[i] - shift);
+            sum += w; sum2 += w * w;
+            mn = Math.min(mn, w); mx = Math.max(mx, w);
+        }
+        double mean = sum / N;
+        double var = N > 1 ? Math.max(0.0, (sum2 - N * mean * mean) / (N - 1)) : 0.0;
+        double sampleRange = mx - mn;
+        double range = resolveResidualRangeForBernstein(shift, sampleRange, "final bound");
+
+        double sumRes = 0, sumRes2 = 0;
+        for (int i = 0; i < N; i++) { sumRes += xi[i]; sumRes2 += xi[i] * xi[i]; }
+        meanResidual = sumRes / N;
+        stdResidual = N > 1
+                ? Math.sqrt(Math.max(0.0, (sumRes2 - N * meanResidual * meanResidual) / (N - 1)))
+                : 0.0;
+        meanPsi = shiftedMeanToDouble(mean, shift);
+        varPsi = var;
+        cvPsi = (mean > 0) ? Math.sqrt(var) / mean : Double.MAX_VALUE;
+
+        maybeDumpResidualSamples(estResults, xi, logZCorrected, meanResidual, stdResidual);
+
+        double deltaPer = delta / 6.0; // 2 tails x 3 pfuncs
+        double boundDelta = solveBernsteinDelta(N, var, range, deltaPer);
+        if (!Double.isFinite(mean) || !Double.isFinite(var)
+                || !Double.isFinite(range) || !Double.isFinite(boundDelta)) {
+            setZeroBounds("two-stage: PAC statistics are non-finite");
+            return;
+        }
+        double meanLower = Math.max(0.0, mean - boundDelta);
+        double meanUpper = mean + boundDelta;
+        if (!Double.isFinite(meanUpper) || meanUpper <= 0) {
+            setZeroBounds("two-stage: PAC confidence interval is non-finite");
+            return;
+        }
+
+        logZLowerPAC = meanLower > 0
+                ? logZCorrected + shift + Math.log(meanLower)
+                : Double.NEGATIVE_INFINITY;
+        logZUpperPAC = logZCorrected + shift + Math.log(meanUpper);
+        zLower = bigExpFromLog(logZLowerPAC);
+        zUpper = bigExpFromLog(logZUpperPAC);
+        epsilon = epsilonFromLogBounds(logZLowerPAC, logZUpperPAC);
+
+        System.out.println("[PAC-2stage] Bernstein(residual): Delta=" + String.format("%.6f", boundDelta)
+                + ", meanW=" + String.format("%.6f", mean)
+                + ", rangeW=" + String.format("%.6f", range)
+                + ", sampleRangeW=" + String.format("%.6f", sampleRange)
+                + ", varW=" + String.format("%.6f", var)
+                + ", shift=" + String.format("%.4f", shift)
+                + ", logZcorr=" + String.format("%.4f", logZCorrected)
+                + ", meanResidual=" + String.format("%.4f", meanResidual) + " kcal/mol"
+                + ", stdResidual=" + String.format("%.4f", stdResidual) + " kcal/mol"
+                + ", log10ZLower=" + formatLog10(logZLowerPAC)
+                + ", log10ZUpper=" + formatLog10(logZUpperPAC)
+                + ", epsilon=" + String.format("%.6f", epsilon)
+                + ", N=" + N);
+    }
+
+    /**
+     * Clipped residual-leg bound (step 4: drop the global residualBound assumption).
+     *
+     * The unbounded estimand is mu_w = E_{p_eta}[w], w = exp(-xi/RT). A rare
+     * over-corrected conformation (xi << 0) makes w explode, so the empirical
+     * Bernstein "range" term -- and any deterministic |xi|<=xi_max bound -- blows
+     * up exponentially. Instead we clip at a per-pfunc threshold c = exp(logCap),
+     * where logCap is a data-driven quantile of logW, and estimate E[min(w,c)].
+     *
+     * Working in units of c (wbar = min(w,c)/c in [0,1]):
+     *  - Lower bound on mu_w: E[min(w,c)] <= E[w], and the (1-delta') Bernstein
+     *    lower CI on E[min(w,c)] is therefore a rigorous lower bound on mu_w,
+     *    WITH NO bounded-residual assumption. The range term is the deterministic
+     *    constant 1 -- no exp explosion.
+     *  - Upper bound: mu_w = E[min(w,c)] + E[(w-c)_+]. The clip bias E[(w-c)_+] is
+     *    bounded one-sidedly: if xi >= -residualBound (one-sided), then w <= Wmax =
+     *    exp(residualBound/RT), so (w-c)_+ <= (Wmax-c) on clipped samples and
+     *    E[(w-c)_+] <= (Wmax/c - 1) * pUpper, with pUpper a (1-delta') Hoeffding
+     *    upper CI on the clip probability P(w>c). This is additive (not exp-
+     *    amplified through the whole bound) and only needs a far weaker one-sided
+     *    tail assumption than the original two-sided |xi|<=xi_max.
+     */
+    private void computePACBoundResidualClipped(List<CCDResult> estResults,
+                                                EnergyMatrix correctedEmat,
+                                                double logZCorrected,
+                                                double clipQuantile) {
+        int N = estResults.size();
+        if (N == 0) { setZeroBounds("two-stage(clip): no estimation samples"); return; }
+        double[] logW = new double[N];
+        double[] xi = new double[N];
+        for (int i = 0; i < N; i++) {
+            CCDResult r = estResults.get(i);
+            xi[i] = r.eTrue - computeFullConfPairwiseEnergy(r.conf, correctedEmat);
+            logW[i] = -xi[i] / RT;
+        }
+        double sumRes = 0, sumRes2 = 0;
+        for (int i = 0; i < N; i++) { sumRes += xi[i]; sumRes2 += xi[i] * xi[i]; }
+        meanResidual = sumRes / N;
+        stdResidual = N > 1
+                ? Math.sqrt(Math.max(0.0, (sumRes2 - N * meanResidual * meanResidual) / (N - 1)))
+                : 0.0;
+
+        // per-pfunc clip threshold: a data-driven quantile of logW fixed on the
+        // held-out pilot (PAC: chosen before S2 -> clipped weights i.i.d. given c).
+        // Fall back to the est-set quantile only if the pilot cap is unavailable.
+        double logCap = Double.isFinite(clipLogCap) ? clipLogCap : quantile(logW, clipQuantile);
+        if (!Double.isFinite(logCap)) {
+            setZeroBounds("two-stage(clip): non-finite clip threshold");
+            return;
+        }
+
+        // clipped weights in units of c = exp(logCap): wbar = exp(min(logW,logCap)-logCap) in (0,1]
+        double sum = 0, sum2 = 0;
+        int nClipped = 0;
+        for (int i = 0; i < N; i++) {
+            if (logW[i] > logCap) nClipped++;
+            double w = Math.exp(Math.min(logW[i], logCap) - logCap);
+            sum += w; sum2 += w * w;
+        }
+        double mean = sum / N;
+        double var = N > 1 ? Math.max(0.0, (sum2 - N * mean * mean) / (N - 1)) : 0.0;
+        double range = 1.0; // deterministic: clipped weights lie in [0,1] in units of c
+
+        meanPsi = shiftedMeanToDouble(mean, logCap);
+        varPsi = var;
+        cvPsi = (mean > 0) ? Math.sqrt(var) / mean : Double.MAX_VALUE;
+
+        maybeDumpResidualSamples(estResults, xi, logZCorrected, meanResidual, stdResidual);
+
+        double deltaPer = delta / 6.0; // 2 tails x 3 pfuncs
+        double boundDelta = solveBernsteinDelta(N, var, range, deltaPer);
+        if (!Double.isFinite(mean) || !Double.isFinite(var) || !Double.isFinite(boundDelta)) {
+            setZeroBounds("two-stage(clip): PAC statistics are non-finite");
+            return;
+        }
+        double meanLower = Math.max(0.0, mean - boundDelta);
+
+        // ---- upper side: clipped mass (Bernstein) + clip-bias E[(w-c)+]/c ----
+        double meanUpper = mean + boundDelta;
+        // Empirical clip-excess in units of c: u_i = max(0, w_i/c - 1), nonzero only on clipped samples.
+        double sumU = 0, sumU2 = 0;
+        for (int i = 0; i < N; i++) {
+            double u = Math.max(0.0, Math.exp(logW[i] - logCap) - 1.0);
+            sumU += u; sumU2 += u * u;
+        }
+        double meanU = sumU / N;
+        double varU = N > 1 ? Math.max(0.0, (sumU2 - N * meanU * meanU) / (N - 1)) : 0.0;
+
+        double biasUpper;
+        boolean biasCertified;
+        String biasMode;
+        if (Double.isFinite(residualBoundKcal) && residualBoundKcal / RT - logCap > 0) {
+            // residualBound caps the (possibly unobserved) tail: u in [0, uRange], uRange = Wmax/c - 1.
+            double uRange = Math.expm1(residualBoundKcal / RT - logCap);
+            double pHat = (double) nClipped / N;
+            double pUpper = Math.min(1.0, pHat + hoeffdingHalfWidth(N, deltaPer));
+            double biasWorst = uRange * pUpper;                                      // every clipped sample at Wmax (old, loose)
+            double biasEmp = meanU + solveBernsteinDelta(N, varU, uRange, deltaPer); // observed excess + concentration (tight)
+            biasUpper = Math.min(biasWorst, biasEmp);                                // both valid upper bounds -> take tighter
+            biasCertified = true;
+            biasMode = (biasEmp <= biasWorst) ? "empirical" : "worstcase";
+        } else if (Double.isFinite(residualBoundKcal)) {
+            biasUpper = 0.0; biasCertified = true; biasMode = "capAboveWmax"; // logCap already >= Wmax: no excess
+        } else {
+            biasUpper = Double.POSITIVE_INFINITY; biasCertified = false; biasMode = "none"; // no tail bound -> rely on q_m
+        }
+        double meanUpperTotal = meanUpper + biasUpper;
+
+        // lower bound (assumption-free: clipped weights in [0,1] by construction)
+        logZLowerPAC = meanLower > 0
+                ? logZCorrected + logCap + Math.log(meanLower)
+                : Double.NEGATIVE_INFINITY;
+        // upper bound: sampling clip bound, then cap by the deterministic q_m (E_m <= E_true => q_m >= q, zero assumptions)
+        double logZUpperSampling = (Double.isFinite(meanUpperTotal) && meanUpperTotal > 0)
+                ? logZCorrected + logCap + Math.log(meanUpperTotal)
+                : Double.POSITIVE_INFINITY;
+        boolean qmBinds = logZMinDet < logZUpperSampling;
+        logZUpperPAC = Math.min(logZUpperSampling, logZMinDet);
+        zLower = bigExpFromLog(logZLowerPAC);
+        zUpper = bigExpFromLog(logZUpperPAC);
+        epsilon = epsilonFromLogBounds(logZLowerPAC, logZUpperPAC);
+
+        System.out.println("[PAC-2stage] Bernstein(clipped): Delta=" + String.format("%.6f", boundDelta)
+                + ", clipQ=" + String.format("%.3f", clipQuantile)
+                + ", logCap=" + String.format("%.4f", logCap)
+                + ", nClipped=" + nClipped + "/" + N
+                + ", meanWc=" + String.format("%.6f", mean)
+                + ", varWc=" + String.format("%.6f", var)
+                + ", range=1.0(det)"
+                + ", biasUpper=" + String.format("%.6f", biasUpper) + "(" + biasMode + ")"
+                + (biasCertified ? "" : "[no residualBound -> upper via q_m only]")
+                + ", upperVia=" + (qmBinds ? "q_m(det)" : "sampling")
+                + ", log10ZmDet=" + formatLog10(logZMinDet)
+                + ", meanResidual=" + String.format("%.4f", meanResidual) + " kcal/mol"
+                + ", stdResidual=" + String.format("%.4f", stdResidual) + " kcal/mol"
+                + ", log10ZLower=" + formatLog10(logZLowerPAC)
+                + ", log10ZUpper=" + formatLog10(logZUpperPAC)
+                + ", epsilon=" + String.format("%.6f", epsilon)
+                + ", N=" + N);
+    }
+
+    // linear-interpolated quantile of a value array (does not mutate input)
+    private static double quantile(double[] vals, double q) {
+        int n = vals.length;
+        if (n == 0) return Double.NaN;
+        if (n == 1) return vals[0];
+        double[] s = vals.clone();
+        Arrays.sort(s);
+        double pos = Math.max(0.0, Math.min(1.0, q)) * (n - 1);
+        int lo = (int) Math.floor(pos);
+        int hi = (int) Math.ceil(pos);
+        if (lo == hi) return s[lo];
+        double frac = pos - lo;
+        return s[lo] * (1.0 - frac) + s[hi] * frac;
+    }
+
+    // Hoeffding upper-CI half-width for a [0,1]-bounded mean (the clip indicator):
+    // P(p > pHat + sqrt(ln(1/delta)/(2N))) <= delta.
+    private static double hoeffdingHalfWidth(int n, double delta) {
+        if (n <= 0 || !(delta > 0)) return 1.0;
+        return Math.sqrt(Math.log(1.0 / delta) / (2.0 * n));
     }
 
     // ========== Phase 1: Ancestral sampling from DP ==========
@@ -680,12 +1272,14 @@ public class PACPartitionFunction {
                 : null;
 
         try {
+            int edgeOrdinal = 0;
             for (RootedTreeEdge edge : topDownOrder) {
                 if (!edge.getIsLambdaEdge()) continue;
 
                 long edgeStart = System.currentTimeMillis();
                 Map<Long, SampleGroup> groups = groupSamplesByMIdx(edge, confs);
-                sampleEdgeGroups(edge, confs, sampleRngs, groups, samplingPool);
+                long edgeSeed = mix64(masterSeed + 0xD1B54A32D192ED03L * (long) edgeOrdinal++);
+                sampleEdgeGroups(edge, confs, sampleRngs, groups, samplingPool, edgeSeed);
                 logSamplingEdgeProgress(edge, n, groups, System.currentTimeMillis() - edgeStart);
             }
         } finally {
@@ -781,7 +1375,8 @@ public class PACPartitionFunction {
     private void sampleEdgeGroups(RootedTreeEdge edge, int[][] confs,
                                   SplittableRandom[] sampleRngs,
                                   Map<Long, SampleGroup> groups,
-                                  ExecutorService samplingPool) {
+                                  ExecutorService samplingPool,
+                                  long edgeSeed) {
         int totalLambda = edge.getTotalLambdaStates();
         if (totalLambda <= 0) {
             throw new IllegalStateException("Lambda edge has no lambda states");
@@ -792,6 +1387,10 @@ public class PACPartitionFunction {
                     writeLambdaState(edge, 0, confs[group.sampleIndices[i]]);
                 }
             }
+            return;
+        }
+
+        if (trySampleEdgeGroupsGpu(edge, groups, confs, edgeSeed)) {
             return;
         }
 
@@ -812,6 +1411,32 @@ public class PACPartitionFunction {
         } else {
             processSmallGroupsParallel(edge, groups.values(), confs, sampleRngs, samplingPool);
         }
+    }
+
+    private boolean trySampleEdgeGroupsGpu(RootedTreeEdge edge,
+                                           Map<Long, SampleGroup> groups,
+                                           int[][] confs,
+                                           long edgeSeed) {
+        if (!gpuSampling || !edge.canUseGpuSampling()) {
+            return false;
+        }
+
+        long[] mIdxPerSample = new long[confs.length];
+        for (SampleGroup group : groups.values()) {
+            for (int i = 0; i < group.count; i++) {
+                mIdxPerSample[group.sampleIndices[i]] = group.mIdx;
+            }
+        }
+
+        int[] lIdxPerSample = edge.sampleLambdaStatesGpu(mIdxPerSample, edgeSeed, samplingProgress);
+        if (lIdxPerSample == null || lIdxPerSample.length != confs.length) {
+            return false;
+        }
+
+        for (int sampleIndex = 0; sampleIndex < confs.length; sampleIndex++) {
+            writeLambdaState(edge, lIdxPerSample[sampleIndex], confs[sampleIndex]);
+        }
+        return true;
     }
 
     private void processSingletonGroupsParallel(RootedTreeEdge edge,
@@ -1725,207 +2350,6 @@ public class PACPartitionFunction {
         sb.append(Long.toHexString(Double.doubleToLongBits(value))).append(':');
     }
 
-    // ========== Phase 5: Compute residuals and PAC bound ==========
-
-    /**
-     * Unbiased estimator with control variate for variance reduction.
-     *
-     * Basic estimator: Z = Z_min * E_p[phi(c)], phi(c) = exp(-g(c)/kT), samples c ~ p ∝ exp(-E_min/kT)
-     *
-     * Control variate: alpha(c) = exp(-eta(c)/kT) has known expectation
-     *   E_p[alpha] = Z_corrected / Z_min  (computable from DP)
-     *
-     * Variance-reduced estimator:
-     *   phi_cv(c) = phi(c) - beta * (alpha(c) - E_p[alpha])
-     *   E[phi_cv] = E[phi]  (unbiased)
-     *   beta* = Cov(phi, alpha) / Var(alpha)
-     *
-     * Then Z = Z_min * mean(phi_cv), with Bernstein bound on phi_cv.
-     */
-    /**
-     * Estimate the control-variate coefficient beta* = Cov(phi, alpha)/Var(alpha)
-     * on the training split S_tr. beta is scale-free, so the numerical weight
-     * shift used here need not match the one used in computePACBound on S_est.
-     */
-    private double computeControlVariateBeta(List<CCDResult> trainResults,
-                                             EnergyMatrix correctedEmat) {
-        int n = trainResults.size();
-        if (n <= 1) return 0.0;
-        double shift = Double.NEGATIVE_INFINITY;
-        double[] logPhi = new double[n];
-        double[] logAlpha = new double[n];
-        for (int i = 0; i < n; i++) {
-            CCDResult r = trainResults.get(i);
-            double g = r.eTrue - r.eMin;
-            double eta = computeFullConfPairwiseEnergy(r.conf, correctedEmat) - r.eMin;
-            logPhi[i] = -g / RT;
-            logAlpha[i] = -eta / RT;
-            shift = Math.max(shift, Math.max(logPhi[i], logAlpha[i]));
-        }
-        if (!Double.isFinite(shift)) return 0.0;
-
-        double sumPhi = 0, sumAlpha = 0;
-        double[] phi = new double[n];
-        double[] alpha = new double[n];
-        for (int i = 0; i < n; i++) {
-            phi[i] = Math.exp(logPhi[i] - shift);
-            alpha[i] = Math.exp(logAlpha[i] - shift);
-            sumPhi += phi[i];
-            sumAlpha += alpha[i];
-        }
-        double meanPhi = sumPhi / n;
-        double meanAlpha = sumAlpha / n;
-
-        double cov = 0, var = 0;
-        for (int i = 0; i < n; i++) {
-            double dPhi = phi[i] - meanPhi;
-            double dAlpha = alpha[i] - meanAlpha;
-            cov += dPhi * dAlpha;
-            var += dAlpha * dAlpha;
-        }
-        return (var > 1e-30) ? cov / var : 0.0;
-    }
-
-    private void computePACBound(List<CCDResult> ccdResults,
-                                  EnergyMatrix correctedEmat,
-                                  double logZCorrected,
-                                  double beta) {
-        int N = ccdResults.size();
-        if (N == 0) {
-            setZeroBounds("PAC has no valid CCD samples");
-            return;
-        }
-
-        double[] logPhiValues = new double[N];    // log phi(c) = -g/kT
-        double[] logAlphaValues = new double[N];  // log alpha(c) = -eta/kT
-        double[] residuals = new double[N];    // residual = g - eta (for diagnostics)
-
-        for (int i = 0; i < N; i++) {
-            CCDResult result = ccdResults.get(i);
-            double g = result.eTrue - result.eMin; // g(c) = E_true - E_min
-            double eta = computeFullConfPairwiseEnergy(result.conf, correctedEmat)
-                    - result.eMin;  // eta(c) = E_corrected - E_min
-            residuals[i] = g - eta;
-            logPhiValues[i] = -g / RT;
-            logAlphaValues[i] = -eta / RT;
-        }
-
-        // E_p[alpha] = Z_corrected / Z_min (exact from DP)
-        // logZMinOriginal was saved before Phase 4 modified the DP tables.
-        double logExpectedAlpha = logZCorrected - logZMinOriginal;
-        if (!Double.isFinite(logExpectedAlpha)) {
-            setZeroBounds("corrected/min DP ratio is NaN");
-            return;
-        }
-
-        double weightShift = logExpectedAlpha;
-        for (int i = 0; i < N; i++) {
-            weightShift = Math.max(weightShift, logPhiValues[i]);
-            weightShift = Math.max(weightShift, logAlphaValues[i]);
-        }
-        if (!Double.isFinite(weightShift)) {
-            setZeroBounds("PAC sample weights are non-finite");
-            return;
-        }
-        double expectedAlpha = Math.exp(logExpectedAlpha - weightShift);
-
-        double[] phiValues = new double[N];    // shifted by exp(-weightShift)
-        double[] alphaValues = new double[N];  // shifted by exp(-weightShift)
-        double sumPhi = 0;
-        for (int i = 0; i < N; i++) {
-            phiValues[i] = Math.exp(logPhiValues[i] - weightShift);
-            alphaValues[i] = Math.exp(logAlphaValues[i] - weightShift);
-            sumPhi += phiValues[i];
-        }
-        double meanPhi = sumPhi / N;
-
-        // beta was estimated on the disjoint training split (see
-        // computeControlVariateBeta), so these estimation samples are
-        // independent of beta and eta, as the PAC proof requires. beta is
-        // scale-free, hence consistent with the weight shift applied here.
-        // Control-variate-adjusted values: phi_cv = phi - beta*(alpha - E[alpha])
-        double[] phiCV = new double[N];
-        double sumCV = 0, sumCV2 = 0;
-        double minCV = Double.MAX_VALUE, maxCV = -Double.MAX_VALUE;
-        for (int i = 0; i < N; i++) {
-            phiCV[i] = phiValues[i] - beta * (alphaValues[i] - expectedAlpha);
-            sumCV += phiCV[i];
-            sumCV2 += phiCV[i] * phiCV[i];
-            minCV = Math.min(minCV, phiCV[i]);
-            maxCV = Math.max(maxCV, phiCV[i]);
-        }
-
-        double meanCV = sumCV / N;
-        double varCV = N > 1 ? Math.max(0, (sumCV2 - N * meanCV * meanCV) / (N - 1)) : 0.0;
-        double rangeCV = maxCV - minCV;
-
-        // Residual diagnostics (for reporting)
-        double sumRes = 0, sumRes2 = 0;
-        for (int i = 0; i < N; i++) {
-            sumRes += residuals[i];
-            sumRes2 += residuals[i] * residuals[i];
-        }
-        meanResidual = sumRes / N;
-        stdResidual = N > 1
-                ? Math.sqrt(Math.max(0, (sumRes2 - N * meanResidual * meanResidual) / (N - 1)))
-                : 0.0;
-
-        // Also compute basic phi stats for reporting. meanPsi is unshifted when
-        // representable as a double; log10 bounds above are the authoritative
-        // diagnostics for extreme cases.
-        meanPsi = shiftedMeanToDouble(meanPhi, weightShift);
-        double varPhi = Math.max(0, (phiValues.length > 1 ?
-                (Arrays.stream(phiValues).map(x -> (x - meanPhi) * (x - meanPhi)).sum()) / (N - 1) : 0));
-        cvPsi = (meanPhi > 0) ? Math.sqrt(varPhi) / meanPhi : Double.MAX_VALUE;
-
-        // Variance reduction ratio
-        double vrRatio = (varPhi > 1e-30) ? varCV / varPhi : 1.0;
-
-        // Empirical-Bernstein bound on phi_cv. The interval [meanCV +/- Delta]
-        // is two-sided, so budget delta over both tails (2) of all three
-        // partition functions (3) => 6 events.
-        double deltaPer = delta / 6.0; // 2 tails x 3 pfuncs = 6 events
-        double boundDelta = solveBernsteinDelta(N, varCV, rangeCV, deltaPer);
-        if (!Double.isFinite(meanCV) || !Double.isFinite(varCV)
-                || !Double.isFinite(rangeCV) || !Double.isFinite(boundDelta)) {
-            setZeroBounds("PAC statistics are non-finite");
-            return;
-        }
-
-        // Z = Z_min * E_p[phi] = Z_min * E_p[phi_cv]  (unbiased)
-        // The confidence interval is still in the shifted scale. Convert by
-        // adding weightShift in log-space instead of multiplying tiny doubles.
-        double cvBarLower = Math.max(0, meanCV - boundDelta);
-        double cvBarUpper = meanCV + boundDelta;
-        if (!Double.isFinite(cvBarLower) || !Double.isFinite(cvBarUpper) || cvBarUpper <= 0) {
-            setZeroBounds("PAC confidence interval is non-finite");
-            return;
-        }
-
-        logZLowerPAC = cvBarLower > 0
-                ? logZMinOriginal + weightShift + Math.log(cvBarLower)
-                : Double.NEGATIVE_INFINITY;
-        logZUpperPAC = logZMinOriginal + weightShift + Math.log(cvBarUpper);
-
-        zLower = bigExpFromLog(logZLowerPAC);
-        zUpper = bigExpFromLog(logZUpperPAC);
-
-        epsilon = epsilonFromLogBounds(logZLowerPAC, logZUpperPAC);
-
-        System.out.println("[PAC] Bernstein: Delta=" + String.format("%.6f", boundDelta)
-                + ", meanCV=" + String.format("%.6f", meanCV)
-                + ", rangeCV=" + String.format("%.6f", rangeCV)
-                + ", varCV=" + String.format("%.6f", varCV)
-                + ", varPhi=" + String.format("%.6f", varPhi)
-                + ", vrRatio=" + String.format("%.4f", vrRatio)
-                + ", beta=" + String.format("%.4f", beta)
-                + ", logEAlpha=" + String.format("%.6f", logExpectedAlpha)
-                + ", weightShift=" + String.format("%.6f", weightShift)
-                + ", log10ZLower=" + formatLog10(logZLowerPAC)
-                + ", log10ZUpper=" + formatLog10(logZUpperPAC)
-                + ", N=" + N);
-    }
-
     /**
      * PAC epsilon from log-space Z bounds (design 1.3). Computes
      *   epsilon = 1 - Z_lower/Z_upper = 1 - exp(logZLower - logZUpper)
@@ -1947,7 +2371,7 @@ public class PACPartitionFunction {
 
     /**
      * Empirical Bernstein bound (Maurer & Pontil, 2009) for the one-sided
-     * deviation of the sample mean from E[phi_cv], at confidence deltaTarget:
+     * deviation of the sample mean from E[X], at confidence deltaTarget:
      *
      *   E[X] - mean(X) <= sqrt(2 * s2 * ln(2/delta) / N)
      *                     + 7 * range * ln(2/delta) / (3 * (N - 1))

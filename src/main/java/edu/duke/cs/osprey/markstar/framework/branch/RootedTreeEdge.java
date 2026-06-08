@@ -107,6 +107,38 @@ public class RootedTreeEdge {
     // Option A: native SIMD log-sum-exp kernel. Default OFF (wired but dormant:
     // libOspreyLogSumExp.so is built/validated separately, see src/main/c/).
     private static final String DP_NATIVE_KERNEL_PROPERTY = "branchmarkstar.dp.nativeKernel";
+    // CUDA full-DP fast path. Default OFF and intentionally narrow: one non-leaf
+    // child, dense parent/child DP tables, and enough m*lambda work to amortize
+    // GPU packing/transfer overhead.
+    private static final String DP_GPU_PROPERTY = "branchmarkstar.dp.gpu";
+    private static final String DP_GPU_MIN_WORK_PROPERTY = "branchmarkstar.dp.gpu.minWork";
+    private static final String DP_GPU_MAX_BYTES_PROPERTY = "branchmarkstar.dp.gpu.maxBytes";
+    private static final String DP_GPU_BLOCK_THREADS_PROPERTY = "branchmarkstar.dp.gpu.blockThreads";
+    private static final String DP_GPU_OUTPUT_TILE_MSTATES_PROPERTY = "branchmarkstar.dp.gpu.outputTileMStates";
+    private static final String DP_GPU_PERSISTENT_CONTEXT_PROPERTY = "branchmarkstar.dp.gpu.persistentContext";
+    private static final long DEFAULT_DP_GPU_MIN_WORK = 50_000_000L;
+    // Single device buffers can now exceed 2 GiB (chunked raw upload in DPGpuFullDP),
+    // so the budget is bounded by device RAM (24 GiB A5000) with headroom, not by NIO.
+    private static final long DEFAULT_DP_GPU_MAX_BYTES = 20L*1024L*1024L*1024L;
+    private static final int DEFAULT_DP_GPU_BLOCK_THREADS = 256;
+    private static final long DEFAULT_DP_GPU_OUTPUT_TILE_MSTATES = 1_048_576L;
+    private static final boolean DEFAULT_DP_GPU_PERSISTENT_CONTEXT = true;
+    private static final int DP_GPU_MAX_CHILDREN = 64;
+    private static final String DP_GPU_MULTI_PROPERTY = "branchmarkstar.dp.gpu.multiGpu";
+    private static final String DP_GPU_MAX_GPUS_PROPERTY = "branchmarkstar.dp.gpu.maxGpus";
+    private static final String DP_GPU_MIN_MSTATES_PER_GPU_PROPERTY = "branchmarkstar.dp.gpu.minMStatesPerGpu";
+    private static final long DEFAULT_DP_GPU_MIN_MSTATES_PER_GPU = 4096L;
+    private static final String PAC_SAMPLING_GPU_MULTI_PROPERTY = "branchmarkstar.pac.sampling.gpu.multiGpu";
+    private static final String PAC_SAMPLING_GPU_MAX_GPUS_PROPERTY = "branchmarkstar.pac.sampling.gpu.maxGpus";
+    private static final String PAC_SAMPLING_GPU_MIN_GROUPS_PER_GPU_PROPERTY = "branchmarkstar.pac.sampling.gpu.minGroupsPerGpu";
+    private static final String PAC_SAMPLING_GPU_PERSISTENT_CONTEXT_PROPERTY = "branchmarkstar.pac.sampling.gpu.persistentContext";
+    private static final String PAC_SAMPLING_GPU_RESIDENT_CHILD_TABLES_PROPERTY = "branchmarkstar.pac.sampling.gpu.residentChildTables";
+    private static final String PAC_SAMPLING_GPU_METHOD_PROPERTY = "branchmarkstar.pac.sampling.gpu.method";
+    private static final int DEFAULT_PAC_SAMPLING_GPU_MIN_GROUPS_PER_GPU = 1;
+    private static final boolean DEFAULT_PAC_SAMPLING_GPU_PERSISTENT_CONTEXT = true;
+    private static final boolean DEFAULT_PAC_SAMPLING_GPU_RESIDENT_CHILD_TABLES = true;
+    private static final SamplingGpuPhase1.Method DEFAULT_PAC_SAMPLING_GPU_METHOD =
+            SamplingGpuPhase1.Method.GUMBEL;
 
     // ========== Incremental lambda enumeration state ==========
 
@@ -1095,6 +1127,13 @@ public class RootedTreeEdge {
             nativeKernelEnabled = false;
         }
 
+        if (tryComputeFullDPGpu()) {
+            if (enumeratedCount != null) {
+                Arrays.fill(enumeratedCount, totalLambdaStates);
+            }
+            return;
+        }
+
         if (shouldParallelizeFullDP()) {
             computeFullDPSharded();
         } else {
@@ -1214,6 +1253,419 @@ public class RootedTreeEdge {
     private long resolveComputeShardSize() {
         long shardSize = getConfigInteger(DP_COMPUTE_SHARD_SIZE_PROPERTY, DEFAULT_DP_COMPUTE_SHARD_SIZE);
         return Math.max(1L, shardSize);
+    }
+
+    private boolean tryComputeFullDPGpu() {
+        if (!getConfigBoolean(DP_GPU_PROPERTY, false)) {
+            return false;
+        }
+        if (nativeKernelEnabled) {
+            return false;
+        }
+        if (!hasFsetChildren() || childFoldPlans == null
+                || childFoldPlans.length < 1
+                || childFoldPlans.length > DP_GPU_MAX_CHILDREN) {
+            return false;
+        }
+        if (dpTable == null) {
+            return false;
+        }
+        if (mStateCount <= 0 || totalLambdaStates <= 0) {
+            return false;
+        }
+        if (mPositionsSorted.length > DPGpuFullDP.MAX_EDGE_POSITIONS
+                || lambdaPositionsSorted.length > DPGpuFullDP.MAX_EDGE_POSITIONS) {
+            return false;
+        }
+        for (ChildFoldPlan plan : childFoldPlans) {
+            if (plan == null || plan.child == null || !plan.child.hasDenseDPTable()
+                    || plan.mSrcIdx.length > DPGpuFullDP.MAX_EDGE_POSITIONS
+                    || plan.lamSrcIdx.length > DPGpuFullDP.MAX_EDGE_POSITIONS) {
+                return false;
+            }
+        }
+        if (lambdaOnlyRigid == null || lambdaOnlyMin == null
+                || cachedRigidEmat == null || cachedMinEmat == null
+                || cachedG == null || cachedRT == 0.0 || !Double.isFinite(cachedRT)) {
+            return false;
+        }
+        if (mStateCount > Long.MAX_VALUE/(long)totalLambdaStates) {
+            return false;
+        }
+
+        long work = mStateCount*(long)totalLambdaStates;
+        long minWork = getConfigLong(DP_GPU_MIN_WORK_PROPERTY, DEFAULT_DP_GPU_MIN_WORK);
+        if (work < minWork) {
+            return false;
+        }
+
+        DPGpuFullDP.Request req = buildGpuFullDPRequest(work);
+        if (req == null) {
+            return false;
+        }
+
+        long maxBytes = getConfigLong(DP_GPU_MAX_BYTES_PROPERTY, DEFAULT_DP_GPU_MAX_BYTES);
+        req.estimatedDeviceBytes = DPGpuFullDP.estimateDeviceBytes(req);
+        boolean progress = getConfigBoolean(DP_PROGRESS_PROPERTY, true);
+        req.progress = progress;
+        if (req.estimatedDeviceBytes > maxBytes) {
+            if (progress) {
+                System.out.println("BranchMARK*: GPU DP skipped, estimatedDeviceBytes="
+                        + req.estimatedDeviceBytes + " exceeds " + DP_GPU_MAX_BYTES_PROPERTY
+                        + "=" + maxBytes);
+            }
+            return false;
+        }
+
+        if (progress) {
+            System.out.println("BranchMARK*: GPU DP start, mStates=" + mStateCount
+                    + ", lambdaStates=" + totalLambdaStates
+                    + ", children=" + req.numChildren
+                    + ", work=" + work
+                    + ", lmPairs=" + req.lmLamSlots.length
+                    + ", lmTerms=" + req.lmRigid.length
+                    + ", outputTileMStates=" + req.mStateChunk
+                    + ", outputTableDense=" + dpTable.isDenseArrayBacked()
+                    + ", persistentContext=" + req.persistentContext
+                    + ", estimatedDeviceBytes=" + req.estimatedDeviceBytes);
+        }
+        return DPGpuFullDP.compute(req);
+    }
+
+    private DPGpuFullDP.Request buildGpuFullDPRequest(long work) {
+        long lmTermCount = 0L;
+        List<int[]> lmPairs = new ArrayList<>();
+        for (int li = 0; li < lambdaPositionsSorted.length; li++) {
+            int lambdaPos = lambdaPositionsSorted[li];
+            int lambdaCount = rcs.getNum(lambdaPos);
+            for (int mi = 0; mi < mPositionsSorted.length; mi++) {
+                int mPos = mPositionsSorted[mi];
+                if (!cachedG.hasEdge(lambdaPos, mPos)) {
+                    continue;
+                }
+                int mCount = rcs.getNum(mPos);
+                long terms = (long)lambdaCount*(long)mCount;
+                if (terms < 0 || lmTermCount > Integer.MAX_VALUE - terms) {
+                    return null;
+                }
+                lmPairs.add(new int[]{li, mi, lambdaPos, mPos, lambdaCount, mCount});
+                lmTermCount += terms;
+            }
+        }
+
+        DPGpuFullDP.Request req = new DPGpuFullDP.Request();
+        req.mStateCount = mStateCount;
+        req.totalLambdaStates = totalLambdaStates;
+        req.blockThreads = Math.max(1, getConfigInteger(DP_GPU_BLOCK_THREADS_PROPERTY,
+                DEFAULT_DP_GPU_BLOCK_THREADS));
+        req.invRT = 1.0/cachedRT;
+        req.work = work;
+        req.mCounts = countsForPositions(mPositionsSorted);
+        req.lambdaCounts = countsForPositions(lambdaPositionsSorted);
+        req.lambdaOnlyRigid = lambdaOnlyRigid;
+        req.lambdaOnlyMin = lambdaOnlyMin;
+        // Concatenate the per-child fold plans CSR-style for full_dp_n_children.
+        int nChildren = childFoldPlans.length;
+        req.numChildren = nChildren;
+        req.mStateChunk = resolveGpuOutputTileMStates();
+        req.outTable = dpTable;
+        req.persistentContext = getConfigBoolean(DP_GPU_PERSISTENT_CONTEXT_PROPERTY,
+                DEFAULT_DP_GPU_PERSISTENT_CONTEXT);
+        req.multiGpu = getConfigBoolean(DP_GPU_MULTI_PROPERTY, true);
+        req.maxGpus = getConfigInteger(DP_GPU_MAX_GPUS_PROPERTY, 0);
+        req.minMStatesPerGpu = getConfigLong(DP_GPU_MIN_MSTATES_PER_GPU_PROPERTY,
+                DEFAULT_DP_GPU_MIN_MSTATES_PER_GPU);
+
+        long mTermTotal = 0L, lTermTotal = 0L, tableTotal = 0L;
+        for (ChildFoldPlan plan : childFoldPlans) {
+            mTermTotal += plan.mSrcIdx.length;
+            lTermTotal += plan.lamSrcIdx.length;
+            tableTotal += plan.child.getLogZLower().length;
+        }
+        if (mTermTotal > Integer.MAX_VALUE || lTermTotal > Integer.MAX_VALUE
+                || tableTotal > Integer.MAX_VALUE) {
+            return null; // concatenated child arrays too large for a single dense buffer
+        }
+
+        req.childMSrcAll = new int[(int)mTermTotal];
+        req.childMStrideAll = new long[(int)mTermTotal];
+        req.childMTermOff = new int[nChildren];
+        req.childMTermCnt = new int[nChildren];
+        req.childLSrcAll = new int[(int)lTermTotal];
+        req.childLStrideAll = new long[(int)lTermTotal];
+        req.childLTermOff = new int[nChildren];
+        req.childLTermCnt = new int[nChildren];
+        req.childTableBase = new long[nChildren];
+        req.childLowerAll = new double[(int)tableTotal];
+        req.childUpperAll = new double[(int)tableTotal];
+
+        int mOff = 0, lOff = 0, tBase = 0;
+        for (int c = 0; c < nChildren; c++) {
+            ChildFoldPlan plan = childFoldPlans[c];
+            req.childMTermOff[c] = mOff;
+            req.childMTermCnt[c] = plan.mSrcIdx.length;
+            System.arraycopy(plan.mSrcIdx, 0, req.childMSrcAll, mOff, plan.mSrcIdx.length);
+            System.arraycopy(plan.mStride, 0, req.childMStrideAll, mOff, plan.mStride.length);
+            mOff += plan.mSrcIdx.length;
+
+            req.childLTermOff[c] = lOff;
+            req.childLTermCnt[c] = plan.lamSrcIdx.length;
+            System.arraycopy(plan.lamSrcIdx, 0, req.childLSrcAll, lOff, plan.lamSrcIdx.length);
+            System.arraycopy(plan.lamStride, 0, req.childLStrideAll, lOff, plan.lamStride.length);
+            lOff += plan.lamSrcIdx.length;
+
+            double[] cl = plan.child.getLogZLower();
+            double[] cu = plan.child.getLogZUpper();
+            req.childTableBase[c] = tBase;
+            System.arraycopy(cl, 0, req.childLowerAll, tBase, cl.length);
+            System.arraycopy(cu, 0, req.childUpperAll, tBase, cu.length);
+            tBase += cl.length;
+        }
+
+        int nPairs = lmPairs.size();
+        req.lmLamSlots = new int[nPairs];
+        req.lmMSlots = new int[nPairs];
+        req.lmMCounts = new int[nPairs];
+        req.lmOffsets = new long[nPairs];
+        req.lmRigid = new double[(int)lmTermCount];
+        req.lmMin = new double[(int)lmTermCount];
+
+        int offset = 0;
+        for (int p = 0; p < nPairs; p++) {
+            int[] pair = lmPairs.get(p);
+            int lambdaSlot = pair[0];
+            int mSlot = pair[1];
+            int lambdaPos = pair[2];
+            int mPos = pair[3];
+            int lambdaCount = pair[4];
+            int mCount = pair[5];
+
+            req.lmLamSlots[p] = lambdaSlot;
+            req.lmMSlots[p] = mSlot;
+            req.lmMCounts[p] = mCount;
+            req.lmOffsets[p] = offset;
+
+            for (int lrc = 0; lrc < lambdaCount; lrc++) {
+                int globalLrc = rcs.get(lambdaPos, lrc);
+                for (int mrc = 0; mrc < mCount; mrc++) {
+                    int globalMrc = rcs.get(mPos, mrc);
+                    int idx = offset + lrc*mCount + mrc;
+                    req.lmRigid[idx] = cachedRigidEmat.getPairwise(lambdaPos, globalLrc, mPos, globalMrc);
+                    req.lmMin[idx] = cachedMinEmat.getPairwise(lambdaPos, globalLrc, mPos, globalMrc);
+                }
+            }
+            offset += (int)((long)lambdaCount*(long)mCount);
+        }
+
+        return req;
+    }
+
+    private long resolveGpuOutputTileMStates() {
+        long requested = getConfigLong(DP_GPU_OUTPUT_TILE_MSTATES_PROPERTY,
+                DEFAULT_DP_GPU_OUTPUT_TILE_MSTATES);
+        long tile = Math.max(1L, requested);
+        tile = Math.min(tile, (long)Integer.MAX_VALUE);
+        return Math.min(tile, mStateCount);
+    }
+
+    // ===== PAC Phase-1 GPU sampling (Gumbel-max over the DP upper-bound weight) =====
+
+    /** Structural gate: this lambda edge can be sampled by the GPU Gumbel kernel. */
+    public boolean canUseGpuSampling() {
+        if (!isLambdaEdge) {
+            return false;
+        }
+        ensureChildFoldPlans();
+        if (!hasFsetChildren() || childFoldPlans == null
+                || childFoldPlans.length < 1
+                || childFoldPlans.length > DP_GPU_MAX_CHILDREN) {
+            return false;
+        }
+        if (totalLambdaStates <= 0) {
+            return false;
+        }
+        if (mPositionsSorted.length > SamplingGpuPhase1.MAX_EDGE_POSITIONS
+                || lambdaPositionsSorted.length > SamplingGpuPhase1.MAX_EDGE_POSITIONS) {
+            return false;
+        }
+        for (ChildFoldPlan plan : childFoldPlans) {
+            if (plan == null || plan.child == null || !plan.child.hasDenseDPTable()
+                    || plan.mSrcIdx.length > SamplingGpuPhase1.MAX_EDGE_POSITIONS
+                    || plan.lamSrcIdx.length > SamplingGpuPhase1.MAX_EDGE_POSITIONS) {
+                return false;
+            }
+        }
+        return lambdaOnlyMin != null && cachedMinEmat != null && cachedG != null
+                && cachedRT != 0.0 && Double.isFinite(cachedRT);
+    }
+
+    /**
+     * Draw one lambda-state index per sample on the GPU via Gumbel-max, for the
+     * parent M-states in mIdxPerSample. Returns null on any failure so the caller
+     * falls back to the Java sampler. Statistically (not bit-) equivalent.
+     */
+    public int[] sampleLambdaStatesGpu(long[] mIdxPerSample, long baseSeed, boolean progress) {
+        if (mIdxPerSample == null || mIdxPerSample.length == 0) {
+            return new int[0];
+        }
+        SamplingGpuPhase1.Request req = buildGpuSamplingRequest(mIdxPerSample, baseSeed, progress);
+        if (req == null) {
+            return null;
+        }
+        return SamplingGpuPhase1.sample(req);
+    }
+
+    /** Build the sampling request: the DP upper/min half + per-sample mIdx (no rigid/lower/dpTable). */
+    private SamplingGpuPhase1.Request buildGpuSamplingRequest(long[] mIdxPerSample, long baseSeed, boolean progress) {
+        long lmTermCount = 0L;
+        List<int[]> lmPairs = new ArrayList<>();
+        for (int li = 0; li < lambdaPositionsSorted.length; li++) {
+            int lambdaPos = lambdaPositionsSorted[li];
+            int lambdaCount = rcs.getNum(lambdaPos);
+            for (int mi = 0; mi < mPositionsSorted.length; mi++) {
+                int mPos = mPositionsSorted[mi];
+                if (!cachedG.hasEdge(lambdaPos, mPos)) {
+                    continue;
+                }
+                int mCount = rcs.getNum(mPos);
+                long terms = (long)lambdaCount*(long)mCount;
+                if (terms < 0 || lmTermCount > Integer.MAX_VALUE - terms) {
+                    return null;
+                }
+                lmPairs.add(new int[]{li, mi, lambdaPos, mPos, lambdaCount, mCount});
+                lmTermCount += terms;
+            }
+        }
+
+        SamplingGpuPhase1.Request req = new SamplingGpuPhase1.Request();
+        req.totalLambdaStates = totalLambdaStates;
+        req.blockThreads = Math.max(1, getConfigInteger(DP_GPU_BLOCK_THREADS_PROPERTY,
+                DEFAULT_DP_GPU_BLOCK_THREADS));
+        req.invRT = 1.0/cachedRT;
+        req.mCounts = countsForPositions(mPositionsSorted);
+        req.lambdaCounts = countsForPositions(lambdaPositionsSorted);
+        req.lambdaOnlyMin = lambdaOnlyMin;
+        req.mIdxPerSample = mIdxPerSample;
+        req.baseSeed = baseSeed;
+        req.progress = progress;
+        req.multiGpu = getConfigBoolean(PAC_SAMPLING_GPU_MULTI_PROPERTY, true);
+        req.maxGpus = getConfigInteger(PAC_SAMPLING_GPU_MAX_GPUS_PROPERTY, 0);
+        req.minGroupsPerGpu = Math.max(1, getConfigInteger(PAC_SAMPLING_GPU_MIN_GROUPS_PER_GPU_PROPERTY,
+                DEFAULT_PAC_SAMPLING_GPU_MIN_GROUPS_PER_GPU));
+        req.persistentContext = getConfigBoolean(PAC_SAMPLING_GPU_PERSISTENT_CONTEXT_PROPERTY,
+                DEFAULT_PAC_SAMPLING_GPU_PERSISTENT_CONTEXT);
+        req.residentChildTables = getConfigBoolean(PAC_SAMPLING_GPU_RESIDENT_CHILD_TABLES_PROPERTY,
+                DEFAULT_PAC_SAMPLING_GPU_RESIDENT_CHILD_TABLES);
+        req.method = SamplingGpuPhase1.Method.fromProperty(
+                getConfigProperty(PAC_SAMPLING_GPU_METHOD_PROPERTY,
+                        DEFAULT_PAC_SAMPLING_GPU_METHOD.propertyValue),
+                DEFAULT_PAC_SAMPLING_GPU_METHOD);
+
+        int nChildren = childFoldPlans.length;
+        req.numChildren = nChildren;
+
+        long mTermTotal = 0L, lTermTotal = 0L, tableTotal = 0L;
+        for (ChildFoldPlan plan : childFoldPlans) {
+            mTermTotal += plan.mSrcIdx.length;
+            lTermTotal += plan.lamSrcIdx.length;
+            tableTotal += plan.child.getLogZUpper().length;
+        }
+        if (mTermTotal > Integer.MAX_VALUE || lTermTotal > Integer.MAX_VALUE
+                || tableTotal > Integer.MAX_VALUE) {
+            return null;
+        }
+
+        req.childMSrcAll = new int[(int)mTermTotal];
+        req.childMStrideAll = new long[(int)mTermTotal];
+        req.childMTermOff = new int[nChildren];
+        req.childMTermCnt = new int[nChildren];
+        req.childLSrcAll = new int[(int)lTermTotal];
+        req.childLStrideAll = new long[(int)lTermTotal];
+        req.childLTermOff = new int[nChildren];
+        req.childLTermCnt = new int[nChildren];
+        req.childTableBase = new long[nChildren];
+        req.childUpperAll = new double[(int)tableTotal];
+
+        int mOff = 0, lOff = 0, tBase = 0;
+        long childUpperKey = 0x6a09e667f3bcc909L;
+        childUpperKey = mixGpuSamplingKey(childUpperKey, nChildren);
+        childUpperKey = mixGpuSamplingKey(childUpperKey, tableTotal);
+        for (int c = 0; c < nChildren; c++) {
+            ChildFoldPlan plan = childFoldPlans[c];
+            req.childMTermOff[c] = mOff;
+            req.childMTermCnt[c] = plan.mSrcIdx.length;
+            System.arraycopy(plan.mSrcIdx, 0, req.childMSrcAll, mOff, plan.mSrcIdx.length);
+            System.arraycopy(plan.mStride, 0, req.childMStrideAll, mOff, plan.mStride.length);
+            mOff += plan.mSrcIdx.length;
+
+            req.childLTermOff[c] = lOff;
+            req.childLTermCnt[c] = plan.lamSrcIdx.length;
+            System.arraycopy(plan.lamSrcIdx, 0, req.childLSrcAll, lOff, plan.lamSrcIdx.length);
+            System.arraycopy(plan.lamStride, 0, req.childLStrideAll, lOff, plan.lamStride.length);
+            lOff += plan.lamSrcIdx.length;
+
+            double[] cu = plan.child.getLogZUpper();
+            req.childTableBase[c] = tBase;
+            childUpperKey = mixGpuSamplingKey(childUpperKey, c);
+            childUpperKey = mixGpuSamplingKey(childUpperKey, cu.length);
+            for (int i = 0; i < cu.length; i++) {
+                double value = cu[i];
+                req.childUpperAll[tBase + i] = value;
+                childUpperKey = mixGpuSamplingKey(childUpperKey, Double.doubleToRawLongBits(value));
+            }
+            tBase += cu.length;
+        }
+        req.childUpperCacheKey = childUpperKey;
+
+        int nPairs = lmPairs.size();
+        req.lmLamSlots = new int[nPairs];
+        req.lmMSlots = new int[nPairs];
+        req.lmMCounts = new int[nPairs];
+        req.lmOffsets = new long[nPairs];
+        req.lmMin = new double[(int)lmTermCount];
+
+        int offset = 0;
+        for (int p = 0; p < nPairs; p++) {
+            int[] pair = lmPairs.get(p);
+            int lambdaSlot = pair[0];
+            int mSlot = pair[1];
+            int lambdaPos = pair[2];
+            int mPos = pair[3];
+            int lambdaCount = pair[4];
+            int mCount = pair[5];
+
+            req.lmLamSlots[p] = lambdaSlot;
+            req.lmMSlots[p] = mSlot;
+            req.lmMCounts[p] = mCount;
+            req.lmOffsets[p] = offset;
+
+            for (int lrc = 0; lrc < lambdaCount; lrc++) {
+                int globalLrc = rcs.get(lambdaPos, lrc);
+                for (int mrc = 0; mrc < mCount; mrc++) {
+                    int globalMrc = rcs.get(mPos, mrc);
+                    int idx = offset + lrc*mCount + mrc;
+                    req.lmMin[idx] = cachedMinEmat.getPairwise(lambdaPos, globalLrc, mPos, globalMrc);
+                }
+            }
+            offset += (int)((long)lambdaCount*(long)mCount);
+        }
+
+        return req;
+    }
+
+    private static long mixGpuSamplingKey(long h, long x) {
+        long z = x + 0x9E3779B97F4A7C15L + (h << 6) + (h >>> 2);
+        z = (z ^ (z >>> 30)) * 0xBF58476D1CE4E5B9L;
+        z = (z ^ (z >>> 27)) * 0x94D049BB133111EBL;
+        return h ^ (z ^ (z >>> 31));
+    }
+
+    private int[] countsForPositions(int[] positions) {
+        int[] counts = new int[positions.length];
+        for (int i = 0; i < positions.length; i++) {
+            counts[i] = rcs.getNum(positions[i]);
+        }
+        return counts;
     }
 
     private static ThreadFactory daemonThreadFactory(String namePrefix) {

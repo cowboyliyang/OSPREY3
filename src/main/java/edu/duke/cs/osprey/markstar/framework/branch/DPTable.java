@@ -14,6 +14,7 @@
 
 package edu.duke.cs.osprey.markstar.framework.branch;
 
+import java.nio.DoubleBuffer;
 import java.util.Arrays;
 
 public interface DPTable {
@@ -27,6 +28,8 @@ public interface DPTable {
     void set(long idx, double lower, double upper);
 
     void fill(double lower, double upper);
+
+    void copyFrom(long start, DoubleBuffer lowerSrc, DoubleBuffer upperSrc, int count);
 
     boolean isDenseArrayBacked();
 
@@ -76,6 +79,19 @@ final class DenseDPTable implements DPTable {
     public void fill(double lower, double upper) {
         Arrays.fill(this.lower, lower);
         Arrays.fill(this.upper, upper);
+    }
+
+    @Override
+    public void copyFrom(long start, DoubleBuffer lowerSrc, DoubleBuffer upperSrc, int count) {
+        if (count < 0 || start < 0 || start + (long)count > lower.length) {
+            throw new IndexOutOfBoundsException("DP table copy [" + start + ","
+                    + (start + (long)count) + ") outside [0," + lower.length + ")");
+        }
+        int offset = (int)start;
+        lowerSrc.rewind();
+        upperSrc.rewind();
+        lowerSrc.get(lower, offset, count);
+        upperSrc.get(upper, offset, count);
     }
 
     @Override
@@ -164,6 +180,27 @@ final class ShardedDPTable implements DPTable {
         }
         for (double[] shard : upperShards) {
             Arrays.fill(shard, upper);
+        }
+    }
+
+    @Override
+    public void copyFrom(long start, DoubleBuffer lowerSrc, DoubleBuffer upperSrc, int count) {
+        if (count < 0 || start < 0 || start + (long)count > size) {
+            throw new IndexOutOfBoundsException("DP table copy [" + start + ","
+                    + (start + (long)count) + ") outside [0," + size + ")");
+        }
+        lowerSrc.rewind();
+        upperSrc.rewind();
+        long idx = start;
+        int remaining = count;
+        while (remaining > 0) {
+            int shard = shardIndex(idx);
+            int offset = shardOffset(idx);
+            int len = Math.min(remaining, lowerShards[shard].length - offset);
+            lowerSrc.get(lowerShards[shard], offset, len);
+            upperSrc.get(upperShards[shard], offset, len);
+            idx += len;
+            remaining -= len;
         }
     }
 
