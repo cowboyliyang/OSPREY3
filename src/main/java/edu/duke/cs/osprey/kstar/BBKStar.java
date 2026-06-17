@@ -36,7 +36,7 @@ import edu.duke.cs.osprey.astar.conf.RCs;
 import edu.duke.cs.osprey.confspace.*;
 import edu.duke.cs.osprey.energy.ConfEnergyCalculator;
 import edu.duke.cs.osprey.kstar.pfunc.*;
-import edu.duke.cs.osprey.markstar.framework.branch.BranchDPScorer;
+import edu.duke.cs.osprey.branchdp.BranchDPScorer;
 import edu.duke.cs.osprey.parallelism.Cluster;
 import edu.duke.cs.osprey.parallelism.TaskExecutor;
 import edu.duke.cs.osprey.tools.AutoCloseableNoEx;

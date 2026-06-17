@@ -12,7 +12,7 @@ import edu.duke.cs.osprey.energy.forcefield.ForcefieldParams;
 import edu.duke.cs.osprey.energy.forcefield.amber.ForcefieldFileParser;
 import edu.duke.cs.osprey.kstar.TestKStar;
 import edu.duke.cs.osprey.markstar.TestBranchMARKStar;
-import edu.duke.cs.osprey.markstar.framework.branch.InteractionGraph;
+import edu.duke.cs.osprey.branchdp.InteractionGraph;
 import edu.duke.cs.osprey.parallelism.Parallelism;
 import edu.duke.cs.osprey.restypes.ResidueTemplateLibrary;
 import edu.duke.cs.osprey.structure.Molecule;

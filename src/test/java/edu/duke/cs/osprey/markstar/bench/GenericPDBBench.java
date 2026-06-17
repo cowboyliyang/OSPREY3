@@ -1,24 +1,36 @@
 package edu.duke.cs.osprey.markstar.bench;
 
 import edu.duke.cs.osprey.astar.conf.ConfAStarTree;
+import edu.duke.cs.osprey.confspace.ConfSearch;
 import edu.duke.cs.osprey.confspace.Sequence;
 import edu.duke.cs.osprey.confspace.SimpleConfSpace;
 import edu.duke.cs.osprey.confspace.Strand;
 import edu.duke.cs.osprey.ematrix.EnergyMatrix;
 import edu.duke.cs.osprey.ematrix.SimplerEnergyMatrixCalculator;
+import edu.duke.cs.osprey.ematrix.UpdatingEnergyMatrix;
 import edu.duke.cs.osprey.energy.ConfEnergyCalculator;
 import edu.duke.cs.osprey.energy.EnergyCalculator;
 import edu.duke.cs.osprey.energy.approximation.branch.GNNConfEnergyCalculator;
 import edu.duke.cs.osprey.energy.approximation.branch.GNNDataExporter;
 import edu.duke.cs.osprey.energy.approximation.branch.GNNSubtreeEnergyCalculator;
 import edu.duke.cs.osprey.astar.conf.RCs;
-import edu.duke.cs.osprey.markstar.framework.branch.InteractionGraph;
+import edu.duke.cs.osprey.branchdp.InteractionGraph;
 import edu.duke.cs.osprey.energy.forcefield.ForcefieldParams;
 import edu.duke.cs.osprey.kstar.KStar;
 import edu.duke.cs.osprey.kstar.TestKStar;
 import edu.duke.cs.osprey.kstar.pfunc.GradientDescentPfunc;
+import edu.duke.cs.osprey.kstar.pfunc.BoltzmannCalculator;
+import edu.duke.cs.osprey.kstar.pfunc.PartitionFunction;
 import edu.duke.cs.osprey.markstar.MARKStar;
 import edu.duke.cs.osprey.markstar.framework.BranchMARKStarBound;
+import edu.duke.cs.osprey.markstar.framework.MARKStarBound;
+import edu.duke.cs.osprey.packstar.PackStarPartitionFunction;
+import edu.duke.cs.osprey.tools.ExpFunction;
+import edu.duke.cs.osprey.wmb.MeanFieldBound;
+import edu.duke.cs.osprey.wmb.WeightedMiniBucket;
+
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import edu.duke.cs.osprey.parallelism.Parallelism;
 import edu.duke.cs.osprey.restypes.ResidueTemplateLibrary;
 import edu.duke.cs.osprey.structure.Molecule;
@@ -36,7 +48,7 @@ import java.util.*;
  *   osprey.bench.ligandChains  — comma-separated chain IDs for ligand (e.g. "C")
  *   osprey.bench.mutable       — semicolon-separated mutable residue IDs (e.g. "A96;B85")
  *   osprey.bench.flexible      — semicolon-separated flexible residue IDs (e.g. "C7;C6;C5")
- *   osprey.bench.method        — kstar | markstar | pac | dp_profile | gnn_s9 | gnn_s10 | gnn_s11
+ *   osprey.bench.method        — kstar | markstar | packstar | pac | dp_profile | gnn_s9 | gnn_s10 | gnn_s11
  *   osprey.bench.epsilon       — approximation ratio (default 0.683)
  *   osprey.bench.numCPUs       — number of CPUs (default 8)
  *   osprey.bench.designId      — design identifier for output
@@ -188,7 +200,10 @@ public class GenericPDBBench {
         System.out.println("  Ligand positions: " + confSpaces.ligand.positions.size());
         System.out.println("  Complex positions: " + confSpaces.complex.positions.size());
 
-        Parallelism parallelism = Parallelism.makeCpu(cpus);
+        int wmbGpus = Integer.getInteger("osprey.wmb.numGpus", 0);
+        Parallelism parallelism = wmbGpus > 0
+                ? Parallelism.make(cpus, wmbGpus, Integer.getInteger("osprey.wmb.streamsPerGpu", 64))
+                : Parallelism.makeCpu(cpus);
         String ematDir = outputDir + "/emat_cache/" + designId;
         new File(ematDir).mkdirs();
 
@@ -199,29 +214,29 @@ public class GenericPDBBench {
                 runKStar(confSpaces, epsilon, parallelism, ematDir, designId, outputDir);
                 break;
             case "markstar":
-                runMARKStar(confSpaces, epsilon, parallelism, ematDir, designId, outputDir, false, false);
+                runMARKStar(confSpaces, epsilon, parallelism, ematDir, designId, outputDir, false, false, false);
+                break;
+            case "wmb_decoupled":
+                runWmbDecoupled(confSpaces, epsilon, designId, outputDir);
                 break;
             case "branch":
-                runMARKStar(confSpaces, epsilon, parallelism, ematDir, designId, outputDir, false, true);
+                runMARKStar(confSpaces, epsilon, parallelism, ematDir, designId, outputDir, false, true, false);
                 break;
+            case "packstar":
             case "pac":
-                // PAC (Probably Approximately Correct) estimation runs on top of the
-                // BranchMARK* tree. Force the PAC flag on so BranchMARKStarBound bypasses
-                // the exact search loop and uses the two-stage PACK* estimator.
-                System.setProperty("branchmarkstar.usePAC", "true");
-                runMARKStar(confSpaces, epsilon, parallelism, ematDir, designId, outputDir, false, true);
+                runPackStar(confSpaces, epsilon, parallelism, ematDir, designId, outputDir, method);
                 break;
             case "dp_profile":
                 runDPProfile(confSpaces, parallelism, ematDir, designId);
                 break;
             case "gnn_s9":
-                runMARKStar(confSpaces, epsilon, parallelism, ematDir, designId, outputDir, true, false);
+                runMARKStar(confSpaces, epsilon, parallelism, ematDir, designId, outputDir, true, false, false);
                 break;
             case "gnn_s10":
-                runMARKStar(confSpaces, epsilon, parallelism, ematDir, designId, outputDir, true, false);
+                runMARKStar(confSpaces, epsilon, parallelism, ematDir, designId, outputDir, true, false, false);
                 break;
             case "gnn_s11":
-                runMARKStar(confSpaces, epsilon, parallelism, ematDir, designId, outputDir, true, false);
+                runMARKStar(confSpaces, epsilon, parallelism, ematDir, designId, outputDir, true, false, false);
                 break;
             case "export_gnn":
                 String gnnOutputDir = System.getProperty("osprey.gnn.outputDir", outputDir + "/gnn_models/" + designId);
@@ -337,16 +352,128 @@ public class GenericPDBBench {
         }
     }
 
+    private static void runPackStar(TestKStar.ConfSpaces confSpaces, double epsilon,
+                                    Parallelism parallelism, String ematDir,
+                                    String designId, String outputDir,
+                                    String outputMethodName) {
+
+        EnergyCalculator.Type ecalcType = Integer.getInteger("osprey.wmb.numGpus", 0) > 0
+                ? EnergyCalculator.Type.ResidueCudaCCD : EnergyCalculator.Type.Cpu;
+        EnergyCalculator minimizingEcalc = new EnergyCalculator.Builder(
+                confSpaces.complex, confSpaces.ffparams)
+                .setParallelism(parallelism).setType(ecalcType).build();
+        EnergyCalculator rigidEcalc = new EnergyCalculator.Builder(
+                confSpaces.complex, confSpaces.ffparams)
+                .setParallelism(parallelism).setType(ecalcType).setIsMinimizing(false).build();
+
+        try {
+            KStar.Settings settings = new KStar.Settings.Builder()
+                    .setEpsilon(epsilon)
+                    .setStabilityThreshold(null)
+                    .setMaxSimultaneousMutations(1)
+                    .setShowPfuncProgress(true)
+                    .build();
+            KStar kstar = new KStar(confSpaces.protein, confSpaces.ligand,
+                    confSpaces.complex, settings);
+
+            int maxNumConfs = Integer.getInteger("osprey.packstar.maxNumConfs", -1);
+            int leafMinimizationBatchSize = Integer.getInteger(
+                    "osprey.packstar.leafMinimizationBatchSize", 0);
+            boolean fullParallelLeafBatch = Boolean.parseBoolean(
+                    System.getProperty("osprey.packstar.fullParallelLeafBatch", "false"));
+            boolean reduceMinimizations = Boolean.parseBoolean(
+                    System.getProperty("osprey.packstar.reduceMinimizations", "true"));
+            boolean correctionTighteningEnabled = Boolean.parseBoolean(
+                    System.getProperty("osprey.packstar.correctionTightening", "true"));
+
+            for (KStar.ConfSpaceInfo info : kstar.confSpaceInfos()) {
+                SimpleConfSpace cs = (SimpleConfSpace) info.confSpace;
+                String stateName = info.type.name();
+                String cachePrefix = ematDir + "/packstar." + stateName.toLowerCase(Locale.ROOT);
+
+                ConfEnergyCalculator minimizingConfEcalc = new ConfEnergyCalculator.Builder(cs, minimizingEcalc)
+                        .setReferenceEnergies(new SimplerEnergyMatrixCalculator.Builder(cs, minimizingEcalc)
+                                .build().calcReferenceEnergies())
+                        .build();
+                ConfEnergyCalculator rigidConfEcalc = new ConfEnergyCalculator.Builder(cs, rigidEcalc)
+                        .setReferenceEnergies(new SimplerEnergyMatrixCalculator.Builder(cs, rigidEcalc)
+                                .build().calcReferenceEnergies())
+                        .build();
+                info.confEcalc = minimizingConfEcalc;
+
+                EnergyMatrix rigidEmat = new SimplerEnergyMatrixCalculator.Builder(rigidConfEcalc)
+                        .setCacheFile(new File(cachePrefix + ".rigid.dat"))
+                        .build().calcEnergyMatrix();
+                EnergyMatrix minimizingEmat = new SimplerEnergyMatrixCalculator.Builder(minimizingConfEcalc)
+                        .setCacheFile(new File(cachePrefix + ".minimizing.dat"))
+                        .build().calcEnergyMatrix();
+                UpdatingEnergyMatrix corrections = new UpdatingEnergyMatrix(cs,
+                        minimizingEmat, minimizingConfEcalc);
+
+                info.pfuncFactory = (rcs) -> {
+                    PackStarPartitionFunction pfunc = new PackStarPartitionFunction(
+                            cs, rigidEmat, minimizingEmat, minimizingConfEcalc,
+                            rcs, parallelism, stateName);
+                    pfunc.setCorrections(corrections);
+                    pfunc.setReduceMinimizations(reduceMinimizations);
+                    pfunc.setCorrectionTighteningEnabled(correctionTighteningEnabled);
+                    if (maxNumConfs > 0) {
+                        pfunc.setMaxNumConfs(maxNumConfs);
+                    }
+                    if (leafMinimizationBatchSize > 0) {
+                        pfunc.setLeafMinimizationBatchSize(leafMinimizationBatchSize);
+                    } else if (fullParallelLeafBatch) {
+                        pfunc.useFullParallelLeafBatch();
+                    }
+                    return pfunc;
+                };
+                info.confDBFile = null;
+            }
+
+            long packT0 = System.currentTimeMillis();
+            List<KStar.ScoredSequence> scores = kstar.run(minimizingEcalc.tasks);
+            minimizingEcalc.tasks.waitForFinish();
+            rigidEcalc.tasks.waitForFinish();
+            double packElapsed = (System.currentTimeMillis() - packT0) / 1000.0;
+            writeKStarResults(scores, designId, outputMethodName, outputDir, epsilon, packElapsed);
+        } finally {
+            minimizingEcalc.tasks.waitForFinish();
+            rigidEcalc.tasks.waitForFinish();
+        }
+    }
+
     private static void runMARKStar(TestKStar.ConfSpaces confSpaces, double epsilon,
                                      Parallelism parallelism, String ematDir,
                                      String designId, String outputDir,
-                                     boolean useGNN, boolean useBranch) {
+                                     boolean useGNN, boolean useBranch,
+                                     boolean fullParallelLeafBatch) {
+        runMARKStar(confSpaces, epsilon, parallelism, ematDir, designId, outputDir,
+                useGNN, useBranch, fullParallelLeafBatch, 0, true);
+    }
+
+    private static void runMARKStar(TestKStar.ConfSpaces confSpaces, double epsilon,
+                                     Parallelism parallelism, String ematDir,
+                                     String designId, String outputDir,
+                                     boolean useGNN, boolean useBranch,
+                                     boolean fullParallelLeafBatch, int leafMinimizationBatchSize) {
+        runMARKStar(confSpaces, epsilon, parallelism, ematDir, designId, outputDir,
+                useGNN, useBranch, fullParallelLeafBatch, leafMinimizationBatchSize, true);
+    }
+
+    private static void runMARKStar(TestKStar.ConfSpaces confSpaces, double epsilon,
+                                     Parallelism parallelism, String ematDir,
+                                     String designId, String outputDir,
+                                     boolean useGNN, boolean useBranch,
+                                     boolean fullParallelLeafBatch, int leafMinimizationBatchSize,
+                                     boolean correctionTighteningEnabled) {
+        EnergyCalculator.Type ecalcType = Integer.getInteger("osprey.wmb.numGpus", 0) > 0
+                ? EnergyCalculator.Type.ResidueCudaCCD : EnergyCalculator.Type.Cpu;
         EnergyCalculator minimizingEcalc = new EnergyCalculator.Builder(
                 confSpaces.complex, confSpaces.ffparams)
-                .setParallelism(parallelism).build();
+                .setParallelism(parallelism).setType(ecalcType).build();
         EnergyCalculator rigidEcalc = new EnergyCalculator.Builder(
                 confSpaces.complex, confSpaces.ffparams)
-                .setParallelism(parallelism).setIsMinimizing(false).build();
+                .setParallelism(parallelism).setType(ecalcType).setIsMinimizing(false).build();
 
         MARKStar.ConfEnergyCalculatorFactory confEcalcFactory = (cs, ecalc) ->
                 new ConfEnergyCalculator.Builder(cs, ecalc)
@@ -359,7 +486,10 @@ public class GenericPDBBench {
                 .setMaxSimultaneousMutations(1)
                 .setShowPfuncProgress(true)
                 .setParallelism(parallelism)
-                .setEnergyMatrixCachePattern(ematDir + "/markstar.*.dat");
+                .setEnergyMatrixCachePattern(ematDir + "/markstar.*.dat")
+                .setFullParallelLeafBatch(fullParallelLeafBatch)
+                .setLeafMinimizationBatchSize(leafMinimizationBatchSize)
+                .setCorrectionTighteningEnabled(correctionTighteningEnabled);
         if (useBranch) sb.setUseBranchDecomposition(true);
 
         MARKStar markstar = new MARKStar(confSpaces.protein, confSpaces.ligand,
@@ -492,6 +622,356 @@ public class GenericPDBBench {
         String outputMethodName = System.getProperty("osprey.bench.method",
                 useGNN ? "gnn_s9" : "markstar");
         writeMARKStarResults(scores, designId, outputMethodName, outputDir, epsilon, markElapsed);
+    }
+
+    private static final class WmbRun {
+        String label;
+        double seconds;
+        double wmbSeconds;
+        double meanFieldSeconds;
+        double astarSeconds;
+        double ccdSeconds;
+        double residualSeconds;
+        double initialEpsilon;
+        int minimizations;
+        int scored;
+        String status;
+        double logZLower;
+        double logZUpper;
+        double delta;
+    }
+
+    private static void writeWmbCsv(String outputDir, String designId, String state,
+                                    int numPos, double epsilon, boolean gpu, int numGpus,
+                                    int streams, int iBound, int sweeps, double ematSec,
+                                    List<WmbRun> runs) {
+        double totSec = 0;
+        double totWmbSec = 0;
+        double totMfSec = 0;
+        double totAstarSec = 0;
+        double totCcdSec = 0;
+        double totResidualSec = 0;
+        long totMin = 0, totScored = 0;
+        for (WmbRun r : runs) {
+            totSec += r.seconds;
+            totWmbSec += r.wmbSeconds;
+            totMfSec += r.meanFieldSeconds;
+            totAstarSec += r.astarSeconds;
+            totCcdSec += r.ccdSeconds;
+            totResidualSec += r.residualSeconds;
+            totMin += r.minimizations;
+            totScored += r.scored;
+        }
+        System.out.println("\n  --- WMB+MF per-sequence totals (" + state + ", " + runs.size()
+                + " sequences) ---");
+        System.out.println("  total minimizations=" + totMin + "  total scored=" + totScored
+                + "  total pfunc time=" + String.format("%.1f", totSec) + "s"
+                + "  (+ one-time emat " + String.format("%.1f", ematSec) + "s)");
+        if (totWmbSec + totMfSec + totAstarSec + totCcdSec + totResidualSec > 0) {
+            System.out.println("  breakdown: wmb=" + String.format("%.3f", totWmbSec)
+                    + "s  mean_field=" + String.format("%.3f", totMfSec)
+                    + "s  astar=" + String.format("%.3f", totAstarSec)
+                    + "s  gpu_ccd=" + String.format("%.3f", totCcdSec)
+                    + "s  residual=" + String.format("%.3f", totResidualSec) + "s");
+        }
+
+        try {
+            File dir = new File(outputDir, "wmb_decoupled");
+            dir.mkdirs();
+            File out = new File(dir, designId + "_" + state + "_perseq.csv");
+            String dev = gpu ? "gpu" : "cpu";
+            try (PrintWriter w = new PrintWriter(new FileWriter(out))) {
+                w.println("design_id,state,num_pos,epsilon,device,num_gpus,streams_per_gpu,i_bound,"
+                        + "mean_field_sweeps,emat_build_s,sequence,seconds,minimizations,scored,"
+                        + "wmb_s,mean_field_s,astar_s,gpu_ccd_s,residual_s,initial_epsilon,"
+                        + "log10_z_lower,log10_z_upper,eff_epsilon,status");
+                for (WmbRun run : runs) {
+                    w.println(String.join(",", designId, state, String.valueOf(numPos),
+                            String.valueOf(epsilon), dev, String.valueOf(numGpus),
+                            String.valueOf(streams), String.valueOf(iBound), String.valueOf(sweeps),
+                            String.format("%.1f", ematSec), "\"" + run.label + "\"",
+                            String.format("%.2f", run.seconds), String.valueOf(run.minimizations),
+                            String.valueOf(run.scored), String.format("%.4f", run.wmbSeconds),
+                            String.format("%.4f", run.meanFieldSeconds),
+                            String.format("%.4f", run.astarSeconds),
+                            String.format("%.4f", run.ccdSeconds),
+                            String.format("%.4f", run.residualSeconds),
+                            String.format("%.5f", run.initialEpsilon),
+                            String.format("%.4f", run.logZLower),
+                            String.format("%.4f", run.logZUpper), String.format("%.5f", run.delta),
+                            run.status));
+                }
+            }
+            System.out.println("  wrote " + out.getPath());
+        } catch (IOException e) {
+            System.err.println("  failed to write WMB csv: " + e.getMessage());
+        }
+    }
+
+    /** log10 of a positive BigDecimal that may overflow double range. */
+    private static double log10(BigDecimal z) {
+        if (z == null || z.signum() <= 0) {
+            return Double.NEGATIVE_INFINITY;
+        }
+        int digitsBeforePoint = z.precision() - z.scale();
+        double mantissa = z.movePointLeft(digitsBeforePoint).doubleValue(); // in [0.1, 1)
+        return digitsBeforePoint + Math.log10(mantissa);
+    }
+
+    /**
+     * Decoupled WMB audit -- the architecture the plan actually calls for, with NO MARK* search.
+     * For each sequence's pfunc: the WMB upper bound is computed once on the minimized emat and a
+     * mean-field lower once on the rigid emat (both cheap, zero conformations); conformations are
+     * then enumerated in emat-energy order by A* and minimized in big parallel GPU batches; the
+     * un-audited residual mass is bounded deterministically by
+     * min(WMB_upper - audited_emat_mass, num_remaining * exp(-threshold/RT)).  Iterates batches
+     * until the bracket [max(Z_audited_exact, Z_meanfield), Z_audited_exact + residual] reaches
+     * epsilon.  All the expensive CCD lands in dependency-free parallel batches that fill the GPU.
+     */
+    private static void runWmbDecoupled(TestKStar.ConfSpaces confSpaces, double epsilon,
+                                        String designId, String outputDir) {
+        int cpus = Integer.getInteger("osprey.bench.numCPUs", 8);
+        int numGpus = Integer.getInteger("osprey.wmb.numGpus", 1);
+        int streams = Integer.getInteger("osprey.wmb.streamsPerGpu", 64);
+        int iBound = Integer.getInteger("osprey.wmb.iBound", 3);
+        int sweeps = Integer.getInteger("osprey.wmb.meanFieldSweeps", 100);
+        int batchSize = Math.max(1, Integer.getInteger("osprey.wmb.batchSize",
+                Math.max(1, numGpus * streams) * 2));
+        int initialBatchSize = Math.max(1, Integer.getInteger("osprey.wmb.initialBatchSize",
+                Math.min(16, batchSize)));
+        initialBatchSize = Math.min(initialBatchSize, batchSize);
+        long maxAudit = Long.getLong("osprey.wmb.maxAudit", 3_000_000L);
+        String stateName = System.getProperty("osprey.wmb.state", "complex").trim().toLowerCase();
+        SimpleConfSpace cs = stateName.equals("protein") ? confSpaces.protein
+                : stateName.equals("ligand") ? confSpaces.ligand : confSpaces.complex;
+        if (!stateName.equals("protein") && !stateName.equals("ligand")) {
+            stateName = "complex";
+        }
+
+        boolean gpu = numGpus > 0;
+        Parallelism parallelism = gpu
+                ? Parallelism.make(cpus, numGpus, streams) : Parallelism.makeCpu(cpus);
+        EnergyCalculator.Type type = gpu ? EnergyCalculator.Type.ResidueCudaCCD : EnergyCalculator.Type.Cpu;
+        System.out.println("\n=== WMB DECOUPLED (no search): state=" + stateName + " pos=" + cs.positions.size()
+                + " device=" + (gpu ? ("gpu x" + numGpus + " streams/gpu=" + streams) : ("cpu x" + cpus))
+                + " iBound=" + iBound + " batch=" + initialBatchSize + "->" + batchSize
+                + " eps=" + epsilon + " ===");
+
+        EnergyCalculator minEcalc = new EnergyCalculator.Builder(cs, confSpaces.ffparams)
+                .setParallelism(parallelism).setType(type).build();
+        EnergyCalculator rigidEcalc = new EnergyCalculator.SharedBuilder(minEcalc)
+                .setIsMinimizing(false).build();
+        try {
+            ConfEnergyCalculator confEcalc = new ConfEnergyCalculator.Builder(cs, minEcalc)
+                    .setReferenceEnergies(new SimplerEnergyMatrixCalculator.Builder(cs, minEcalc)
+                            .build().calcReferenceEnergies())
+                    .build();
+            ConfEnergyCalculator rigidConfEcalc = new ConfEnergyCalculator.Builder(cs, rigidEcalc)
+                    .setReferenceEnergies(new SimplerEnergyMatrixCalculator.Builder(cs, rigidEcalc)
+                            .build().calcReferenceEnergies())
+                    .build();
+
+            long ematT0 = System.currentTimeMillis();
+            EnergyMatrix minEmat = new SimplerEnergyMatrixCalculator.Builder(confEcalc)
+                    .build().calcEnergyMatrix();
+            EnergyMatrix rigidEmat = new SimplerEnergyMatrixCalculator.Builder(rigidConfEcalc)
+                    .build().calcEnergyMatrix();
+            double ematSec = (System.currentTimeMillis() - ematT0) / 1000.0;
+            System.out.println("  emat build: " + String.format("%.1f", ematSec) + " s");
+
+            int maxMut = Integer.getInteger("osprey.wmb.maxSimultaneousMutations", 1);
+            List<Sequence> sequences = new ArrayList<>();
+            if (cs.seqSpace.containsWildTypeSequence()) {
+                sequences.add(cs.seqSpace.makeWildTypeSequence());
+            }
+            sequences.addAll(cs.seqSpace.getMutants(maxMut, true));
+            System.out.println("  sequences: " + sequences.size());
+
+            List<WmbRun> runs = new ArrayList<>();
+            for (Sequence seq : sequences) {
+                RCs seqRcs = seq.makeRCs(cs);
+                String label = seq.toString(Sequence.Renderer.ResType);
+                runs.add(decoupledPfunc(label, minEmat, rigidEmat, confEcalc, seqRcs,
+                        iBound, sweeps, epsilon, initialBatchSize, batchSize, maxAudit));
+            }
+            writeWmbCsv(outputDir, designId, stateName + "_decoupled", cs.positions.size(),
+                    epsilon, gpu, numGpus, streams, iBound, sweeps, ematSec, runs);
+        } finally {
+            rigidEcalc.clean();
+            minEcalc.clean();
+        }
+    }
+
+    private static WmbRun decoupledPfunc(String label, EnergyMatrix minEmat, EnergyMatrix rigidEmat,
+                                         ConfEnergyCalculator confEcalc, RCs rcs, int iBound,
+                                         int sweeps, double targetEps, int initialBatchSize,
+                                         int maxBatchSize, long maxAudit) {
+        BoltzmannCalculator bc = new BoltzmannCalculator(PartitionFunction.decimalPrecision);
+        double rt = bc.R * bc.T;
+        ExpFunction ef = new ExpFunction(PartitionFunction.decimalPrecision);
+
+        long t0 = System.currentTimeMillis();
+        BigInteger totalConfs = rcs.getNumConformations();
+        int[] noAssign = new int[rcs.getNumPos()];
+        java.util.Arrays.fill(noAssign, -1);
+        double wmbSec = 0;
+        double mfSec = 0;
+        double astarSec = 0;
+        double ccdSec = 0;
+        double residualSec = 0;
+
+        // WMB upper (minimized emat) and mean-field lower (rigid emat): once, no conformations.
+        BigDecimal zWmbUpper;
+        long timer = System.nanoTime();
+        try {
+            zWmbUpper = ef.exp(WeightedMiniBucket.upperLogZ(minEmat, rcs, noAssign, iBound, rt));
+        } catch (RuntimeException e) {
+            zWmbUpper = null;
+        } finally {
+            wmbSec += elapsedSeconds(timer);
+        }
+        BigDecimal zMeanField = BigDecimal.ZERO;
+        timer = System.nanoTime();
+        try {
+            double mf = MeanFieldBound.lowerLogZ(rigidEmat, rcs, noAssign,
+                    sweeps, MeanFieldBound.DEFAULT_TOLERANCE, rt);
+            if (!Double.isNaN(mf) && Math.abs(mf) < 1.0e4) {
+                zMeanField = ef.exp(mf);
+            }
+        } catch (RuntimeException e) {
+            // keep zero
+        } finally {
+            mfSec += elapsedSeconds(timer);
+        }
+
+        BigDecimal zExact = BigDecimal.ZERO;   // audited true Boltzmann mass
+        BigDecimal zEmat = BigDecimal.ZERO;    // audited minimized-emat Boltzmann mass
+        BigInteger audited = BigInteger.ZERO;
+        BigDecimal zUpper = (zWmbUpper != null) ? zWmbUpper : null;
+        BigDecimal zLower = zMeanField;
+        double eps = effectiveEpsilon(zLower, zUpper);
+        double initialEps = eps;
+        long minimizations = 0;
+        boolean exhausted = false;
+
+        if (eps > targetEps && maxAudit > 0) {
+            ConfAStarTree tree = new ConfAStarTree.Builder(minEmat, rcs).setTraditional().build();
+            int batchSize = Math.max(1, Math.min(initialBatchSize, maxBatchSize));
+            while (eps > targetEps && minimizations < maxAudit) {
+                int thisBatchSize = (int) Math.min((long) batchSize, maxAudit - minimizations);
+                List<ConfSearch.ScoredConf> batch = new ArrayList<>(thisBatchSize);
+                timer = System.nanoTime();
+                for (int i = 0; i < thisBatchSize; i++) {
+                    ConfSearch.ScoredConf c = tree.nextConf();
+                    if (c == null) { exhausted = true; break; }
+                    batch.add(c);
+                }
+                astarSec += elapsedSeconds(timer);
+                if (batch.isEmpty()) { exhausted = true; break; }
+
+                // one dependency-free parallel GPU minimization batch
+                List<Double> energies = java.util.Collections.synchronizedList(new ArrayList<>());
+                timer = System.nanoTime();
+                for (ConfSearch.ScoredConf conf : batch) {
+                    confEcalc.tasks.submit(() -> confEcalc.calcEnergy(conf),
+                            (econf) -> energies.add(econf.getEnergy()));
+                }
+                confEcalc.tasks.waitForFinish();
+                ccdSec += elapsedSeconds(timer);
+                minimizations += batch.size();
+
+                timer = System.nanoTime();
+                double thresholdEmatE = Double.NEGATIVE_INFINITY;
+                for (ConfSearch.ScoredConf conf : batch) {
+                    double ematE = ematEnergy(minEmat, conf.getAssignments());
+                    zEmat = zEmat.add(bc.calc(ematE));
+                    thresholdEmatE = Math.max(thresholdEmatE, ematE);
+                }
+                for (double e : energies) {
+                    zExact = zExact.add(bc.calc(e));
+                }
+                audited = audited.add(BigInteger.valueOf(batch.size()));
+
+                // residual upper bound on the un-audited true mass: tighter of WMB and count*exp
+                BigInteger remaining = totalConfs.subtract(audited);
+                BigDecimal residualCount = remaining.signum() <= 0 ? BigDecimal.ZERO
+                        : new BigDecimal(remaining).multiply(bc.calc(thresholdEmatE));
+                BigDecimal residual = residualCount;
+                if (zWmbUpper != null) {
+                    BigDecimal residualWmb = zWmbUpper.subtract(zEmat).max(BigDecimal.ZERO);
+                    residual = residual.min(residualWmb);
+                }
+
+                zUpper = zExact.add(residual);
+                zLower = zExact.max(zMeanField);
+                eps = effectiveEpsilon(zLower, zUpper);
+                residualSec += elapsedSeconds(timer);
+
+                if (batchSize < maxBatchSize) {
+                    batchSize = Math.min(maxBatchSize, Math.max(batchSize + 1, batchSize * 2));
+                }
+            }
+        }
+        double sec = (System.currentTimeMillis() - t0) / 1000.0;
+
+        WmbRun run = new WmbRun();
+        run.label = label;
+        run.seconds = sec;
+        run.wmbSeconds = wmbSec;
+        run.meanFieldSeconds = mfSec;
+        run.astarSeconds = astarSec;
+        run.ccdSeconds = ccdSec;
+        run.residualSeconds = residualSec;
+        run.initialEpsilon = initialEps;
+        run.minimizations = (int) Math.min(minimizations, Integer.MAX_VALUE);
+        run.scored = run.minimizations;
+        run.status = (eps <= targetEps || exhausted) ? "Estimated" : "Budget";
+        run.logZLower = log10(zLower);
+        run.logZUpper = (zUpper == null) ? Double.POSITIVE_INFINITY : log10(zUpper);
+        run.delta = eps;
+        System.out.println("  [" + label + "] time=" + String.format("%.1f", sec)
+                + "s  minimizations=" + minimizations + "/" + totalConfs
+                + "  logZ=[" + String.format("%.3f", run.logZLower) + ", "
+                + String.format("%.3f", run.logZUpper) + "]  eps=" + String.format("%.3f", eps)
+                + "  breakdown=[wmb " + String.format("%.3f", wmbSec)
+                + "s, mf " + String.format("%.3f", mfSec)
+                + "s, astar " + String.format("%.3f", astarSec)
+                + "s, gpu_ccd " + String.format("%.3f", ccdSec)
+                + "s, residual " + String.format("%.3f", residualSec) + "s]"
+                + "  " + run.status);
+        return run;
+    }
+
+    private static double elapsedSeconds(long startNs) {
+        return (System.nanoTime() - startNs) / 1.0e9;
+    }
+
+    private static double effectiveEpsilon(BigDecimal zLower, BigDecimal zUpper) {
+        if (zUpper == null) {
+            return 1.0;
+        }
+        if (zUpper.signum() == 0) {
+            return 0.0;
+        }
+        BigDecimal gap = zUpper.subtract(zLower).max(BigDecimal.ZERO);
+        return gap.divide(zUpper, PartitionFunction.decimalPrecision).doubleValue();
+    }
+
+    /** Full minimized-emat energy of a conformation (matches WmbModel: includes the const term). */
+    private static double ematEnergy(EnergyMatrix emat, int[] conf) {
+        double e = emat.getConstTerm();
+        for (int i = 0; i < conf.length; i++) {
+            if (conf[i] < 0) {
+                continue;
+            }
+            e += emat.getEnergy(i, conf[i]);
+            for (int j = i + 1; j < conf.length; j++) {
+                if (conf[j] >= 0) {
+                    e += emat.getEnergy(i, conf[i], j, conf[j]);
+                }
+            }
+        }
+        return e;
     }
 
     private static void runDPProfile(TestKStar.ConfSpaces confSpaces,

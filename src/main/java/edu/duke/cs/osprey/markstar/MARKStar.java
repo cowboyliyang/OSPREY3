@@ -143,6 +143,9 @@ public class MARKStar {
 			private int maxNumConfs = -1;
 			private boolean reduceMinimizations = true;
 			private boolean useBranchDecomposition = false;
+			private boolean fullParallelLeafBatch = false;
+			private int leafMinimizationBatchSize = 0;
+			private boolean correctionTighteningEnabled = true;
 			
 			private boolean useGridDP = false;
 
@@ -208,7 +211,8 @@ public class MARKStar {
 			public Settings build() {
 				return new Settings(epsilon, stabilityThreshold, maxSimultaneousMutations, scoreWriters,
 						showPfuncProgress, energyMatrixCachePattern, parallelism, maxNumConfs, reduceMinimizations,
-						useBranchDecomposition, useGridDP);
+						useBranchDecomposition, fullParallelLeafBatch, leafMinimizationBatchSize,
+						correctionTighteningEnabled, useGridDP);
 			}
 
 			public Builder setReduceMinimizations(boolean reudceMinimizations) {
@@ -219,6 +223,24 @@ public class MARKStar {
 			public Builder setUseBranchDecomposition(boolean val) {
 			    this.useBranchDecomposition = val;
 			    return this;
+			}
+
+			public Builder setFullParallelLeafBatch(boolean val) {
+				this.fullParallelLeafBatch = val;
+				return this;
+			}
+
+			public Builder setLeafMinimizationBatchSize(int val) {
+				if (val < 0) {
+					throw new IllegalArgumentException("leaf minimization batch size must be >= 0");
+				}
+				this.leafMinimizationBatchSize = val;
+				return this;
+			}
+
+			public Builder setCorrectionTighteningEnabled(boolean val) {
+				this.correctionTighteningEnabled = val;
+				return this;
 			}
 
 
@@ -238,13 +260,17 @@ public class MARKStar {
 		public final int maxNumConfs;
 		public final boolean reduceMinimizations;
 		public final boolean useBranchDecomposition;
+		public final boolean fullParallelLeafBatch;
+		public final int leafMinimizationBatchSize;
+		public final boolean correctionTighteningEnabled;
 		
 		public final boolean useGridDP;
 
 		public Settings(double epsilon, Double stabilityThreshold, int maxSimultaneousMutations,
 						KStarScoreWriter.Writers scoreWriters, boolean dumpPfuncConfs, String energyMatrixCachePattern,
 						Parallelism parallelism, int maxNumConfs, boolean reduceMinimizations,
-						boolean useBranchDecomposition, boolean useGridDP) {
+						boolean useBranchDecomposition, boolean fullParallelLeafBatch,
+						int leafMinimizationBatchSize, boolean correctionTighteningEnabled, boolean useGridDP) {
 			this.epsilon = epsilon;
 			this.stabilityThreshold = stabilityThreshold;
 			this.maxSimultaneousMutations = maxSimultaneousMutations;
@@ -255,6 +281,9 @@ public class MARKStar {
 			this.maxNumConfs = maxNumConfs;
 			this.reduceMinimizations = reduceMinimizations;
 			this.useBranchDecomposition = useBranchDecomposition;
+			this.fullParallelLeafBatch = fullParallelLeafBatch;
+			this.leafMinimizationBatchSize = leafMinimizationBatchSize;
+			this.correctionTighteningEnabled = correctionTighteningEnabled;
 			this.useGridDP = useGridDP;
 		}
 
@@ -336,7 +365,7 @@ public class MARKStar {
 		public EnergyMatrix minimizingEmat = null;
 		public edu.duke.cs.osprey.energy.approximation.branch.GNNConfEnergyCalculator gnnCalc = null;
 		public edu.duke.cs.osprey.lute.LUTEConfEnergyCalculator luteCalc = null; // optional, for accuracy comparison
-		// Conformal Prediction parameters for BranchMARK*/S7/S8/S9 GNN pools
+		// Conformal Prediction parameters for MARK* S7/S8/S9 GNN pools
 		// Calibrated from val set: protein q(α=0.001)=0.055, complex q(α=0.001)=0.058
 		public double cpAlpha = 0.001;    // per-prediction miscoverage rate
 		public double cpDelta = 0.1;      // total pfunc failure probability
@@ -424,20 +453,10 @@ public class MARKStar {
 				if (subtreeGnnCalc != null) s10Pfunc.setSubtreeGNN(subtreeGnnCalc);
 				s10Pfunc.setGPUBatchSize(s7GPUBatchSize);
 				pfunc = s10Pfunc;
-			} else if (settings.useBranchDecomposition && useStrategy8 && gnnCalc != null && subtreeGnnCalc != null) {
-				// BranchMARK* + Strategy 8 (leaf GNN + subtree GNN)
-				BranchMARKStarBound branchS8Pfunc = new BranchMARKStarBound(
-						confSpace, rigidEmat, minimizingEmat, minimizingConfEcalc,
-						sequence.makeRCs(confSpace), settings.parallelism);
-				branchS8Pfunc.setGNNBatchCalculator(gnnCalc);
-				branchS8Pfunc.setSubtreeGNN(subtreeGnnCalc);
-				branchS8Pfunc.setCPParams(cpAlpha, cpDelta, cpQ);
-				branchS8Pfunc.setGPUBatchSize(s7GPUBatchSize);
-				pfunc = branchS8Pfunc;
-			} else if (useStrategy8 && gnnCalc != null && subtreeGnnCalc != null) {
-				MARKStarBoundGNNS8 s8Pfunc = new MARKStarBoundGNNS8(
-						confSpace, rigidEmat, minimizingEmat, minimizingConfEcalc,
-						sequence.makeRCs(confSpace), settings.parallelism);
+				} else if (useStrategy8 && gnnCalc != null && subtreeGnnCalc != null) {
+					MARKStarBoundGNNS8 s8Pfunc = new MARKStarBoundGNNS8(
+							confSpace, rigidEmat, minimizingEmat, minimizingConfEcalc,
+							sequence.makeRCs(confSpace), settings.parallelism);
 				s8Pfunc.setGNNBatchCalculator(gnnCalc);
 				s8Pfunc.setSubtreeGNN(subtreeGnnCalc);
 				s8Pfunc.setCPParams(cpAlpha, cpDelta, cpQ);
@@ -452,19 +471,10 @@ public class MARKStar {
 					s9Pfunc.setCPParams(cpAlpha, cpDelta, cpQ);
 					s9Pfunc.setGPUBatchSize(s7GPUBatchSize);
 					pfunc = s9Pfunc;
-			} else if (settings.useBranchDecomposition && useStrategy7 && gnnCalc != null) {
-				// BranchMARK* + GNN (Strategy 7-style decoupled pool)
-				BranchMARKStarBound branchPfunc = new BranchMARKStarBound(
-						confSpace, rigidEmat, minimizingEmat, minimizingConfEcalc,
-						sequence.makeRCs(confSpace), settings.parallelism);
-				branchPfunc.setGNNBatchCalculator(gnnCalc);
-				branchPfunc.setCPParams(cpAlpha, cpDelta, cpQ);
-				branchPfunc.setGPUBatchSize(s7GPUBatchSize);
-				pfunc = branchPfunc;
-			} else if (useStrategy7 && gnnCalc != null) {
-				MARKStarBoundGNNS7 s7Pfunc = new MARKStarBoundGNNS7(
-						confSpace, rigidEmat, minimizingEmat, minimizingConfEcalc,
-						sequence.makeRCs(confSpace), settings.parallelism);
+				} else if (useStrategy7 && gnnCalc != null) {
+					MARKStarBoundGNNS7 s7Pfunc = new MARKStarBoundGNNS7(
+							confSpace, rigidEmat, minimizingEmat, minimizingConfEcalc,
+							sequence.makeRCs(confSpace), settings.parallelism);
 				s7Pfunc.setGNNBatchCalculator(gnnCalc);
 				s7Pfunc.setCPParams(cpAlpha, cpDelta, cpQ);
 				s7Pfunc.setGPUBatchSize(s7GPUBatchSize);
@@ -485,9 +495,15 @@ public class MARKStar {
 			//GradientDescentMARKStarPfunc pfunc = new GradientDescentMARKStarPfunc(confSpace, rigidEmat, minimizingEmat,
 			//		rcs, minimizingConfEcalc);
 			pfunc.reduceMinimizations = settings.reduceMinimizations;
+			pfunc.setCorrectionTighteningEnabled(settings.correctionTighteningEnabled);
 			pfunc.stateName = type.name();
 			if(settings.maxNumConfs > 0)
 				pfunc.setMaxNumConfs(settings.maxNumConfs);
+			if (settings.leafMinimizationBatchSize > 0) {
+				pfunc.setLeafMinimizationBatchSize(settings.leafMinimizationBatchSize);
+			} else if (settings.fullParallelLeafBatch) {
+				pfunc.useFullParallelLeafBatch();
+			}
 			pfunc.setReportProgress(settings.showPfuncProgress);
 
 			pfunc.setCorrections(correctionEmat);

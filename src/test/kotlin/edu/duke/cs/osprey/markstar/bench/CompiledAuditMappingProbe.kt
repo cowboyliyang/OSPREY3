@@ -4,7 +4,9 @@ import edu.duke.cs.osprey.confspace.SimpleConfSpace
 import edu.duke.cs.osprey.confspace.VoxelShape
 import edu.duke.cs.osprey.confspace.compiled.ConfSpace as CompiledConfSpace
 import edu.duke.cs.osprey.confspace.compiled.PosInterDist
+import edu.duke.cs.osprey.confspace.compiled.motions.DihedralAngle as CompiledDihedralAngle
 import edu.duke.cs.osprey.energy.compiled.ConfEnergyCalculator
+import edu.duke.cs.osprey.energy.compiled.CPUConfEnergyCalculator
 import edu.duke.cs.osprey.energy.compiled.CudaConfEnergyCalculator
 import edu.duke.cs.osprey.gpu.Structs
 import edu.duke.cs.osprey.gui.OspreyGui
@@ -47,6 +49,7 @@ object CompiledAuditMappingProbe {
 			val state = System.getProperty("osprey.audit.state", "Complex")
 			val doCompile = java.lang.Boolean.getBoolean("osprey.compiledAudit.compile")
 			val doCudaSweep = java.lang.Boolean.getBoolean("osprey.compiledAudit.cudaSweep")
+			val doCompare = java.lang.Boolean.getBoolean("osprey.compiledAudit.compare")
 			val previewConfs = Integer.getInteger("osprey.compiledAudit.previewConfs", 8)
 
 			println("==============================================")
@@ -57,6 +60,7 @@ object CompiledAuditMappingProbe {
 			println("  flexible=$flexible")
 			println("  compile=$doCompile")
 			println("  cudaSweep=$doCudaSweep")
+			println("  compare=$doCompare")
 			println("==============================================")
 
 		val confSpaces = AuditLeafCCD.buildConfSpaces(pdbPath, mutable, flexible)
@@ -90,6 +94,9 @@ object CompiledAuditMappingProbe {
 			printSampleAssignment(simple, mappings)
 			if (doCudaSweep) {
 				runCudaSweep(simple, compiled, mappings)
+			}
+			if (doCompare) {
+				runEnergyEquivalence(simple, compiled, mappings)
 			}
 		}
 
@@ -505,10 +512,14 @@ object CompiledAuditMappingProbe {
 		}
 
 	private fun addContinuousMotions(pos: DesignPosition, posConfSpace: PrepConfSpace.PositionConfSpace) {
+		// Legacy OSPREY continuous minimization rotates heavy-atom chi and hydroxyl/thiol H, but NOT
+		// methyl/NH H groups. Default to matching that; expose as knobs to test energy equivalence.
 		val settings = DihedralAngle.LibrarySettings(
 			radiusDegrees = VoxelShape.DefaultHalfWidthDegrees,
-			includeHydroxyls = true,
-			includeNonHydroxylHGroups = true
+			includeHydroxyls = java.lang.Boolean.parseBoolean(
+				System.getProperty("osprey.compiledAudit.includeHydroxyls", "true")),
+			includeNonHydroxylHGroups = java.lang.Boolean.parseBoolean(
+				System.getProperty("osprey.compiledAudit.includeNonHydroxylHGroups", "true"))
 		)
 		for (conf in posConfSpace.confs) {
 			conf.motions.addAll(DihedralAngle.ConfDescription.makeFromLibrary(pos, conf.frag, conf.conf, settings))
@@ -519,9 +530,12 @@ object CompiledAuditMappingProbe {
 		val compileThreads = Math.max(1, Integer.getInteger("osprey.compiledAudit.compileThreads", 1))
 		println("compiled: compileThreads=$compileThreads")
 		val bytes = ConfSpaceCompiler(confSpace).run {
+			// Match legacy OSPREY ForcefieldParams: Amber96 keeps GUI defaults dielectric=6 (dist-dep),
+			// vdwScale=0.95; EEF1 solvation scale must be 0.5 (legacy solvScale), NOT 1.0.
 			forcefields.add(Forcefield.Amber96)
 			forcefields.add(Forcefield.EEF1.configure {
-				scale = 1.0
+				scale = java.lang.Double.parseDouble(
+					System.getProperty("osprey.compiledAudit.eef1Scale", "0.5"))
 			})
 			compile(compileThreads).run {
 				waitForFinish()
@@ -598,7 +612,9 @@ object CompiledAuditMappingProbe {
 		val simplePos: SimpleConfSpace.Position,
 		val compiledPos: CompiledConfSpace.Pos?,
 		val rcToConf: Map<Int, Int>,
-		val issues: List<String>
+		val issues: List<String>,
+		val reordered: Int = 0,
+		val maxChiDist: Double = 0.0
 	) {
 		val complete get() = compiledPos != null && issues.isEmpty() && rcToConf.size == simplePos.resConfs.size
 	}
@@ -620,14 +636,62 @@ object CompiledAuditMappingProbe {
 				.filter { !it.id.startsWith("wt-") }
 				.groupBy { normalizeType(it.type) }
 
+			var reordered = 0
+			var maxChiDistPos = 0.0
 			for ((type, rcs) in simpleLibByType) {
 				val confs = compiledLibByType[type] ?: emptyList()
-				if (rcs.size == confs.size) {
-					for ((rc, conf) in rcs.sortedBy { it.index }.zip(confs.sortedBy { it.index })) {
-						rcToConf[rc.index] = conf.index
-					}
-				} else {
+				if (rcs.size != confs.size) {
 					issues.add("library type $type count mismatch legacy=${rcs.size} compiled=${confs.size}")
+					continue
+				}
+				val sortedRcs = rcs.sortedBy { it.index }
+				val sortedConfs = confs.sortedBy { it.index }
+
+				// old behavior: zip by sorted index. Kept only to measure how wrong it was.
+				val indexMap = HashMap<Int, Int>()
+				for ((rc, conf) in sortedRcs.zip(sortedConfs)) {
+					indexMap[rc.index] = conf.index
+				}
+
+				// correct behavior: match legacy RC to compiled conf by rotamer chi geometry.
+				// Legacy library order (codes L0,L1,...) and compiled Lovell conflib order
+				// (e.g. ARG:mmm-85, ARG:mmm180, ...) are NOT guaranteed to agree, so a
+				// same-index zip can pair different physical rotamers.
+				val remaining = sortedConfs.toMutableList()
+				val chiMap = LinkedHashMap<Int, Int>()
+				var matchedOk = true
+				for (rc in sortedRcs) {
+					val rcChi = legacyLibChi(rc)
+					if (rcChi == null) {
+						matchedOk = false
+						break
+					}
+					var best: CompiledConfSpace.Conf? = null
+					var bestDist = Double.MAX_VALUE
+					for (conf in remaining) {
+						val cChi = compiledChi(conf)
+						val d = chiDistance(rcChi, cChi)
+						if (d < bestDist) {
+							bestDist = d
+							best = conf
+						}
+					}
+					if (best == null) {
+						matchedOk = false
+						break
+					}
+					chiMap[rc.index] = best.index
+					remaining.remove(best)
+					maxChiDistPos = Math.max(maxChiDistPos, bestDist)
+				}
+
+				val chosen = if (matchedOk) chiMap else indexMap
+				if (!matchedOk) {
+					issues.add("library type $type: chi matching failed, fell back to index order")
+				}
+				for ((rcIndex, confIndex) in chosen) {
+					rcToConf[rcIndex] = confIndex
+					if (indexMap[rcIndex] != confIndex) reordered++
 				}
 			}
 
@@ -641,7 +705,7 @@ object CompiledAuditMappingProbe {
 				issues.add("wild-type count mismatch legacy=${simpleWt.size} compiled=${compiledWt.size}")
 			}
 
-			PositionMapping(simplePos, compiledPos, rcToConf, issues)
+			PositionMapping(simplePos, compiledPos, rcToConf, issues, reordered, maxChiDistPos)
 		}
 	}
 
@@ -650,7 +714,7 @@ object CompiledAuditMappingProbe {
 		println("mapping: completePositions=$complete/${mappings.size}")
 		for (mapping in mappings) {
 			val compiledName = mapping.compiledPos?.name ?: "<missing>"
-			println("mapping.pos legacy=${mapping.simplePos.resNum} compiled=$compiledName complete=${mapping.complete} mapped=${mapping.rcToConf.size}/${mapping.simplePos.resConfs.size}")
+			println("mapping.pos legacy=${mapping.simplePos.resNum} compiled=$compiledName complete=${mapping.complete} mapped=${mapping.rcToConf.size}/${mapping.simplePos.resConfs.size} reordered=${mapping.reordered} maxChiDist=${"%.1f".format(Locale.US, mapping.maxChiDist)}")
 			for (issue in mapping.issues) {
 				println("  issue: $issue")
 			}
@@ -936,5 +1000,264 @@ object CompiledAuditMappingProbe {
 		}
 		out.add(buf.toString())
 		return out
+	}
+
+	/**
+	 * Decisive equivalence check (S11 plan §16.5 step 5): for confs whose exact legacy
+	 * SimpleConfSpace CCD energy is already known (an AuditLeafCCD results CSV), recompute
+	 * the energy on the compiled ConfSpace and compare. Compiled `PosInterDist.all` omits
+	 * reference energies, and for a fixed sequence the reference-energy sum and static-static
+	 * term are constant across confs, so the meaningful forcefield/minimization error is the
+	 * residual AFTER removing a single per-sequence offset, not the raw delta.
+	 */
+	private fun runEnergyEquivalence(
+		simple: SimpleConfSpace,
+		compiled: CompiledConfSpace,
+		mappings: List<PositionMapping>
+	) {
+		if (mappings.any { !it.complete }) {
+			println("compare: skipped because mapping is incomplete")
+			return
+		}
+		val ccdResults = System.getProperty("osprey.compiledAudit.ccdResults")?.takeIf { it.isNotBlank() } ?: run {
+			println("compare: skipped because osprey.compiledAudit.ccdResults is not set")
+			return
+		}
+		val designId = System.getProperty("osprey.bench.designId", "unknown")
+		val state = System.getProperty("osprey.audit.state", "Complex")
+		val maxConfs = Math.max(1, Integer.getInteger("osprey.compiledAudit.maxConfs", 512))
+		val tolerance = System.getProperty("osprey.compiledAudit.tolerance", "0.1").toDouble()
+
+		val legacy = loadCcdResults(ccdResults, designId, state, maxConfs)
+		if (legacy.isEmpty()) {
+			println("compare: no legacy CCD rows matched design=$designId state=$state in $ccdResults")
+			return
+		}
+
+		val rows = ArrayList<Triple<IntArray, IntArray, Double>>()
+		var untranslated = 0
+		for ((asg, energy) in legacy) {
+			val compiledConf = translateAssignment(simple, mappings, asg)
+			if (compiledConf == null) {
+				untranslated++
+				continue
+			}
+			rows.add(Triple(asg, compiledConf, energy))
+		}
+		println("compare: legacyRows=${legacy.size} translated=${rows.size} untranslated=$untranslated maxConfs=$maxConfs tolerance=$tolerance")
+		if (rows.isEmpty()) {
+			println("compare: skipped because no legacy assignments could be translated")
+			return
+		}
+
+		val eLegacy = DoubleArray(rows.size) { rows[it].third }
+
+		val eCpu = DoubleArray(rows.size)
+		val cpuStartNs = System.nanoTime()
+		CPUConfEnergyCalculator(compiled).use { cpu ->
+			for ((i, row) in rows.withIndex()) {
+				val inters = PosInterDist.all(compiled, row.second)
+				eCpu[i] = cpu.minimizeEnergy(row.second, inters)
+			}
+		}
+		val cpuMs = nanosToMs(System.nanoTime() - cpuStartNs)
+		for (i in 0 until Math.min(rows.size, 10)) {
+			println("compare.sample legacy=${"%.4f".format(Locale.US, eLegacy[i])} cpu=${"%.4f".format(Locale.US, eCpu[i])} rawDelta=${"%.4f".format(Locale.US, eCpu[i] - eLegacy[i])} assignments=${rows[i].first.joinToString(";")}")
+		}
+		reportCompare("cpu", eLegacy, eCpu, tolerance, cpuMs)
+
+		var eCuda: DoubleArray? = null
+		if (java.lang.Boolean.getBoolean("osprey.compiledAudit.compareCuda")) {
+			eCuda = runCudaCompare(compiled, rows, eLegacy, eCpu, tolerance)
+		}
+
+		val outPath = System.getProperty("osprey.compiledAudit.compareOut")?.takeIf { it.isNotBlank() }
+		if (outPath != null) {
+			File(outPath).printWriter().use { pw ->
+				pw.println("assignments,compiled_assignments,e_legacy_kcal,e_cpu_kcal,e_cuda_kcal")
+				for ((i, row) in rows.withIndex()) {
+					val cudaCell = eCuda?.let { "%.10g".format(Locale.US, it[i]) } ?: ""
+					pw.println(
+						"${row.first.joinToString(";")},${row.second.joinToString(";")}," +
+							"${"%.10g".format(Locale.US, eLegacy[i])},${"%.10g".format(Locale.US, eCpu[i])},$cudaCell"
+					)
+				}
+			}
+			println("compare: wrote per-conf comparison to $outPath")
+		}
+	}
+
+	private fun runCudaCompare(
+		compiled: CompiledConfSpace,
+		rows: List<Triple<IntArray, IntArray, Double>>,
+		eLegacy: DoubleArray,
+		eCpu: DoubleArray,
+		tolerance: Double
+	): DoubleArray? {
+		if (!CudaConfEnergyCalculator.isSupported()) {
+			println("compare.cuda: skipped because compiled CUDA is not supported on this node")
+			return null
+		}
+		val gpus = CudaConfEnergyCalculator.getGpusInfos()
+		if (gpus.isEmpty()) {
+			println("compare.cuda: skipped because no CUDA GPUs were reported")
+			return null
+		}
+		val precision = parsePrecision(System.getProperty("osprey.compiledAudit.comparePrecision", "Float64"))
+		val streams = parseIntList(System.getProperty("osprey.compiledAudit.streamsList"), listOf(64)).first()
+		val batchSize = parseIntList(System.getProperty("osprey.compiledAudit.batchSizes"), listOf(1024)).first()
+		val gpuStreams = listOf(CudaConfEnergyCalculator.GpuStreams(gpus.first(), streams))
+		println("compare.cuda precision=$precision streams=$streams batchSize=$batchSize gpu=${gpus.first()}")
+		val ecalc = CudaConfEnergyCalculator(compiled, precision, gpuStreams, batchSize.toLong())
+		try {
+			val jobs = rows.map { ConfEnergyCalculator.MinimizationJob(it.second, PosInterDist.all(compiled, it.second)) }
+			val startNs = System.nanoTime()
+			var offset = 0
+			while (offset < jobs.size) {
+				val end = Math.min(offset + batchSize, jobs.size)
+				ecalc.minimizeEnergies(jobs.subList(offset, end))
+				offset = end
+			}
+			val cudaMs = nanosToMs(System.nanoTime() - startNs)
+			val eCuda = DoubleArray(jobs.size) { jobs[it].energy }
+			reportCompare("cuda", eLegacy, eCuda, tolerance, cudaMs)
+			reportCompare("cuda_vs_cpu", eCpu, eCuda, tolerance, cudaMs)
+			return eCuda
+		} finally {
+			ecalc.close()
+		}
+	}
+
+	private fun loadCcdResults(input: String, designId: String, state: String, maxConfs: Int): List<Pair<IntArray, Double>> {
+		val out = ArrayList<Pair<IntArray, Double>>()
+		for (file in collectInputFiles(File(input))) {
+			file.bufferedReader().useLines { lines ->
+				val iter = lines.iterator()
+				if (!iter.hasNext()) return@useLines
+				val header = parseCsvLine(iter.next())
+				val columns = header.withIndex().associate { it.value to it.index }
+				while (iter.hasNext() && out.size < maxConfs) {
+					val row = parseCsvLine(iter.next())
+					if (row.isEmpty()) continue
+					fun col(name: String) = columns[name]?.let { row.getOrNull(it) } ?: ""
+					if (designId != "unknown" && col("design_id") != designId) continue
+					if (!sameState(col("state"), state)) continue
+					val status = col("status")
+					if (status.isNotEmpty() && status != "ok") continue
+					val asgStr = col("assignments")
+					val ccd = col("ccd_energy_kcal").toDoubleOrNull() ?: continue
+					if (asgStr.isBlank() || !ccd.isFinite()) continue
+					out.add(parseAssignments(asgStr) to ccd)
+				}
+			}
+			if (out.size >= maxConfs) break
+		}
+		return out
+	}
+
+	private fun reportCompare(tag: String, ref: DoubleArray, test: DoubleArray, tolerance: Double, elapsedMs: Double) {
+		val n = ref.size
+		if (n == 0) {
+			println("compare.$tag n=0")
+			return
+		}
+		val delta = DoubleArray(n) { test[it] - ref[it] }
+		val offset = delta.average()
+		val deltaSd = stddev(delta, offset)
+		var sumSqResid = 0.0
+		var maxAbsResid = 0.0
+		var within = 0
+		for (d in delta) {
+			val resid = d - offset
+			sumSqResid += resid * resid
+			val ar = Math.abs(resid)
+			if (ar > maxAbsResid) maxAbsResid = ar
+			if (ar <= tolerance) within++
+		}
+		val residRmse = Math.sqrt(sumSqResid / n)
+		val r = pearson(ref, test)
+		println("compare.$tag n=$n elapsed_ms=${"%.1f".format(Locale.US, elapsedMs)} per_conf_ms=${"%.3f".format(Locale.US, elapsedMs / n)}")
+		println("compare.$tag offset_mean=${fmt(offset)} raw_delta_sd=${fmt(deltaSd)} resid_after_offset_rmse=${fmt(residRmse)} resid_max_abs=${fmt(maxAbsResid)} pearson=${"%.6f".format(Locale.US, r)} within_tol_$tolerance=$within/$n")
+	}
+
+	private fun stddev(values: DoubleArray, mean: Double): Double {
+		if (values.size <= 1) return 0.0
+		var s = 0.0
+		for (v in values) {
+			val d = v - mean
+			s += d * d
+		}
+		return Math.sqrt(s / (values.size - 1))
+	}
+
+	private fun pearson(a: DoubleArray, b: DoubleArray): Double {
+		val n = a.size
+		if (n == 0) return Double.NaN
+		val ma = a.average()
+		val mb = b.average()
+		var sab = 0.0
+		var saa = 0.0
+		var sbb = 0.0
+		for (i in 0 until n) {
+			val da = a[i] - ma
+			val db = b[i] - mb
+			sab += da * db
+			saa += da * da
+			sbb += db * db
+		}
+		val denom = Math.sqrt(saa * sbb)
+		return if (denom == 0.0) Double.NaN else sab / denom
+	}
+
+	private fun fmt(v: Double): String =
+		if (v.isNaN()) "NaN" else "%.6f".format(Locale.US, v)
+
+	/** Ideal chi vector (degrees) of a legacy library rotamer, from its template. */
+	private fun legacyLibChi(rc: SimpleConfSpace.ResidueConf): DoubleArray? {
+		val n = rc.template.numDihedrals
+		if (n == 0) return DoubleArray(0)
+		val rot = rc.rotamerIndex ?: return null
+		return DoubleArray(n) { j -> rc.template.getRotamericDihedrals(rot, j) }
+	}
+
+	/** Chi vector (degrees) of a compiled conf, taken as the voxel centers of its dihedral motions. */
+	private fun compiledChi(conf: CompiledConfSpace.Conf): DoubleArray =
+		conf.motions
+			.filterIsInstance<CompiledDihedralAngle.Description>()
+			.map { (it.minDegrees + it.maxDegrees) / 2.0 }
+			.toDoubleArray()
+
+	/**
+	 * Greedy assignment of each chi in `a` (legacy heavy-atom chi) to its nearest unused chi in `b`
+	 * (compiled dihedral motions, which also include extra methyl/hydroxyl/NH H-torsions). `a` may be
+	 * shorter than `b`; the extra compiled H-torsions are ignored. Returns MAX_VALUE if `b` is too short.
+	 */
+	private fun chiDistance(a: DoubleArray, b: DoubleArray): Double {
+		if (b.size < a.size) return Double.MAX_VALUE
+		val used = BooleanArray(b.size)
+		var total = 0.0
+		for (x in a) {
+			var best = -1
+			var bestD = Double.MAX_VALUE
+			for (k in b.indices) {
+				if (used[k]) continue
+				val d = Math.abs(angleDiff(x, b[k]))
+				if (d < bestD) {
+					bestD = d
+					best = k
+				}
+			}
+			if (best < 0) return Double.MAX_VALUE
+			used[best] = true
+			total += bestD
+		}
+		return total
+	}
+
+	private fun angleDiff(a: Double, b: Double): Double {
+		var d = (a - b) % 360.0
+		if (d > 180.0) d -= 360.0
+		if (d < -180.0) d += 360.0
+		return d
 	}
 }

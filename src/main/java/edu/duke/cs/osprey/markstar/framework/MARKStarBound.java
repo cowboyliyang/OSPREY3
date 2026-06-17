@@ -76,10 +76,10 @@ import edu.duke.cs.osprey.tools.Stopwatch;
 import edu.duke.cs.osprey.tools.TimeTools;
 import edu.duke.cs.osprey.energy.forcefield.ForcefieldParams;
 import edu.duke.cs.osprey.ematrix.SimpleReferenceEnergies;
-import edu.duke.cs.osprey.markstar.framework.branch.InteractionGraph;
-import edu.duke.cs.osprey.markstar.framework.branch.BranchDecomposition;
-import edu.duke.cs.osprey.markstar.framework.branch.RootedTreeNode;
-import edu.duke.cs.osprey.markstar.framework.branch.RootedTreeEdge;
+import edu.duke.cs.osprey.branchdp.InteractionGraph;
+import edu.duke.cs.osprey.branchdp.BranchDecomposition;
+import edu.duke.cs.osprey.branchdp.RootedTreeNode;
+import edu.duke.cs.osprey.branchdp.RootedTreeEdge;
 
 public class MARKStarBound implements PartitionFunction.WithConfDB {
 
@@ -208,6 +208,21 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
 
     public void setMaxNumConfs(int maxNumConfs) {
         this.maxNumConfs = maxNumConfs;
+    }
+
+    public void setLeafMinimizationBatchSize(int batchSize) {
+        if (batchSize < 1) {
+            throw new IllegalArgumentException("leaf minimization batch size must be >= 1");
+        }
+        maxMinimizations = batchSize;
+    }
+
+    public void useFullParallelLeafBatch() {
+        setLeafMinimizationBatchSize(parallelism == null ? 1 : parallelism.numThreads);
+    }
+
+    public void setCorrectionTighteningEnabled(boolean enabled) {
+        correctionTighteningEnabled = enabled;
     }
 
     @Override
@@ -526,11 +541,12 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
     private MARKStarNode.ScorerFactory hscorerFactory;
 
     public boolean reduceMinimizations = true;
+    protected boolean correctionTighteningEnabled = true;
     protected ConfAnalyzer confAnalyzer;
-    EnergyMatrix minimizingEmat;
-    EnergyMatrix rigidEmat;
-    UpdatingEnergyMatrix correctionMatrix;
-    ConfEnergyCalculator minimizingEcalc;
+    protected EnergyMatrix minimizingEmat;
+    protected EnergyMatrix rigidEmat;
+    protected UpdatingEnergyMatrix correctionMatrix;
+    protected ConfEnergyCalculator minimizingEcalc;
     private edu.duke.cs.osprey.energy.approximation.branch.GNNConfEnergyCalculator gnnCalc; // GNN surrogate (optional)
     // Phase 7: Grid DP upper bound
     private GridDPMinimizer gridDPMinimizer;
@@ -550,7 +566,7 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
 
     BigDecimal cumulativeZCorrection = BigDecimal.ZERO;//Pfunc upper bound improvement from partial minimization corrections
     BigDecimal ZReductionFromMin = BigDecimal.ZERO;//Pfunc lower bound improvement from full minimization
-    BoltzmannCalculator bc = new BoltzmannCalculator(PartitionFunction.decimalPrecision);
+    protected BoltzmannCalculator bc = new BoltzmannCalculator(PartitionFunction.decimalPrecision);
     private boolean computedCorrections = false;
     private long loopPartialTime = 0;
     private Set<String> correctedTuples = Collections.synchronizedSet(new HashSet<>());
@@ -910,7 +926,7 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
             // PartialFixCache: Try to tighten upper bound (symmetric to triple correction for lower bound)
             double quickUpperBound = tryQuickUpperBound(node);
 
-            if(!node.isMinimized() && node.getConfLowerBound() < confCorrection
+            if(correctionTighteningEnabled && !node.isMinimized() && node.getConfLowerBound() < confCorrection
                     && node.getConfLowerBound() - confCorrection > 1e-5) {
                 if(confCorrection < node.getConfLowerBound()) {
                     System.out.println("huh!?");
@@ -962,8 +978,10 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
         profilePrint("Processed "+numNodes+" this loop, spawning "+newNodes.size()+" in "+loopTime+", "+stopwatch.getTime()+" so far");
         loopWatch.reset();
         loopWatch.start();
-        processPreminimization(minimizingEcalc);
-        profilePrint("Preminimization time : "+loopWatch.getTime(2));
+        if (correctionTighteningEnabled) {
+            processPreminimization(minimizingEcalc);
+            profilePrint("Preminimization time : "+loopWatch.getTime(2));
+        }
         double curEpsilon = epsilonBound;
         //rootNode.updateConfBounds(new ConfIndex(RCs.getNumPos()), RCs, gscorer, hscorer);
         updateBound();
@@ -976,6 +994,9 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
 
     protected boolean correctedNode(List<MARKStarNode> newNodes, MARKStarNode curNode, Node node) {
         assert(curNode != null && node != null);
+        if (!correctionTighteningEnabled) {
+            return false;
+        }
         double confCorrection = correctionMatrix.confE(node.assignments);
         if((node.getLevel() == RCs.getNumPos() && node.getConfLowerBound()< confCorrection)
                 || node.gscore < confCorrection) {
@@ -1264,7 +1285,7 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
         boolean shouldSkipDueToLowerBound =
             (pairwiseLowerBound < confCorrection || currentGscore < confCorrection);
 
-        if (shouldSkipDueToLowerBound) {
+        if (correctionTighteningEnabled && shouldSkipDueToLowerBound) {
             // Triple correction alone is enough — skip without running Grid DP or PartialFixCache
             double oldg = node.gscore;
             node.gscore = confCorrection;
@@ -1354,8 +1375,9 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
                     confTable.setUpperBound(conf.getAssignments(), analysis.epmol.energy, timestamp);
                 }
                 
-                Stopwatch correctionTimer = new Stopwatch().start();
-                computeEnergyCorrection(analysis, conf, context.ecalc);
+                if (correctionTighteningEnabled) {
+                    computeEnergyCorrection(analysis, conf, context.ecalc);
+                }
 
                 double energy = analysis.epmol.energy;
                 double newConfUpper = energy;
@@ -1516,6 +1538,9 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
 
     protected void computeEnergyCorrection(ConfAnalyzer.ConfAnalysis analysis, ConfSearch.ScoredConf conf,
                                                   ConfEnergyCalculator ecalc) {
+        if (!correctionTighteningEnabled) {
+            return;
+        }
         if(conf.getAssignments().length < 3)
             return;
 
@@ -1595,6 +1620,9 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
 
 
     private void computeDifference(RCTuple tuple, ConfEnergyCalculator ecalc) {
+        if (!correctionTighteningEnabled) {
+            return;
+        }
         computedCorrections = true;
         if(correctedTuples.contains(tuple.stringListing()))
             return;
@@ -1644,6 +1672,9 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
     }
 
     private void processPreminimization(ConfEnergyCalculator ecalc) {
+        if (!correctionTighteningEnabled) {
+            return;
+        }
         int maxMinimizations = 1;//parallelism.numThreads;
         List<MARKStarNode> topConfs = getTopConfs(maxMinimizations);
         // Need at least two confs to do any partial preminimization
@@ -1682,6 +1713,9 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
     }
 
     private void computeTupleCorrection(ConfEnergyCalculator ecalc, RCTuple overlap) {
+        if (!correctionTighteningEnabled) {
+            return;
+        }
         if(correctionMatrix.hasHigherOrderTermFor(overlap))
             return;
         double pairwiseLower = minimizingEmat.getInternalEnergy(overlap);

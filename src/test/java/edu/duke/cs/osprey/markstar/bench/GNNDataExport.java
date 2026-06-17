@@ -9,7 +9,7 @@ import edu.duke.cs.osprey.energy.EnergyCalculator;
 import edu.duke.cs.osprey.energy.approximation.branch.GNNDataExporter;
 import edu.duke.cs.osprey.kstar.TestKStar;
 import edu.duke.cs.osprey.markstar.TestBranchMARKStar;
-import edu.duke.cs.osprey.markstar.framework.branch.InteractionGraph;
+import edu.duke.cs.osprey.branchdp.InteractionGraph;
 import edu.duke.cs.osprey.parallelism.Parallelism;
 import org.junit.jupiter.api.Test;
 
