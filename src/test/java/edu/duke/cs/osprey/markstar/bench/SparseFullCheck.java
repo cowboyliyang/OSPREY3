@@ -21,7 +21,7 @@ import java.math.BigDecimal;
  * introduced by BranchMARK*'s sparse interaction graph.
  *
  * Enumerates every conformation of a small wild-type-only confspace
- * (configurable via {@code branchmarkstar.sparseFull.numFlexible}) and
+ * (configurable via {@code branchdp.sparseFull.numFlexible}) and
  * compares two partition functions over the same conformations:
  *   - full   = sum using all pairwise terms in the minimized energy matrix
  *   - sparse = sum using only pairwise terms retained by the dual-cutoff
@@ -34,7 +34,7 @@ import java.math.BigDecimal;
  */
 public class SparseFullCheck {
 
-    private static final int NUM_CPUs = Integer.getInteger("osprey.branchmarkstar.numCpus", 4);
+    private static final int NUM_CPUs = Integer.getInteger("osprey.branchdp.numCpus", 4);
 
     private static class SparseFullZ {
         String label;
@@ -50,8 +50,8 @@ public class SparseFullCheck {
 
     @Test
     public void compareSparseFullPartitionFunctionGap() {
-        int numFlexible = Integer.getInteger("branchmarkstar.sparseFull.numFlexible", 3);
-        long maxConfs = Long.getLong("branchmarkstar.sparseFull.maxConfs", 1_000_000L);
+        int numFlexible = Integer.getInteger("branchdp.sparseFull.numFlexible", 3);
+        long maxConfs = Long.getLong("branchdp.sparseFull.maxConfs", 1_000_000L);
 
         TestKStar.ConfSpaces confSpaces = ConfSpaces2RL0.buildWildTypeConfSpace(numFlexible);
         Parallelism parallelism = Parallelism.makeCpu(NUM_CPUs);
@@ -101,7 +101,7 @@ public class SparseFullCheck {
         long confCount = countConfs(rcs);
         if (confCount > maxConfs) {
             throw new IllegalArgumentException(label + " has " + confCount
-                    + " conformations; raise -Dbranchmarkstar.sparseFull.maxConfs="
+                    + " conformations; raise -Dbranchdp.sparseFull.maxConfs="
                     + confCount + " if you really want exact enumeration.");
         }
 

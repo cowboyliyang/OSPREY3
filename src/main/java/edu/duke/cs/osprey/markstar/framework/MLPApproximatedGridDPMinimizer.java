@@ -7,8 +7,8 @@ import edu.duke.cs.osprey.energy.approximation.MLPEnergyModel;
 import edu.duke.cs.osprey.energy.approximation.MLPSurrogateMatrix;
 import edu.duke.cs.osprey.energy.forcefield.ForcefieldParams;
 import edu.duke.cs.osprey.energy.forcefield.ResidueForcefieldEnergy;
-import edu.duke.cs.osprey.markstar.framework.branch.InteractionGraph;
-import edu.duke.cs.osprey.markstar.framework.branch.RootedTreeEdge;
+import edu.duke.cs.osprey.branchdp.InteractionGraph;
+import edu.duke.cs.osprey.branchdp.RootedTreeEdge;
 
 /**
  * GridDP variant that uses per-task MLP models for one-body and pairwise energies.

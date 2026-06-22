@@ -178,7 +178,7 @@ public class MARKStarBoundFastQueues extends MARKStarBound {
             // PartialFixCache: Try to tighten upper bound (symmetric to triple correction for lower bound)
             double quickUpperBound = tryQuickUpperBound(node);
 
-            if(!node.isMinimized() && node.getConfLowerBound() < confCorrection
+            if(correctionTighteningEnabled && !node.isMinimized() && node.getConfLowerBound() < confCorrection
                     && node.getConfLowerBound() - confCorrection > 1e-5) {
                 if(confCorrection < node.getConfLowerBound()) {
                     System.out.println("huh!?");

@@ -6,10 +6,10 @@ import edu.duke.cs.osprey.kstar.pfunc.PartitionFunction;
 /**
  * Internal PACK* backend contract.
  *
- * <p>This keeps the public PACK* facade independent from the legacy
- * BranchMARK* entry point while PACK* shares the neutral branch-DP engine.</p>
+ * <p>This keeps the public PACK* facade independent while PACK* shares the
+ * neutral branch-DP engine.</p>
  */
-public interface PackStarBackend extends PartitionFunction.WithConfDB {
+public interface PackStarBackend extends PartitionFunction.WithConfDB, PackStarSampleTraceable {
 
     void setCorrections(UpdatingEnergyMatrix corrections);
 

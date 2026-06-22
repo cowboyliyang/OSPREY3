@@ -5,9 +5,9 @@ import java.util.Locale;
 /**
  * Shared PACK* system-property resolver.
  *
- * <p>PACK* owns the new {@code packstar.*} keys.  During the migration from
- * BranchMARK*, the old {@code branchmarkstar.*} keys remain accepted as
- * compatibility aliases.  When both are present, the PACK* key wins.</p>
+ * <p>PACK* owns the {@code packstar.*} keys. When a shared branch-DP key is
+ * passed in, the matching PACK* key is preferred and the neutral
+ * {@code branchdp.*} key remains available as a fallback.</p>
  */
 public final class PackStarConfig {
 
@@ -19,18 +19,19 @@ public final class PackStarConfig {
     }
 
     public static String getProperty(String key, String defaultValue, boolean preferPackStarAliases) {
-        if (!preferPackStarAliases) {
-            String value = directProperty(key);
+        if (preferPackStarAliases) {
+            String preferredKey = preferPackStarKey(key);
+            String value = directProperty(preferredKey);
+            if (value == null) {
+                String neutralKey = neutralBranchDpKey(preferredKey);
+                if (!neutralKey.equals(preferredKey)) {
+                    value = directProperty(neutralKey);
+                }
+            }
             return value != null ? value : defaultValue;
         }
-        String preferredKey = preferPackStarKey(key);
-        String value = directProperty(preferredKey);
-        if (value == null) {
-            String legacyKey = legacyBranchMarkStarKey(preferredKey);
-            if (!legacyKey.equals(preferredKey)) {
-                value = directProperty(legacyKey);
-            }
-        }
+
+        String value = directProperty(key);
         return value != null ? value : defaultValue;
     }
 
@@ -177,17 +178,17 @@ public final class PackStarConfig {
     }
 
     private static String preferPackStarKey(String key) {
-        String prefix = "branchmarkstar.";
+        String prefix = "branchdp.";
         if (key.startsWith(prefix)) {
             return "packstar." + key.substring(prefix.length());
         }
         return key;
     }
 
-    private static String legacyBranchMarkStarKey(String key) {
+    private static String neutralBranchDpKey(String key) {
         String prefix = "packstar.";
         if (key.startsWith(prefix)) {
-            return "branchmarkstar." + key.substring(prefix.length());
+            return "branchdp." + key.substring(prefix.length());
         }
         return key;
     }

@@ -25,10 +25,10 @@ import java.util.Map;
  * Driven by {@code slurm/scripts/run_parallelization_ablation.slurm}.
  *
  * System properties:
- *   osprey.branchmarkstar.numFlexible        / branchmarkstar.test.numFlexible  (default 10)
- *   osprey.branchmarkstar.epsilon            / branchmarkstar.test.epsilon      (default 0.68)
- *   osprey.branchmarkstar.pendingEdgeSweep   / branchmarkstar.pendingEdgeSweep  (default "2,3,4,5,6,8,12")
- *   osprey.branchmarkstar.edgeSelections     / branchmarkstar.edgeSelections    (default "contraction,contractionPerState")
+ *   osprey.branchdp.numFlexible        / branchdp.test.numFlexible  (default 10)
+ *   osprey.branchdp.epsilon            / branchdp.test.epsilon      (default 0.68)
+ *   osprey.branchdp.pendingEdgeSweep   / branchdp.pendingEdgeSweep  (default "2,3,4,5,6,8,12")
+ *   osprey.branchdp.edgeSelections     / branchdp.edgeSelections    (default "contraction,contractionPerState")
  */
 public class PendingEdgeSweep {
 
@@ -48,14 +48,14 @@ public class PendingEdgeSweep {
 
     @Test
     public void testPendingEdgeLookaheadSweep() {
-        int numFlexible = Integer.getInteger("osprey.branchmarkstar.numFlexible",
-                Integer.getInteger("branchmarkstar.test.numFlexible", 10));
-        double epsilon = Double.parseDouble(System.getProperty("osprey.branchmarkstar.epsilon",
-                System.getProperty("branchmarkstar.test.epsilon", "0.68")));
-        int[] pendingEdgeValues = parseIntListProperty("osprey.branchmarkstar.pendingEdgeSweep",
-                "branchmarkstar.pendingEdgeSweep", "2,3,4,5,6,8,12");
-        String[] edgeSelections = parseStringListProperty("osprey.branchmarkstar.edgeSelections",
-                "branchmarkstar.edgeSelections", "contraction,contractionPerState");
+        int numFlexible = Integer.getInteger("osprey.branchdp.numFlexible",
+                Integer.getInteger("branchdp.test.numFlexible", 10));
+        double epsilon = Double.parseDouble(System.getProperty("osprey.branchdp.epsilon",
+                System.getProperty("branchdp.test.epsilon", "0.68")));
+        int[] pendingEdgeValues = parseIntListProperty("osprey.branchdp.pendingEdgeSweep",
+                "branchdp.pendingEdgeSweep", "2,3,4,5,6,8,12");
+        String[] edgeSelections = parseStringListProperty("osprey.branchdp.edgeSelections",
+                "branchdp.edgeSelections", "contraction,contractionPerState");
 
         System.out.println("\n========== PENDING EDGE LOOKAHEAD SWEEP ==========");
         System.out.println("Deprecated modes fixed off: parallelInternal=false, parallelEnumeration=false");
@@ -135,19 +135,19 @@ public class PendingEdgeSweep {
                                                           String label) {
         Map<String, String> backup = new HashMap<>();
         String[] keys = {
-                "branchmarkstar.edgeSelection",
-                "branchmarkstar.parallel.internal",
-                "branchmarkstar.edgeSelection.parallelLookahead",
-                "branchmarkstar.parallel.enumeration",
-                "branchmarkstar.edgeSelection.maxPendingEdges",
+                "branchdp.edgeSelection",
+                "branchdp.parallel.internal",
+                "branchdp.edgeSelection.parallelLookahead",
+                "branchdp.parallel.enumeration",
+                "branchdp.edgeSelection.maxPendingEdges",
         };
         for (String k : keys) backup.put(k, System.getProperty(k));
 
-        System.setProperty("branchmarkstar.edgeSelection", edgeSelection);
-        System.setProperty("branchmarkstar.parallel.internal", "false");
-        System.setProperty("branchmarkstar.edgeSelection.parallelLookahead", "true");
-        System.setProperty("branchmarkstar.parallel.enumeration", "false");
-        System.setProperty("branchmarkstar.edgeSelection.maxPendingEdges",
+        System.setProperty("branchdp.edgeSelection", edgeSelection);
+        System.setProperty("branchdp.parallel.internal", "false");
+        System.setProperty("branchdp.edgeSelection.parallelLookahead", "true");
+        System.setProperty("branchdp.parallel.enumeration", "false");
+        System.setProperty("branchdp.edgeSelection.maxPendingEdges",
                 Integer.toString(maxPendingEdges));
 
         try {

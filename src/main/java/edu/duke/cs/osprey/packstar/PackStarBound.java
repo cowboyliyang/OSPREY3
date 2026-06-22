@@ -14,11 +14,10 @@ import java.math.BigDecimal;
 /**
  * PACK* branch-decomposition partition-function bound.
  *
- * <p>This class owns the PACK* API while reusing the legacy branch-DP backend
- * during migration.  PACK* estimator mode is forced for the backend; callers do
- * not need to set the old BranchMARK* PAC switch.</p>
+ * <p>This class owns the PACK* API while reusing the shared branch-DP backend.
+ * PACK* estimator mode is forced for the backend.</p>
  */
-public class PackStarBound implements PartitionFunction.WithConfDB {
+public class PackStarBound implements PartitionFunction.WithConfDB, PackStarSampleTraceable {
 
     private final PackStarBackend backend;
 
@@ -68,6 +67,11 @@ public class PackStarBound implements PartitionFunction.WithConfDB {
 
     public void setReduceMinimizations(boolean enabled) {
         backend.setReduceMinimizations(enabled);
+    }
+
+    @Override
+    public void setSampleListener(PackStarSampleListener listener) {
+        backend.setSampleListener(listener);
     }
 
     @Override

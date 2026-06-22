@@ -214,7 +214,7 @@ final class SamplingGpuPhase1 {
                 System.out.println(BranchDpConfig.getBackendLogPrefix() + " GPU sampling edge fallback ("
                         + t.getClass().getSimpleName() + ": " + t.getMessage()
                         + "); this edge on Java sampling path");
-                if (getConfigBoolean("branchmarkstar.pac.sampling.gpu.trace", false)) {
+                if (getConfigBoolean("branchdp.pac.sampling.gpu.trace", false)) {
                     t.printStackTrace(System.err);
                 }
             }
@@ -892,7 +892,7 @@ final class SamplingGpuPhase1 {
             unavailableLogged = true;
             System.out.println(BranchDpConfig.getBackendLogPrefix() + " GPU sampling unavailable (" + reason
                     + "); falling back to Java sampling path");
-            if (t != null && getConfigBoolean("branchmarkstar.pac.sampling.gpu.trace", false)) {
+            if (t != null && getConfigBoolean("branchdp.pac.sampling.gpu.trace", false)) {
                 t.printStackTrace(System.err);
             }
         }

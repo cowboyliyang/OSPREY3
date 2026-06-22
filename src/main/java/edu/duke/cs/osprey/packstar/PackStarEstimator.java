@@ -39,6 +39,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.IntConsumer;
 import java.io.File;
 import java.io.PrintWriter;
@@ -65,6 +66,7 @@ public class PackStarEstimator {
     private static final String PAC_SAMPLES_PROPERTY = "packstar.pac.samples";
     private static final String PAC_CONFIDENCE_PROPERTY = "packstar.pac.confidence";
     private static final String PAC_TARGET_EPSILON_PROPERTY = "packstar.pac.targetEpsilon";
+    private static final String PAC_RANDOM_SEED_PROPERTY = "packstar.pac.randomSeed";
     private static final String PAC_SAMPLING_BATCHED_PROPERTY = "packstar.pac.sampling.batched";
     private static final String PAC_SAMPLING_PARALLEL_PROPERTY = "packstar.pac.sampling.parallel";
     private static final String PAC_SAMPLING_THREADS_PROPERTY = "packstar.pac.sampling.threads";
@@ -89,6 +91,7 @@ public class PackStarEstimator {
     private static final int DEFAULT_SAMPLES = 1000;
     private static final double DEFAULT_CONFIDENCE = 0.05; // delta = 0.05 => 95% confidence
     private static final double DEFAULT_TARGET_EPSILON = 0.683;
+    private static final long DEFAULT_RANDOM_SEED = 42L;
     private static final int DEFAULT_SAMPLING_LARGE_LAMBDA = 65_536;
     private static final double DEFAULT_TRAIN_FRACTION = 0.5;
     private static final double DEFAULT_PILOT_FRACTION = 0.1;
@@ -106,6 +109,7 @@ public class PackStarEstimator {
     private static final long DEFAULT_DP_CACHE_SKIP_IF_M_STATES = 8_000_000L;
 
     private static final Object CORRECTED_DP_CACHE_LOCK = new Object();
+    private static final AtomicLong ESTIMATOR_INSTANCE_COUNTER = new AtomicLong(0L);
     private static final LinkedHashMap<String, CachedDPTable> CORRECTED_DP_CACHE =
             new LinkedHashMap<>(1024, 0.75f, true);
     private static long correctedDPCacheBytes = 0L;
@@ -125,6 +129,7 @@ public class PackStarEstimator {
     private final int numSamples;
     private final double delta; // confidence parameter
     private final double targetEpsilon;
+    private final long randomSeed;
     private final boolean batchedSampling;
     private final boolean gpuSampling;
     private final int samplingThreads;
@@ -133,6 +138,7 @@ public class PackStarEstimator {
     private final int trainSamples;
     private final int pilotSamples;
     private final int maxEstSamples;
+    private final int sampleBudget;
     private double clipLogCap = Double.NaN; // clip threshold fixed on the pilot (PAC: chosen before S2)
     private double logZMinDet = Double.POSITIVE_INFINITY; // log q_m: deterministic, assumption-free upper bound on log q
     private final double nstarInflate;
@@ -160,6 +166,7 @@ public class PackStarEstimator {
 
     private final BoltzmannCalculator bc = new BoltzmannCalculator(PartitionFunction.decimalPrecision);
     private final LocalRCMap[] localRCByGlobalRC;
+    private PackStarSampleListener sampleListener = null;
 
     public PackStarEstimator(RootedTreeNode rootedRoot,
                                 RootedTreeEdge rootedRootEdge,
@@ -185,6 +192,24 @@ public class PackStarEstimator {
                                  RCs rcs,
                                  SimpleConfSpace confSpace,
                                  double requestedTargetEpsilon) {
+        this(rootedRoot, rootedRootEdge,
+                branchMinimizingEmat, branchRigidEmat,
+                interactionGraph, minimizingEcalc,
+                rcs, confSpace,
+                requestedTargetEpsilon,
+                Integer.MAX_VALUE);
+    }
+
+    public PackStarEstimator(RootedTreeNode rootedRoot,
+                                RootedTreeEdge rootedRootEdge,
+                                EnergyMatrix branchMinimizingEmat,
+                                 EnergyMatrix branchRigidEmat,
+                                 InteractionGraph interactionGraph,
+                                 ConfEnergyCalculator minimizingEcalc,
+                                 RCs rcs,
+                                 SimpleConfSpace confSpace,
+                                 double requestedTargetEpsilon,
+                                 int requestedSampleBudget) {
         this.rootedRoot = rootedRoot;
         this.rootedRootEdge = rootedRootEdge;
         this.branchMinimizingEmat = branchMinimizingEmat;
@@ -194,8 +219,11 @@ public class PackStarEstimator {
         this.rcs = rcs;
         this.confSpace = confSpace;
         this.RT = BoltzmannCalculator.RClassic * BoltzmannCalculator.TClassic;
+        this.sampleBudget = sanitizeSampleBudget(requestedSampleBudget);
 
-        this.numSamples = Math.max(1, getConfigInteger(PAC_SAMPLES_PROPERTY, DEFAULT_SAMPLES));
+        this.numSamples = capSampleCount(
+                Math.max(1, getConfigInteger(PAC_SAMPLES_PROPERTY, DEFAULT_SAMPLES)),
+                1);
         String deltaStr = getConfigProperty(PAC_CONFIDENCE_PROPERTY, null);
         this.delta = (deltaStr != null) ? Double.parseDouble(deltaStr) : DEFAULT_CONFIDENCE;
         double defaultTarget = Double.isFinite(requestedTargetEpsilon) && requestedTargetEpsilon > 0.0
@@ -203,6 +231,11 @@ public class PackStarEstimator {
                 : DEFAULT_TARGET_EPSILON;
         this.targetEpsilon = Math.max(0.0,
                 getConfigDouble(PAC_TARGET_EPSILON_PROPERTY, defaultTarget));
+        long baseRandomSeed = getConfigLong(PAC_RANDOM_SEED_PROPERTY, DEFAULT_RANDOM_SEED);
+        long instanceIndex = ESTIMATOR_INSTANCE_COUNTER.getAndIncrement();
+        this.randomSeed = instanceIndex == 0L
+                ? baseRandomSeed
+                : mix64(baseRandomSeed + 0x9E3779B97F4A7C15L * instanceIndex);
         this.batchedSampling = getConfigBoolean(PAC_SAMPLING_BATCHED_PROPERTY, true);
         this.gpuSampling = getConfigBoolean(PAC_SAMPLING_GPU_PROPERTY, false);
         this.samplingThreads = resolveConfiguredSamplingThreads();
@@ -214,10 +247,15 @@ public class PackStarEstimator {
         int defaultTrainSamples = Math.max(2, (int) Math.floor(twoStageBudget * DEFAULT_TRAIN_FRACTION));
         int defaultPilotSamples = Math.max(2, (int) Math.floor(twoStageBudget * DEFAULT_PILOT_FRACTION));
         int defaultMaxEstSamples = Math.max(2, DEFAULT_MAX_EST_SAMPLES);
-        this.trainSamples = Math.max(2, getConfigInteger(PAC_TRAIN_SAMPLES_PROPERTY, defaultTrainSamples));
-        this.pilotSamples = Math.max(2, getConfigInteger(PAC_PILOT_SAMPLES_PROPERTY, defaultPilotSamples));
-        this.maxEstSamples = Math.max(2,
-                getConfigInteger(PAC_MAX_EST_SAMPLES_PROPERTY, defaultMaxEstSamples));
+        this.trainSamples = capSampleCount(
+                Math.max(2, getConfigInteger(PAC_TRAIN_SAMPLES_PROPERTY, defaultTrainSamples)),
+                2);
+        this.pilotSamples = capSampleCount(
+                Math.max(2, getConfigInteger(PAC_PILOT_SAMPLES_PROPERTY, defaultPilotSamples)),
+                2);
+        this.maxEstSamples = capSampleCount(
+                Math.max(2, getConfigInteger(PAC_MAX_EST_SAMPLES_PROPERTY, defaultMaxEstSamples)),
+                2);
         this.nstarInflate = Math.max(1.0, getConfigDouble(PAC_NSTAR_INFLATE_PROPERTY, DEFAULT_NSTAR_INFLATE));
         double configuredResidualBound = getConfigDouble(PAC_RESIDUAL_BOUND_PROPERTY, DEFAULT_RESIDUAL_BOUND);
         this.residualBoundKcal = configuredResidualBound >= 0.0 ? configuredResidualBound : Double.NaN;
@@ -231,6 +269,21 @@ public class PackStarEstimator {
         this.dpCacheSkipIfMStates = Math.max(0L,
                 getConfigLong(DP_CACHE_SKIP_IF_M_STATES_PROPERTY, DEFAULT_DP_CACHE_SKIP_IF_M_STATES));
         this.localRCByGlobalRC = buildLocalRCMaps(rcs);
+    }
+
+    private int sanitizeSampleBudget(int requestedSampleBudget) {
+        return requestedSampleBudget > 0 ? requestedSampleBudget : Integer.MAX_VALUE;
+    }
+
+    private int capSampleCount(int configured, int minimum) {
+        int capped = sampleBudget == Integer.MAX_VALUE
+                ? configured
+                : Math.min(configured, Math.max(minimum, sampleBudget));
+        return Math.max(minimum, capped);
+    }
+
+    public void setSampleListener(PackStarSampleListener sampleListener) {
+        this.sampleListener = sampleListener;
     }
 
     private static class CachedDPTable {
@@ -410,6 +463,8 @@ public class PackStarEstimator {
         System.out.println("[PACK*-2stage] Strict pilot holdout is enabled"
                 + ", samples(train/pilot/maxEst)="
                 + trainSamples + "/" + pilotSamples + "/" + maxEstSamples
+                + ", sampleBudget="
+                + (sampleBudget == Integer.MAX_VALUE ? "unbounded" : sampleBudget)
                 + ", residualBound="
                 + (Double.isFinite(residualBoundKcal)
                 ? String.format("%.4f kcal/mol", residualBoundKcal)
@@ -451,7 +506,7 @@ public class PackStarEstimator {
      * fixed, exactly as the empirical-Bernstein PAC guarantee requires.
      */
     private void runTwoStagePAC(long startTime, double logZRigid) {
-        Random rng = new Random(42); // reproducible
+        Random rng = new Random(randomSeed);
 
         // ---- Stage A: train from p_m -> eta, corrected DP (p_eta, q_eta) ----
         long tA = System.currentTimeMillis();
@@ -640,7 +695,7 @@ public class PackStarEstimator {
         if (!(mean > 0)) return maxEstSamples;
         double var = Math.max(0.0, (sum2 - n * mean * mean) / (n - 1)) * nstarInflate;
         double sampleRange = mx - mn;
-        double deltaPer = delta / 6.0; // 2 tails x 3 pfuncs
+        double deltaPer = perEventDelta(clip); // 6 plain / 12 clipped (see perEventDelta)
 
         int nStar;
         if (clip) {
@@ -800,6 +855,34 @@ public class PackStarEstimator {
         double lo = Math.exp(-x - shift);
         double range = hi - lo;
         return range >= 0.0 ? range : Double.NaN;
+    }
+
+    private void emitResidualSampleTraces(List<CCDResult> samples,
+                                          double[] xi,
+                                          double[] logW,
+                                          double logZCorrected,
+                                          double logCap) {
+        if (sampleListener == null) {
+            return;
+        }
+        for (int i = 0; i < samples.size(); i++) {
+            CCDResult r = samples.get(i);
+            double eProposal = r.eTrue - xi[i];
+            boolean clipped = Double.isFinite(logCap) && logW[i] > logCap;
+            sampleListener.onSample(new PackStarSampleTrace(
+                    PackStarSampleTrace.Stage.ESTIMATION,
+                    i,
+                    r.conf,
+                    r.eTrue,
+                    r.eMin,
+                    eProposal,
+                    xi[i],
+                    logW[i],
+                    logZCorrected,
+                    logZMinDet,
+                    logCap,
+                    clipped));
+        }
     }
 
     // ===== Diagnostic dump for multi-body residual attribution =====
@@ -963,9 +1046,10 @@ public class PackStarEstimator {
         varPsi = var;
         cvPsi = (mean > 0) ? Math.sqrt(var) / mean : Double.MAX_VALUE;
 
+        emitResidualSampleTraces(estResults, xi, logW, logZCorrected, Double.NaN);
         maybeDumpResidualSamples(estResults, xi, logZCorrected, meanResidual, stdResidual);
 
-        double deltaPer = delta / 6.0; // 2 tails x 3 pfuncs
+        double deltaPer = perEventDelta(false); // non-clip: 2 tails x 3 pfuncs = 6 events
         double boundDelta = solveBernsteinDelta(N, var, range, deltaPer);
         if (!Double.isFinite(mean) || !Double.isFinite(var)
                 || !Double.isFinite(range) || !Double.isFinite(boundDelta)) {
@@ -1069,9 +1153,10 @@ public class PackStarEstimator {
         varPsi = var;
         cvPsi = (mean > 0) ? Math.sqrt(var) / mean : Double.MAX_VALUE;
 
+        emitResidualSampleTraces(estResults, xi, logW, logZCorrected, logCap);
         maybeDumpResidualSamples(estResults, xi, logZCorrected, meanResidual, stdResidual);
 
-        double deltaPer = delta / 6.0; // 2 tails x 3 pfuncs
+        double deltaPer = perEventDelta(true); // clip: lower+upper+Hoeffding+excess = 4 x 3 = 12 events
         double boundDelta = solveBernsteinDelta(N, var, range, deltaPer);
         if (!Double.isFinite(mean) || !Double.isFinite(var) || !Double.isFinite(boundDelta)) {
             setZeroBounds("two-stage(clip): PAC statistics are non-finite");
@@ -1082,10 +1167,11 @@ public class PackStarEstimator {
         // ---- upper side: clipped mass (Bernstein) + clip-bias E[(w-c)+]/c ----
         double meanUpper = mean + boundDelta;
         // Empirical clip-excess in units of c: u_i = max(0, w_i/c - 1), nonzero only on clipped samples.
-        double sumU = 0, sumU2 = 0;
+        double sumU = 0, sumU2 = 0, maxU = 0.0;
         for (int i = 0; i < N; i++) {
             double u = Math.max(0.0, Math.exp(logW[i] - logCap) - 1.0);
             sumU += u; sumU2 += u * u;
+            if (u > maxU) maxU = u;
         }
         double meanU = sumU / N;
         double varU = N > 1 ? Math.max(0.0, (sumU2 - N * meanU * meanU) / (N - 1)) : 0.0;
@@ -1095,7 +1181,10 @@ public class PackStarEstimator {
         String biasMode;
         if (Double.isFinite(residualBoundKcal) && residualBoundKcal / RT - logCap > 0) {
             // residualBound caps the (possibly unobserved) tail: u in [0, uRange], uRange = Wmax/c - 1.
-            double uRange = Math.expm1(residualBoundKcal / RT - logCap);
+            // Defensive: if the data breaches the residual bound (some observed u > uRange), widen the
+            // Bernstein range to the observed max so the bound stays conservative instead of silently
+            // under-covering. Inert when the assumption holds (maxU <= uRange).
+            double uRange = Math.max(Math.expm1(residualBoundKcal / RT - logCap), maxU);
             double pHat = (double) nClipped / N;
             double pUpper = Math.min(1.0, pHat + hoeffdingHalfWidth(N, deltaPer));
             double biasWorst = uRange * pUpper;                                      // every clipped sample at Wmax (old, loose)
@@ -2331,6 +2420,18 @@ public class PackStarEstimator {
     }
 
     /**
+     * Per-event confidence for the union bound across the two interval endpoints
+     * of all three K* partition functions.
+     * Non-clipped path: 2 tails x 3 pfuncs = 6 events.
+     * Clipped path: lower + upper clipped-mass Bernstein + Hoeffding tail
+     * probability + empirical Bernstein on the observed clip-excess
+     * = 4 events x 3 pfuncs = 12 events.
+     */
+    private double perEventDelta(boolean clip) {
+        return clip ? delta / 12.0 : delta / 6.0;
+    }
+
+    /**
      * Empirical Bernstein bound (Maurer & Pontil, 2009) for the one-sided
      * deviation of the sample mean from E[X], at confidence deltaTarget:
      *
@@ -2342,8 +2443,9 @@ public class PackStarEstimator {
      * the sample-variance penalty that keeps the bound valid when s2 is itself
      * estimated from the same N samples. By symmetry the same Delta bounds the
      * opposite tail (-X has identical empirical variance and range); the caller
-     * passes deltaTarget = delta/6 to cover both tails of all three partition
-     * functions (2 tails x 3 pfuncs = 6 events).
+     * passes deltaTarget = perEventDelta(clip): the non-clipped path uses delta/6
+     * (2 tails x 3 pfuncs = 6 events); the clipped path uses delta/12 (lower +
+     * upper clipped-mass Bernstein + Hoeffding tail + excess Bernstein = 4 x 3 = 12).
      */
     private double solveBernsteinDelta(int N, double s2, double range, double deltaTarget) {
         if (N <= 1) return Double.POSITIVE_INFINITY;

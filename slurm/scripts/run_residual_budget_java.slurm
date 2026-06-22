@@ -49,13 +49,13 @@ JARGS="--add-opens java.base/java.util=ALL-UNNAMED \
        -Xms4g -Xmx72g"
 
 $JAVA $JARGS \
-    -Dbranchmarkstar.test.numFlexible="$NUM_FLEXIBLE" \
-    -Dbranchmarkstar.test.epsilon="$EPSILON" \
-    -Dbranchmarkstar.cutoff.strategy=residual_budget \
-    -Dbranchmarkstar.cutoff.residualBudget="$BUDGET" \
-    -Dbranchmarkstar.cutoff.keepConnected=true \
-    -Dbranchmarkstar.energyMode="$ENERGY_MODE" \
-    -Dbranchmarkstar.useHigherOrderCorrections="$USE_CORRECTIONS" \
+    -Dbranchdp.test.numFlexible="$NUM_FLEXIBLE" \
+    -Dbranchdp.test.epsilon="$EPSILON" \
+    -Dbranchdp.cutoff.strategy=residual_budget \
+    -Dbranchdp.cutoff.residualBudget="$BUDGET" \
+    -Dbranchdp.cutoff.keepConnected=true \
+    -Dbranchdp.energyMode="$ENERGY_MODE" \
+    -Dbranchdp.useHigherOrderCorrections="$USE_CORRECTIONS" \
     -cp "$CP" \
     edu.duke.cs.osprey.markstar.TestBranchMARKStar branchsparse
 

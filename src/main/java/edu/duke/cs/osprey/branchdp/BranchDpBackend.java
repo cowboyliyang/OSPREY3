@@ -64,52 +64,46 @@ public abstract class BranchDpBackend extends MARKStarBound {
     private static final double DEFAULT_ENERGY_CUTOFF = 0.1;    // kcal/mol
     private static final double DEFAULT_RESIDUAL_BUDGET = 0.5;  // kcal/mol
     private static final double TESS_FALLBACK_THRESHOLD = 0.5;  // fallback if TESS/Naive > this
-    private static final String CUTOFF_STRATEGY_PROPERTY = "branchmarkstar.cutoff.strategy";
-    private static final String DIST_CUTOFF_PROPERTY = "branchmarkstar.cutoff.dist";
-    private static final String ENERGY_CUTOFF_PROPERTY = "branchmarkstar.cutoff.energy";
-    private static final String RESIDUAL_BUDGET_PROPERTY = "branchmarkstar.cutoff.residualBudget";
-    private static final String CUTOFF_KEEP_CONNECTED_PROPERTY = "branchmarkstar.cutoff.keepConnected";
-    private static final String CERTIFY_FULL_BOUNDS_PROPERTY = "branchmarkstar.certifyFullBounds";
-    private static final String EDGE_SELECTION_PROPERTY = "branchmarkstar.edgeSelection";
-    private static final String EDGE_LOOKAHEAD_MAX_STATES_PROPERTY = "branchmarkstar.edgeSelection.maxExactStates";
-    private static final String EDGE_LOOKAHEAD_MAX_PENDING_EDGES_PROPERTY = "branchmarkstar.edgeSelection.maxPendingEdges";
-    private static final String EDGE_LOOKAHEAD_PARALLEL_PROPERTY = "branchmarkstar.edgeSelection.parallelLookahead";
-    private static final String ROOT_SPLIT_PROPERTY = "branchmarkstar.rootSplit";
+    private static final String CUTOFF_STRATEGY_PROPERTY = "branchdp.cutoff.strategy";
+    private static final String DIST_CUTOFF_PROPERTY = "branchdp.cutoff.dist";
+    private static final String ENERGY_CUTOFF_PROPERTY = "branchdp.cutoff.energy";
+    private static final String RESIDUAL_BUDGET_PROPERTY = "branchdp.cutoff.residualBudget";
+    private static final String CUTOFF_KEEP_CONNECTED_PROPERTY = "branchdp.cutoff.keepConnected";
+    private static final String CERTIFY_FULL_BOUNDS_PROPERTY = "branchdp.certifyFullBounds";
+    private static final String DECOMP_STRATEGY_PROPERTY = "branchdp.decomp.strategy";
+    private static final String DECOMP_STRATEGY_SHORT_PROPERTY = "branchdp.decomp";
+    private static final String EXACT_TREEWIDTH_PROPERTY = "branchdp.decomp.exactTreewidth";
+    private static final String EXACT_TREEWIDTH_MAX_POSITIONS_PROPERTY = "branchdp.decomp.exactTreewidth.maxPositions";
+    private static final String EDGE_SELECTION_PROPERTY = "branchdp.edgeSelection";
+    private static final String EDGE_LOOKAHEAD_MAX_STATES_PROPERTY = "branchdp.edgeSelection.maxExactStates";
+    private static final String EDGE_LOOKAHEAD_MAX_PENDING_EDGES_PROPERTY = "branchdp.edgeSelection.maxPendingEdges";
+    private static final String EDGE_LOOKAHEAD_PARALLEL_PROPERTY = "branchdp.edgeSelection.parallelLookahead";
+    private static final String ROOT_SPLIT_PROPERTY = "branchdp.rootSplit";
     // 0-edge (no pairwise) graphs: exact independent-position DP. Default off.
-    private static final String ZERO_EDGE_DIRECT_PROPERTY = "branchmarkstar.dp.zeroEdgeDirect";
-    private static final String ROOT_SPLIT_MAX_FSET_PROPERTY = "branchmarkstar.rootSplit.maxFset";
-    private static final String DRY_RUN_PROPERTY = "branchmarkstar.dp.dryRun";
-    private static final String MUTABLE_POSITIONS_PROPERTY = "branchmarkstar.mutablePositions";
-    private static final String PARALLEL_INTERNAL_PROPERTY = "branchmarkstar.parallel.internal";
-    private static final String PARALLEL_ENUMERATION_PROPERTY = "branchmarkstar.parallel.enumeration";
-    private static final String NUMERIC_AUDIT_PROPERTY = "branchmarkstar.numericAudit";
-    private static final String NUMERIC_AUDIT_INTERVAL_PROPERTY = "branchmarkstar.numericAudit.interval";
-    private static final String TRACE_PROPERTY = "branchmarkstar.trace";
-    private static final String TRACE_ROUNDS_PROPERTY = "branchmarkstar.trace.rounds";
-    private static final String TRACE_CORRECTIONS_PROPERTY = "branchmarkstar.trace.corrections";
-    private static final String CORRECTION_AUDIT_PROPERTY = "branchmarkstar.correctionAudit";
-    private static final String ENERGY_MODE_PROPERTY = "branchmarkstar.energyMode";
-    private static final String SPARSE_PRUNE_THRESHOLD_PROPERTY = "branchmarkstar.sparse.pruneThreshold";
-    private static final String REGION_ATOM_ENABLED_PROPERTY = "branchmarkstar.regionAtom.enabled";
-    private static final String REGION_ATOM_REGIONS_PROPERTY = "branchmarkstar.regionAtom.regions";
-    private static final String REGION_ATOM_SCOUT_ONLY_PROPERTY = "branchmarkstar.regionAtom.scoutOnly";
-    private static final String REGION_ATOM_SCOUT_MAX_LEAVES_PROPERTY = "branchmarkstar.regionAtom.scout.maxLeaves";
-    private static final String REGION_ATOM_SCOUT_TOP_CELLS_PROPERTY = "branchmarkstar.regionAtom.scout.topCells";
-    private static final String REGION_ATOM_TABLE_MAX_JOBS_PROPERTY = "branchmarkstar.regionAtom.table.maxJobs";
-    private static final String REGION_ATOM_WHATIF_DELTAS_PROPERTY = "branchmarkstar.regionAtom.whatIfDeltas";
-    private static final String REGION_ATOM_CERTIFY_PROPERTY = "branchmarkstar.regionAtom.certify";
-    private static final String REGION_ATOM_CERTIFY_USE_DP_PROPERTY = "branchmarkstar.regionAtom.certify.useDP";
-    /** Top-K boundary cells (by Phase 0 emat gap) to certify. 0 = all cells. */
-    private static final String REGION_ATOM_CERTIFY_TOPK_PROPERTY = "branchmarkstar.regionAtom.certify.topK";
-    private static final String DP_CACHE_ENABLED_PROPERTY = "branchmarkstar.dp.cache";
-    private static final String DP_CACHE_MAX_ENTRIES_PROPERTY = "branchmarkstar.dp.cache.maxEntries";
-    private static final String DP_CACHE_MAX_TABLE_BYTES_PROPERTY = "branchmarkstar.dp.cache.maxTableBytes";
-    private static final String DP_CACHE_MAX_TOTAL_BYTES_PROPERTY = "branchmarkstar.dp.cache.maxTotalBytes";
-    private static final String DP_CACHE_SKIP_IF_M_STATES_PROPERTY = "branchmarkstar.dp.cache.skipIfMStates";
+    private static final String ZERO_EDGE_DIRECT_PROPERTY = "branchdp.dp.zeroEdgeDirect";
+    private static final String ROOT_SPLIT_MAX_FSET_PROPERTY = "branchdp.rootSplit.maxFset";
+    private static final String DRY_RUN_PROPERTY = "branchdp.dp.dryRun";
+    private static final String MUTABLE_POSITIONS_PROPERTY = "branchdp.mutablePositions";
+    private static final String PARALLEL_INTERNAL_PROPERTY = "branchdp.parallel.internal";
+    private static final String PARALLEL_ENUMERATION_PROPERTY = "branchdp.parallel.enumeration";
+    private static final String NUMERIC_AUDIT_PROPERTY = "branchdp.numericAudit";
+    private static final String NUMERIC_AUDIT_INTERVAL_PROPERTY = "branchdp.numericAudit.interval";
+    private static final String TRACE_PROPERTY = "branchdp.trace";
+    private static final String TRACE_ROUNDS_PROPERTY = "branchdp.trace.rounds";
+    private static final String TRACE_CORRECTIONS_PROPERTY = "branchdp.trace.corrections";
+    private static final String CORRECTION_AUDIT_PROPERTY = "branchdp.correctionAudit";
+    private static final String ENERGY_MODE_PROPERTY = "branchdp.energyMode";
+    private static final String SPARSE_PRUNE_THRESHOLD_PROPERTY = "branchdp.sparse.pruneThreshold";
+    private static final String DP_CACHE_ENABLED_PROPERTY = "branchdp.dp.cache";
+    private static final String DP_CACHE_MAX_ENTRIES_PROPERTY = "branchdp.dp.cache.maxEntries";
+    private static final String DP_CACHE_MAX_TABLE_BYTES_PROPERTY = "branchdp.dp.cache.maxTableBytes";
+    private static final String DP_CACHE_MAX_TOTAL_BYTES_PROPERTY = "branchdp.dp.cache.maxTotalBytes";
+    private static final String DP_CACHE_SKIP_IF_M_STATES_PROPERTY = "branchdp.dp.cache.skipIfMStates";
     private static final int DEFAULT_DP_CACHE_MAX_ENTRIES = 20000;
     private static final long DEFAULT_DP_CACHE_MAX_TABLE_BYTES = 256L * 1024L * 1024L;
     private static final long DEFAULT_DP_CACHE_MAX_TOTAL_BYTES = 4L * 1024L * 1024L * 1024L;
     private static final long DEFAULT_DP_CACHE_SKIP_IF_M_STATES = 8_000_000L;
+    private static final int DEFAULT_EXACT_TREEWIDTH_MAX_POSITIONS = 22;
 
     protected enum EdgeSelectionStrategy {
         LAMBDA_STATES,
@@ -221,6 +215,9 @@ public abstract class BranchDpBackend extends MARKStarBound {
     private final double residualBudget;
     private final boolean cutoffKeepConnected;
     private final boolean certifyFullBounds;
+    private final BranchDecomposition.Strategy decompStrategy;
+    private final boolean exactTreewidthDiagnostic;
+    private final int exactTreewidthMaxPositions;
     private final EdgeSelectionStrategy edgeSelectionStrategy;
     private final int edgeLookaheadMaxStates;
     private final int edgeLookaheadMaxPendingEdges;
@@ -239,15 +236,6 @@ public abstract class BranchDpBackend extends MARKStarBound {
     private final EnergyMode energyMode;
     private final boolean useSparsePfunc;
     private final double sparsePruneThreshold;
-    private final boolean regionAtomEnabled;
-    private final boolean regionAtomScoutOnly;
-    private final int regionAtomScoutMaxLeaves;
-    private final int regionAtomScoutTopCells;
-    private final long regionAtomTableMaxJobs;
-    private final double[] regionAtomWhatIfDeltas;
-    private final Set<String> regionAtomCertifyNames;
-    private final boolean regionAtomCertifyUseDP;
-    private final int regionAtomCertifyTopK;
     private final boolean dpCacheEnabled;
     private final int dpCacheMaxEntries;
     private final long dpCacheMaxTableBytes;
@@ -377,18 +365,6 @@ public abstract class BranchDpBackend extends MARKStarBound {
     private final Set<String> minimizedConfs = new HashSet<>();
 
     private int roundCounter = 0;
-
-    // ========== Region-atom table scout (diagnostic, pre-minimization) ==========
-
-    private final List<RegionAtomTable> regionAtomTables = new ArrayList<>();
-    private final Set<String> regionAtomSeenLeafConfs = new HashSet<>();
-    private boolean regionAtomTablesInitialized = false;
-    private boolean regionAtomScoutComplete = false;
-    private boolean regionAtomScoutSummaryPrinted = false;
-    private long regionAtomScoutLeavesSeen = 0;
-    private BigDecimal regionAtomScoutLower = BigDecimal.ZERO;
-    private BigDecimal regionAtomScoutUpper = BigDecimal.ZERO;
-    private BigDecimal regionAtomScoutGap = BigDecimal.ZERO;
 
     private static class EdgeLookaheadResult {
         final BigDecimal childErrorSum;
@@ -572,6 +548,14 @@ public abstract class BranchDpBackend extends MARKStarBound {
                     + "(sparse pfunc is a self-consistent Z over C_sparse, not an approximation of full Z).");
         }
         this.certifyFullBounds = requestedCertify && !useSparsePfunc;
+        String decompStrategyValue = getConfigProperty(DECOMP_STRATEGY_PROPERTY, null);
+        if (decompStrategyValue == null) {
+            decompStrategyValue = getConfigProperty(DECOMP_STRATEGY_SHORT_PROPERTY, null);
+        }
+        this.decompStrategy = BranchDecomposition.Strategy.fromProperty(decompStrategyValue);
+        this.exactTreewidthDiagnostic = getConfigBoolean(EXACT_TREEWIDTH_PROPERTY, false);
+        this.exactTreewidthMaxPositions = Math.max(0,
+                getConfigInteger(EXACT_TREEWIDTH_MAX_POSITIONS_PROPERTY, DEFAULT_EXACT_TREEWIDTH_MAX_POSITIONS));
         this.edgeSelectionStrategy = getEdgeSelectionStrategy();
         this.edgeLookaheadMaxStates = getEdgeLookaheadMaxStates();
         this.edgeLookaheadMaxPendingEdges = getEdgeLookaheadMaxPendingEdges();
@@ -591,19 +575,7 @@ public abstract class BranchDpBackend extends MARKStarBound {
         this.traceCorrectionLimit = Math.max(0,
                 getConfigInteger(TRACE_CORRECTIONS_PROPERTY, 80));
         this.correctionAudit = getConfigBoolean(CORRECTION_AUDIT_PROPERTY, false);
-        this.useHigherOrderCorrections = getConfigBoolean("branchmarkstar.useHigherOrderCorrections", false);
-        this.regionAtomEnabled = getRegionAtomEnabled();
-        this.regionAtomScoutOnly = getRegionAtomScoutOnly();
-        this.regionAtomScoutMaxLeaves = Math.max(1,
-                getConfigInteger(REGION_ATOM_SCOUT_MAX_LEAVES_PROPERTY, 2000));
-        this.regionAtomScoutTopCells = Math.max(1,
-                getConfigInteger(REGION_ATOM_SCOUT_TOP_CELLS_PROPERTY, 12));
-        this.regionAtomTableMaxJobs = Math.max(1L,
-                getConfigLong(REGION_ATOM_TABLE_MAX_JOBS_PROPERTY, 50000000L));
-        this.regionAtomWhatIfDeltas = getRegionAtomWhatIfDeltas();
-        this.regionAtomCertifyNames = getRegionAtomCertifyNames();
-        this.regionAtomCertifyUseDP = getRegionAtomCertifyUseDP();
-        this.regionAtomCertifyTopK = getRegionAtomCertifyTopK();
+        this.useHigherOrderCorrections = getUseHigherOrderCorrections();
         this.dpCacheEnabled = getConfigBoolean(DP_CACHE_ENABLED_PROPERTY, true);
         this.dpCacheMaxEntries = Math.max(0,
                 getConfigInteger(DP_CACHE_MAX_ENTRIES_PROPERTY, DEFAULT_DP_CACHE_MAX_ENTRIES));
@@ -623,6 +595,8 @@ public abstract class BranchDpBackend extends MARKStarBound {
                 + ", energyMode=" + energyMode
                 + ", sparsePruneThreshold=" + String.format("%.6f", sparsePruneThreshold));
         System.out.println(BranchDpConfig.getBackendLogPrefix() + " Edge selection=" + edgeSelectionStrategy
+                + ", decompStrategy=" + decompStrategy
+                + ", exactTreewidthDiagnostic=" + exactTreewidthDiagnostic
                 + ", maxExactLookaheadStates=" + edgeLookaheadMaxStates
                 + ", maxPendingLookaheadEdges=" + edgeLookaheadMaxPendingEdges
                 + ", parallelLookahead=" + edgeLookaheadParallel
@@ -636,14 +610,6 @@ public abstract class BranchDpBackend extends MARKStarBound {
                 + ", dpCacheSkipIfMStates=" + dpCacheSkipIfMStates
                 + ", parallelInternal=" + parallelInternal + " [DEPRECATED]"
                 + ", parallelEnumeration=" + parallelEnumeration + " [DEPRECATED]");
-        if (regionAtomEnabled) {
-            System.out.println(BranchDpConfig.getBackendLogPrefix() + " Region-atom table scout enabled"
-                    + " (regions=" + getConfigProperty(REGION_ATOM_REGIONS_PROPERTY, "(auto)")
-                    + ", scoutOnly=" + regionAtomScoutOnly
-                    + ", maxLeaves=" + regionAtomScoutMaxLeaves
-                    + ", topCells=" + regionAtomScoutTopCells
-                    + ", tableMaxJobs=" + regionAtomTableMaxJobs + ")");
-        }
         logBackendControlOverrides();
         if (trace) {
             System.out.println(BranchDpConfig.getBackendLogPrefix() + " trace enabled"
@@ -661,6 +627,7 @@ public abstract class BranchDpBackend extends MARKStarBound {
         // preferred because it gives a direct sparse-to-full perturbation bound.
         interactionGraph = buildInteractionGraph(rcs);
         printSparseResidualInfo();
+        printExactTreewidthDiagnostic();
 
         // Step 1b: In SPARSE mode, derive the branch-pfunc energy matrices.
         // Cut-edge (rc1, rc2) pairs with |E| > pruneThreshold get +inf (pruned out
@@ -686,7 +653,7 @@ public abstract class BranchDpBackend extends MARKStarBound {
         }
 
         // Step 2: Compute branch decomposition
-        branchDecomposition = new BranchDecomposition(interactionGraph);
+        branchDecomposition = new BranchDecomposition(interactionGraph, decompStrategy);
         branchDecomposition.compute();
         branchwidth = branchDecomposition.getBranchwidth();
 
@@ -791,38 +758,6 @@ public abstract class BranchDpBackend extends MARKStarBound {
 
         // Initialize scorers and root search node
         initSearch(rcs);
-
-        // Initialize region-atom diagnostic tables (Phase 0 emat-only scout).
-        // Runs only when branch decomposition is active and the user opted in
-        // with branchmarkstar.regionAtom.enabled=true. Diagnostic only — does
-        // NOT modify flatSumZ, DP tables, or correctionMatrix.
-        if (regionAtomEnabled) {
-            initRegionAtoms(rcs);
-
-            // DP-level integration: if any tables were certified, apply corrections
-            // to DP table entries and recompute. Must happen AFTER certification
-            // (initRegionAtoms) and AFTER initial DP build (initSearch).
-            if (regionAtomCertifyUseDP && dpTablesReady
-                    && regionAtomTables.stream().anyMatch(t -> t.certified)) {
-                double rtForDP = BoltzmannCalculator.RClassic * BoltzmannCalculator.TClassic;
-                applyRegionAtomToDP(rtForDP);
-                RootedTreeEdge.postOrderComputeFullDP(rootedRoot);
-                // Rebuild root search node with corrected DP bounds
-                DecompSearchNode rootSearchNode = DecompSearchNode.makeRoot(
-                        rootedRootEdge, rcs.getNumPos(), rcs,
-                        gScorerMin, hScorerMin, gScorerRigid, hScorerNegRigid, bc);
-                enhanceWithDPBounds(rootSearchNode);
-                decompQueue.clear();
-                decompQueue.add(rootSearchNode);
-                flatSumZLower = rootSearchNode.subtreeLowerBound;
-                flatSumZUpper = rootSearchNode.subtreeUpperBound;
-                updateBound();
-                System.out.println(BranchDpConfig.getBackendLogPrefix() + " DP tables recomputed after region-atom certification."
-                        + " Root upper=" + String.format("%.4e", flatSumZUpper.doubleValue())
-                        + ", lower=" + String.format("%.4e", flatSumZLower.doubleValue())
-                        + ", epsilon=" + String.format("%.6f", epsilonBound));
-            }
-        }
     }
 
     @Override
@@ -876,6 +811,29 @@ public abstract class BranchDpBackend extends MARKStarBound {
                 + ", per-state Z factor<=10^" + String.format("%.3f", log10Factor)
                 + " (exp(rho/RT)); full-bound inflation="
                 + (certifyFullBounds ? "enabled" : "disabled (forced off in SPARSE mode)"));
+    }
+
+    private void printExactTreewidthDiagnostic() {
+        if (!exactTreewidthDiagnostic) {
+            return;
+        }
+
+        int numPositions = interactionGraph.getNumPositions();
+        if (numPositions > exactTreewidthMaxPositions) {
+            System.out.println(BranchDpConfig.getBackendLogPrefix() + " Exact treewidth diagnostic skipped: positions="
+                    + numPositions + " > maxPositions=" + exactTreewidthMaxPositions + ".");
+            return;
+        }
+
+        ExactTreewidth.Result result = ExactTreewidth.compute(interactionGraph);
+        System.out.println(BranchDpConfig.getBackendLogPrefix() + " Exact treewidth diagnostic:"
+                + " tw=" + result.treewidth
+                + ", branchwidthLowerBound=" + result.branchwidthLowerBound
+                + ", branchwidthUpperBound=" + result.branchwidthUpperBound
+                + ", positions=" + result.numPositions
+                + ", graphEdges=" + result.numEdges
+                + ", density=" + String.format(Locale.ROOT, "%.3f", interactionGraph.getDensity())
+                + ", elapsedMs=" + String.format(Locale.ROOT, "%.2f", result.elapsedMillis()));
     }
 
     /**
@@ -1001,28 +959,8 @@ public abstract class BranchDpBackend extends MARKStarBound {
         return getConfigBoolean(EDGE_LOOKAHEAD_PARALLEL_PROPERTY, true);
     }
 
-    protected boolean getRegionAtomEnabled() {
-        return getConfigBoolean(REGION_ATOM_ENABLED_PROPERTY, false);
-    }
-
-    protected boolean getRegionAtomScoutOnly() {
-        return getConfigBoolean(REGION_ATOM_SCOUT_ONLY_PROPERTY, false);
-    }
-
-    protected double[] getRegionAtomWhatIfDeltas() {
-        return parseDoubleList(getConfigProperty(REGION_ATOM_WHATIF_DELTAS_PROPERTY, "0.1,0.3,0.5"));
-    }
-
-    protected Set<String> getRegionAtomCertifyNames() {
-        return parseRegionAtomCertifyNames(getConfigProperty(REGION_ATOM_CERTIFY_PROPERTY, ""));
-    }
-
-    protected boolean getRegionAtomCertifyUseDP() {
-        return getConfigBoolean(REGION_ATOM_CERTIFY_USE_DP_PROPERTY, false);
-    }
-
-    protected int getRegionAtomCertifyTopK() {
-        return Math.max(0, getConfigInteger(REGION_ATOM_CERTIFY_TOPK_PROPERTY, 0));
+    protected boolean getUseHigherOrderCorrections() {
+        return getConfigBoolean("branchdp.useHigherOrderCorrections", false);
     }
 
     protected void logBackendControlOverrides() {
@@ -1033,133 +971,27 @@ public abstract class BranchDpBackend extends MARKStarBound {
     }
 
     protected String getConfigProperty(String key, String defaultValue) {
-        String value = System.getProperty(key);
-        if (value == null) {
-            value = System.getProperty("osprey." + key);
-        }
-        return value != null ? value : defaultValue;
+        return BranchDpConfig.getBackendProperty(key, defaultValue);
     }
 
     protected int getConfigInteger(String key, int defaultValue) {
-        String value = getConfigProperty(key, null);
-        if (value == null || value.trim().isEmpty()) {
-            return defaultValue;
-        }
-        try {
-            return Integer.parseInt(value.trim());
-        } catch (NumberFormatException e) {
-            warnConfig("Invalid integer", key, value, Integer.toString(defaultValue));
-            return defaultValue;
-        }
+        return BranchDpConfig.getBackendInteger(key, defaultValue, BranchDpConfig.getBackendLogPrefix());
     }
 
     protected long getConfigLong(String key, long defaultValue) {
-        String value = getConfigProperty(key, null);
-        if (value == null || value.trim().isEmpty()) {
-            return defaultValue;
-        }
-        try {
-            return Long.parseLong(value.trim());
-        } catch (NumberFormatException e) {
-            warnConfig("Invalid long", key, value, Long.toString(defaultValue));
-            return defaultValue;
-        }
+        return BranchDpConfig.getBackendLong(key, defaultValue, BranchDpConfig.getBackendLogPrefix());
     }
 
     protected long getConfigBytes(String key, long defaultValue) {
-        String value = getConfigProperty(key, null);
-        if (value == null || value.trim().isEmpty()) {
-            return defaultValue;
-        }
-        try {
-            return parseByteCount(value.trim());
-        } catch (NumberFormatException e) {
-            warnConfig("Invalid byte count", key, value, Long.toString(defaultValue));
-            return defaultValue;
-        }
+        return BranchDpConfig.getBackendBytes(key, defaultValue, BranchDpConfig.getBackendLogPrefix());
     }
 
     protected double getConfigDouble(String key, double defaultValue) {
-        String value = getConfigProperty(key, null);
-        if (value == null || value.trim().isEmpty()) {
-            return defaultValue;
-        }
-        try {
-            return Double.parseDouble(value.trim());
-        } catch (NumberFormatException e) {
-            warnConfig("Invalid double", key, value, Double.toString(defaultValue));
-            return defaultValue;
-        }
+        return BranchDpConfig.getBackendDouble(key, defaultValue, BranchDpConfig.getBackendLogPrefix());
     }
 
     protected boolean getConfigBoolean(String key, boolean defaultValue) {
-        String value = getConfigProperty(key, null);
-        return value == null ? defaultValue : Boolean.parseBoolean(value);
-    }
-
-    private static long parseByteCount(String value) {
-        String normalized = value.trim().toLowerCase(Locale.ROOT).replace("_", "");
-        long multiplier = 1L;
-        if (normalized.endsWith("kib")) {
-            multiplier = 1024L;
-            normalized = normalized.substring(0, normalized.length() - 3);
-        } else if (normalized.endsWith("kb") || normalized.endsWith("k")) {
-            multiplier = 1024L;
-            normalized = normalized.replaceAll("kb?$", "");
-        } else if (normalized.endsWith("mib")) {
-            multiplier = 1024L * 1024L;
-            normalized = normalized.substring(0, normalized.length() - 3);
-        } else if (normalized.endsWith("mb") || normalized.endsWith("m")) {
-            multiplier = 1024L * 1024L;
-            normalized = normalized.replaceAll("mb?$", "");
-        } else if (normalized.endsWith("gib")) {
-            multiplier = 1024L * 1024L * 1024L;
-            normalized = normalized.substring(0, normalized.length() - 3);
-        } else if (normalized.endsWith("gb") || normalized.endsWith("g")) {
-            multiplier = 1024L * 1024L * 1024L;
-            normalized = normalized.replaceAll("gb?$", "");
-        } else if (normalized.endsWith("tib")) {
-            multiplier = 1024L * 1024L * 1024L * 1024L;
-            normalized = normalized.substring(0, normalized.length() - 3);
-        } else if (normalized.endsWith("tb") || normalized.endsWith("t")) {
-            multiplier = 1024L * 1024L * 1024L * 1024L;
-            normalized = normalized.replaceAll("tb?$", "");
-        } else if (normalized.endsWith("b")) {
-            normalized = normalized.substring(0, normalized.length() - 1);
-        }
-
-        double amount = Double.parseDouble(normalized.trim());
-        if (amount < 0 || amount > Long.MAX_VALUE / (double) multiplier) {
-            throw new NumberFormatException(value);
-        }
-        return (long) (amount * multiplier);
-    }
-
-    private static void warnConfig(String kind, String key, String value, String defaultValue) {
-        System.err.println(BranchDpConfig.getBackendLogPrefix() + " " + kind + " for '" + key
-                + "': '" + value + "', using " + defaultValue + ".");
-    }
-
-    private static double[] parseDoubleList(String value) {
-        if (value == null || value.trim().isEmpty()) {
-            return new double[0];
-        }
-        String[] fields = value.split(",");
-        List<Double> parsed = new ArrayList<>();
-        for (String field : fields) {
-            String trimmed = field.trim();
-            if (trimmed.isEmpty()) continue;
-            try {
-                parsed.add(Double.parseDouble(trimmed));
-            } catch (NumberFormatException e) {
-                System.err.println(BranchDpConfig.getBackendLogPrefix() + " Invalid double in list: '" + trimmed + "', skipping.");
-            }
-        }
-        double[] result = new double[parsed.size()];
-        for (int i = 0; i < parsed.size(); i++) {
-            result[i] = parsed.get(i);
-        }
-        return result;
+        return BranchDpConfig.getBackendBoolean(key, defaultValue);
     }
 
     private RootingCandidate selectRooting(RCs rcs) {
@@ -1394,1101 +1226,6 @@ public abstract class BranchDpBackend extends MARKStarBound {
         return sb.toString();
     }
 
-    private static class RegionAtomSpec {
-        final String name;
-        final int[] region;
-        final int[] boundary;
-        final BigInteger boundaryCells;
-        final BigInteger localStatesPerBoundary;
-        final BigInteger totalJobs;
-
-        RegionAtomSpec(String name, int[] region, int[] boundary, RCs rcs) {
-            this.name = name;
-            this.region = region;
-            this.boundary = boundary;
-            this.boundaryCells = countStates(boundary, rcs);
-            this.localStatesPerBoundary = countStates(region, rcs);
-            this.totalJobs = boundaryCells.multiply(localStatesPerBoundary);
-        }
-    }
-
-    private static class RegionAtomCell {
-        int count = 0;
-        BigDecimal lower = BigDecimal.ZERO;
-        BigDecimal upper = BigDecimal.ZERO;
-        BigDecimal gap = BigDecimal.ZERO;
-        double preGapSum = 0.0;
-        double preGapMax = Double.NEGATIVE_INFINITY;
-
-        void add(BigDecimal lowerZ, BigDecimal upperZ, double preGap) {
-            count++;
-            lower = lower.add(lowerZ);
-            upper = upper.add(upperZ);
-            BigDecimal cellGap = upperZ.subtract(lowerZ);
-            if (cellGap.signum() > 0) {
-                gap = gap.add(cellGap);
-            }
-            preGapSum += preGap;
-            preGapMax = Math.max(preGapMax, preGap);
-        }
-
-        double meanPreGap() {
-            return count == 0 ? 0.0 : preGapSum / count;
-        }
-    }
-
-    /**
-     * Per-boundary certified table cell:
-     *   bKey -> (L_R(b), U_R(b)) with L_R = sum_{x_R} exp(-E^+_rigid/RT) (pre-min lower bound)
-     *           and U_R = sum_{x_R} exp(-E_R_certified(x_R; b)/RT) (CCD-min upper bound)
-     *
-     * Filled by {@link #certifyRegionAtomTable}. Consumed by
-     * {@link #lookupCertifiedBoundary} when the DP factor replacement is active.
-     */
-    private static class CertifiedBoundaryCell {
-        final String bKey;
-        final int[] bAssignment;
-        final int totalLocalStates;
-        BigDecimal lowerZ = BigDecimal.ZERO;
-        BigDecimal upperZ = BigDecimal.ZERO;
-        int localStatesDone = 0;
-        int localStatesPruned = 0;
-        double minCertEnergy = Double.POSITIVE_INFINITY;
-        double maxCertEnergy = Double.NEGATIVE_INFINITY;
-        /** Per local assignment x_R: CCD-min owned energy E_R_cert(x_R; b). Used by
-         *  the Phase 4 per-node bound tightening to apply the certified value to the
-         *  EXACT (b, x_R) cell, not a summary. */
-        final Map<String, Double> certifiedEnergyPerLocal = new java.util.concurrent.ConcurrentHashMap<>();
-
-        CertifiedBoundaryCell(String bKey, int[] bAssignment, int totalLocalStates) {
-            this.bKey = bKey;
-            this.bAssignment = bAssignment;
-            this.totalLocalStates = totalLocalStates;
-        }
-
-        synchronized void addLocal(String localKey, BigDecimal lower, BigDecimal upper, double eCert) {
-            lowerZ = lowerZ.add(lower);
-            upperZ = upperZ.add(upper);
-            localStatesDone++;
-            if (eCert < minCertEnergy) minCertEnergy = eCert;
-            if (eCert > maxCertEnergy) maxCertEnergy = eCert;
-            certifiedEnergyPerLocal.put(localKey, eCert);
-        }
-
-        synchronized void markPruned() {
-            localStatesPruned++;
-        }
-    }
-
-    private static class RegionAtomTable {
-        final RegionAtomSpec spec;
-        final Map<String, RegionAtomCell> boundaryCells = new HashMap<>();
-        final Map<String, RegionAtomCell> localCells = new HashMap<>();
-        BigDecimal localLower = BigDecimal.ZERO;
-        BigDecimal localUpper = BigDecimal.ZERO;
-        BigDecimal localGap = BigDecimal.ZERO;
-        int localBoundaryCellsComputed = 0;
-        boolean localTableComputed = false;
-        boolean localTableSkipped = false;
-
-        // ===== Phase 3 certified table =====
-        final Map<String, CertifiedBoundaryCell> certifiedCells = new java.util.concurrent.ConcurrentHashMap<>();
-        boolean certified = false;
-        BigDecimal certifiedSumLower = BigDecimal.ZERO;
-        BigDecimal certifiedSumUpper = BigDecimal.ZERO;
-        BigDecimal certifiedSumGap = BigDecimal.ZERO;
-
-        RegionAtomTable(RegionAtomSpec spec) {
-            this.spec = spec;
-        }
-
-        void recordLeaf(String boundaryKey, String localKey,
-                        BigDecimal lowerZ, BigDecimal upperZ, double preGap) {
-            boundaryCells.computeIfAbsent(boundaryKey, k -> new RegionAtomCell())
-                    .add(lowerZ, upperZ, preGap);
-            localCells.computeIfAbsent(boundaryKey + "|" + localKey, k -> new RegionAtomCell())
-                    .add(lowerZ, upperZ, preGap);
-        }
-    }
-
-    // ========== Region-atom: parse + boundary + Phase 0 emat-only scout ==========
-
-    /**
-     * Initialize region-atom diagnostics: parse atom specs from the user property,
-     * compute the boundary B = N_G(R) \ R against the active interaction graph,
-     * and (when affordable) compute the emat-only pre-min L_R(b) / U_R(b) tables.
-     *
-     * This is Phase 0 of the scout described in
-     * {@code slurm/analysis/2026-05-20-region-atom-table-plan.md}. It DOES NOT
-     * modify flatSumZ, DP tables, or correctionMatrix — bounds are unaffected.
-     */
-    private void initRegionAtoms(RCs rcs) {
-        if (regionAtomTablesInitialized) return;
-        regionAtomTablesInitialized = true;
-
-        String regionsStr = getConfigProperty(REGION_ATOM_REGIONS_PROPERTY, "");
-        if (regionsStr == null || regionsStr.trim().isEmpty()) {
-            System.out.println("[REGION_ATOM] init skipped: property "
-                    + REGION_ATOM_REGIONS_PROPERTY + " is empty");
-            return;
-        }
-
-        List<int[]> regions = parseRegionAtomRegions(regionsStr, rcs);
-        if (regions.isEmpty()) {
-            System.out.println("[REGION_ATOM] init skipped: no valid regions parsed from '"
-                    + regionsStr + "'");
-            return;
-        }
-
-        System.out.println("[REGION_ATOM] init: parsed " + regions.size() + " region(s); "
-                + "graph=" + cutoffStrategy + ", energyMode=" + energyMode
-                + ", numPos=" + rcs.getNumPos() + ", graphEdges=" + interactionGraph.getNumEdges()
-                + ", tableMaxJobs=" + regionAtomTableMaxJobs);
-
-        for (int[] region : regions) {
-            int[] boundary = computeBoundary(region, interactionGraph);
-            String name = formatPositions(region);
-            RegionAtomSpec spec = new RegionAtomSpec(name, region, boundary, rcs);
-            RegionAtomTable table = new RegionAtomTable(spec);
-            regionAtomTables.add(table);
-
-            System.out.println("[REGION_ATOM_SPEC] name=" + name
-                    + " R=" + formatPositions(region)
-                    + " B=" + formatPositions(boundary)
-                    + " |R|=" + region.length
-                    + " |B|=" + boundary.length
-                    + " boundaryCells=" + spec.boundaryCells
-                    + " localStates=" + spec.localStatesPerBoundary
-                    + " totalJobs=" + spec.totalJobs);
-
-            BigInteger maxJobs = BigInteger.valueOf(regionAtomTableMaxJobs);
-            if (spec.totalJobs.compareTo(maxJobs) > 0) {
-                table.localTableSkipped = true;
-                System.out.println("[REGION_ATOM_TABLE] name=" + name
-                        + " status=skipped reason=totalJobs>" + regionAtomTableMaxJobs);
-                continue;
-            }
-
-            try {
-                computeEmatOnlyTable(table, rcs);
-            } catch (RuntimeException e) {
-                table.localTableSkipped = true;
-                System.err.println("[REGION_ATOM_TABLE] name=" + name
-                        + " status=skipped reason=exception:" + e.getMessage());
-            }
-
-            // Phase 3: certified table for atoms named in branchmarkstar.regionAtom.certify.
-            // Runs the deterministic local CCD oracle to tighten U_R(b). Requires
-            // minimizingEcalc to be non-null for current branch-DP backends.
-            if (regionAtomCertifyNames.contains(name)) {
-                if (table.localTableSkipped) {
-                    System.out.println("[REGION_ATOM_CERT] name=" + name
-                            + " status=skipped reason=emat-table skipped (totalJobs too large)");
-                } else {
-                    try {
-                        certifyRegionAtomTable(table, rcs);
-                    } catch (RuntimeException e) {
-                        System.err.println("[REGION_ATOM_CERT] name=" + name
-                                + " status=failed reason=exception:" + e.getMessage());
-                        e.printStackTrace(System.err);
-                    }
-                }
-            }
-        }
-
-        // Phase 4 hook (regionAtomCertifyUseDP) is wired into enhanceWithDPBounds
-        // callsites via tightenNodeWithCertifiedTables, so every search node that
-        // covers an atom's R+B gets its upper bound tightened. No one-shot init
-        // call is needed here — the hook runs lazily as nodes are created.
-    }
-
-    /** Parse "7;6,7,8;0,2,6,7,8"-style property into a list of sorted+deduped position arrays. */
-    private List<int[]> parseRegionAtomRegions(String spec, RCs rcs) {
-        List<int[]> out = new ArrayList<>();
-        int numPos = rcs.getNumPos();
-        String[] regionTokens = spec.split(";");
-        for (String token : regionTokens) {
-            String tok = token.trim();
-            if (tok.isEmpty()) continue;
-            String[] posTokens = tok.split(",");
-            TreeSet<Integer> set = new TreeSet<>();
-            boolean ok = true;
-            for (String pt : posTokens) {
-                String p = pt.trim();
-                if (p.isEmpty()) continue;
-                try {
-                    int pos = Integer.parseInt(p);
-                    if (pos < 0 || pos >= numPos) {
-                        System.err.println("[REGION_ATOM] WARN region '" + tok
-                                + "' contains out-of-range position " + pos
-                                + " (numPos=" + numPos + "); skipping region");
-                        ok = false;
-                        break;
-                    }
-                    set.add(pos);
-                } catch (NumberFormatException e) {
-                    System.err.println("[REGION_ATOM] WARN region '" + tok
-                            + "' contains non-integer token '" + p + "'; skipping region");
-                    ok = false;
-                    break;
-                }
-            }
-            if (!ok || set.isEmpty()) continue;
-            int[] arr = new int[set.size()];
-            int i = 0;
-            for (Integer v : set) arr[i++] = v;
-            out.add(arr);
-        }
-        return out;
-    }
-
-    /** B = N_G(R) \ R against the active interaction graph (cut-filtered in SPARSE mode). */
-    private int[] computeBoundary(int[] region, InteractionGraph graph) {
-        Set<Integer> regionSet = new HashSet<>();
-        for (int r : region) regionSet.add(r);
-        TreeSet<Integer> boundary = new TreeSet<>();
-        for (int r : region) {
-            Set<Integer> neighbors = graph.getNeighbors(r);
-            if (neighbors == null) continue;
-            for (int n : neighbors) {
-                if (!regionSet.contains(n)) boundary.add(n);
-            }
-        }
-        int[] arr = new int[boundary.size()];
-        int i = 0;
-        for (Integer v : boundary) arr[i++] = v;
-        return arr;
-    }
-
-    private static String formatPositions(int[] positions) {
-        if (positions.length == 0) return "[]";
-        StringBuilder sb = new StringBuilder("[");
-        for (int i = 0; i < positions.length; i++) {
-            if (i > 0) sb.append(",");
-            sb.append(positions[i]);
-        }
-        sb.append("]");
-        return sb.toString();
-    }
-
-    private static String makeAssignmentKey(int[] positions, int[] rcAtPos) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < positions.length; i++) {
-            if (i > 0) sb.append(',');
-            sb.append(rcAtPos[i]);
-        }
-        return sb.toString();
-    }
-
-    /**
-     * Owned local energy for a region atom under boundary assignment b and
-     * local assignment x_R. Owns ONLY:
-     *   - one-body terms in R
-     *   - R-R pair terms
-     *   - R-B crossing pair terms
-     * Excludes: one-body in B, B-B pairs, outside-only, B-to-outside terms,
-     * and emat constant term.
-     */
-    private static double ownedLocalEnergy(EnergyMatrix emat,
-                                           int[] region, int[] boundary,
-                                           int[] xR, int[] xB) {
-        double e = 0.0;
-        for (int i = 0; i < region.length; i++) {
-            int posI = region[i];
-            int rcI = xR[i];
-            e += emat.getOneBody(posI, rcI);
-            // R-R
-            for (int j = i + 1; j < region.length; j++) {
-                int posJ = region[j];
-                int rcJ = xR[j];
-                e += emat.getPairwise(posI, rcI, posJ, rcJ);
-            }
-            // R-B crossings
-            for (int j = 0; j < boundary.length; j++) {
-                int posJ = boundary[j];
-                int rcJ = xB[j];
-                e += emat.getPairwise(posI, rcI, posJ, rcJ);
-            }
-        }
-        return e;
-    }
-
-    /**
-     * Phase 0 emat-only pre-min table: for each boundary assignment b enumerate
-     * local x_R and accumulate
-     *   L_R^pre(b) = sum_{x_R} exp(-E^+_R(x_R; b) / RT)   [rigid emat]
-     *   U_R^pre(b) = sum_{x_R} exp(-E^-_R(x_R; b) / RT)   [minimizing emat]
-     * Caches per-boundary aggregates in table.boundaryCells, totals in
-     * table.localLower / localUpper / localGap. Records top per-(b,x_R) cells in
-     * table.localCells to expose the highest pre-min gap slices.
-     *
-     * NOTE: This is a deterministic emat-level sandwich, NOT a certified table.
-     */
-    private void computeEmatOnlyTable(RegionAtomTable table, RCs rcs) {
-        int[] region = table.spec.region;
-        int[] boundary = table.spec.boundary;
-        int[] xR = new int[region.length];
-        int[] xB = new int[boundary.length];
-
-        long t0 = System.currentTimeMillis();
-        int[] bCellsContainer = new int[]{0};
-        // Outer enumeration over boundary; for each boundary cell, inner enumeration over R.
-        enumerateAssignments(boundary, 0, xB, rcs, () -> {
-            String bKey = makeAssignmentKey(boundary, xB);
-            // Track the largest pre-gap local cell within this boundary for [REGION_ATOM_LOCAL]
-            String[] bestLocalKey = new String[1];
-            double[] bestLocalPreGap = new double[]{Double.NEGATIVE_INFINITY};
-            BigDecimal[] bestLocalGap = new BigDecimal[]{BigDecimal.ZERO};
-            BigDecimal[] bestLocalLower = new BigDecimal[]{BigDecimal.ZERO};
-            BigDecimal[] bestLocalUpper = new BigDecimal[]{BigDecimal.ZERO};
-
-            enumerateAssignments(region, 0, xR, rcs, () -> {
-                double ePlus = ownedLocalEnergy(branchRigidEmat, region, boundary, xR, xB);
-                double eMinus = ownedLocalEnergy(branchMinimizingEmat, region, boundary, xR, xB);
-                if (!Double.isFinite(ePlus) || !Double.isFinite(eMinus)) {
-                    // +inf appears when sparse pruning marked this combination as pruned;
-                    // skip — it is outside C_sparse.
-                    return;
-                }
-                BigDecimal bL = bc.calc(ePlus);   // higher energy -> lower Z bound
-                BigDecimal bU = bc.calc(eMinus);  // lower energy -> upper Z bound
-                table.localLower = table.localLower.add(bL);
-                table.localUpper = table.localUpper.add(bU);
-                BigDecimal gap = bU.subtract(bL);
-                if (gap.signum() > 0) {
-                    table.localGap = table.localGap.add(gap);
-                }
-                // Per-cell (boundary) accumulator
-                RegionAtomCell cell = table.boundaryCells.computeIfAbsent(bKey,
-                        k -> new RegionAtomCell());
-                cell.add(bL, bU, ePlus - eMinus);
-
-                // Track largest-gap local within this boundary cell
-                BigDecimal localGap = gap.signum() > 0 ? gap : BigDecimal.ZERO;
-                if (bestLocalKey[0] == null || localGap.compareTo(bestLocalGap[0]) > 0) {
-                    bestLocalKey[0] = makeAssignmentKey(region, xR);
-                    bestLocalPreGap[0] = ePlus - eMinus;
-                    bestLocalGap[0] = localGap;
-                    bestLocalLower[0] = bL;
-                    bestLocalUpper[0] = bU;
-                }
-            });
-
-            // Save the best per-boundary local cell so we can later print [REGION_ATOM_LOCAL]
-            if (bestLocalKey[0] != null) {
-                RegionAtomCell lc = table.localCells.computeIfAbsent(bKey + "|" + bestLocalKey[0],
-                        k -> new RegionAtomCell());
-                lc.add(bestLocalLower[0], bestLocalUpper[0], bestLocalPreGap[0]);
-            }
-            bCellsContainer[0]++;
-        });
-        table.localBoundaryCellsComputed = bCellsContainer[0];
-        table.localTableComputed = true;
-        long t1 = System.currentTimeMillis();
-
-        System.out.println("[REGION_ATOM_TABLE] name=" + table.spec.name
-                + " status=computed"
-                + " boundaryCells=" + table.localBoundaryCellsComputed
-                + " sumL=" + formatBigExp(table.localLower)
-                + " sumU=" + formatBigExp(table.localUpper)
-                + " sumGap=" + formatBigExp(table.localGap)
-                + " timeMs=" + (t1 - t0));
-
-        // Top-K boundary cells by gap
-        List<Map.Entry<String, RegionAtomCell>> sorted = new ArrayList<>(table.boundaryCells.entrySet());
-        sorted.sort((a, b) -> b.getValue().gap.compareTo(a.getValue().gap));
-        int topK = Math.min(regionAtomScoutTopCells, sorted.size());
-        for (int i = 0; i < topK; i++) {
-            Map.Entry<String, RegionAtomCell> e = sorted.get(i);
-            RegionAtomCell cell = e.getValue();
-            System.out.println("[REGION_ATOM_BOUNDARY] name=" + table.spec.name
-                    + " phase=ematPre"
-                    + " rank=" + (i + 1)
-                    + " bKey=" + e.getKey()
-                    + " localStates=" + cell.count
-                    + " L=" + formatBigExp(cell.lower)
-                    + " U=" + formatBigExp(cell.upper)
-                    + " gap=" + formatBigExp(cell.gap)
-                    + " meanPreGap=" + String.format("%.4f", cell.meanPreGap())
-                    + " maxPreGap=" + (cell.preGapMax == Double.NEGATIVE_INFINITY
-                            ? "-inf" : String.format("%.4f", cell.preGapMax)));
-        }
-        // Top per-boundary best local slice (already filtered to one per boundary)
-        List<Map.Entry<String, RegionAtomCell>> sortedLocal = new ArrayList<>(table.localCells.entrySet());
-        sortedLocal.sort((a, b) -> b.getValue().gap.compareTo(a.getValue().gap));
-        int topL = Math.min(regionAtomScoutTopCells, sortedLocal.size());
-        for (int i = 0; i < topL; i++) {
-            Map.Entry<String, RegionAtomCell> e = sortedLocal.get(i);
-            RegionAtomCell cell = e.getValue();
-            System.out.println("[REGION_ATOM_LOCAL] name=" + table.spec.name
-                    + " phase=ematPre"
-                    + " rank=" + (i + 1)
-                    + " key=" + e.getKey()
-                    + " L=" + formatBigExp(cell.lower)
-                    + " U=" + formatBigExp(cell.upper)
-                    + " gap=" + formatBigExp(cell.gap)
-                    + " preGap=" + String.format("%.4f", cell.preGapMax));
-        }
-    }
-
-    private interface AssignmentSink { void visit(); }
-
-    /** Recursive enumeration of RC assignments over {@code positions}; writes into {@code assign}. */
-    private void enumerateAssignments(int[] positions, int idx, int[] assign, RCs rcs,
-                                      AssignmentSink sink) {
-        if (positions.length == 0) {
-            sink.visit();
-            return;
-        }
-        if (idx == positions.length) {
-            sink.visit();
-            return;
-        }
-        int pos = positions[idx];
-        int[] rcList = rcs.get(pos);
-        for (int r = 0; r < rcList.length; r++) {
-            assign[idx] = rcList[r];
-            enumerateAssignments(positions, idx + 1, assign, rcs, sink);
-        }
-    }
-
-    // ========== Region-atom: Phase 1 queue scout (record leaf data) ==========
-
-    /**
-     * Record a leaf's current emat-level Z bounds and preGap into every active
-     * region-atom table, keyed by the leaf's (boundary, local) RC assignment.
-     * Idempotent per leaf conformation (uses {@link #regionAtomSeenLeafConfs}).
-     *
-     * Diagnostic only: does NOT modify the leaf, flatSumZ, queue, or DP tables.
-     */
-    private void recordScoutLeaf(DecompSearchNode leaf) {
-        if (!regionAtomEnabled || regionAtomScoutComplete) return;
-        if (leaf == null || leaf.isAggregate) return;
-        if (!leaf.isLeaf() || leaf.minimized) return;
-        int[] conf = leaf.partialConf;
-        // Require fully assigned leaf (regular branch-DP leaves satisfy this).
-        for (int i = 0; i < conf.length; i++) {
-            if (conf[i] < 0) return;
-        }
-        String confKey = SimpleConfSpace.formatConfRCs(conf);
-        if (!regionAtomSeenLeafConfs.add(confKey)) return;
-
-        double eRigid = computeFullConfPairwiseEnergy(conf, branchRigidEmat);
-        double eMin = computeFullConfPairwiseEnergy(conf, branchMinimizingEmat);
-        if (!Double.isFinite(eRigid) || !Double.isFinite(eMin)) {
-            // Conformations outside C_sparse should already be pruned at A*; guard anyway.
-            return;
-        }
-        double preGap = eRigid - eMin;
-        BigDecimal lowerZ = leaf.subtreeLowerBound;
-        BigDecimal upperZ = leaf.subtreeUpperBound;
-
-        for (RegionAtomTable table : regionAtomTables) {
-            int[] region = table.spec.region;
-            int[] boundary = table.spec.boundary;
-            int[] xR = new int[region.length];
-            int[] xB = new int[boundary.length];
-            for (int i = 0; i < region.length; i++) xR[i] = conf[region[i]];
-            for (int i = 0; i < boundary.length; i++) xB[i] = conf[boundary[i]];
-            String bKey = makeAssignmentKey(boundary, xB);
-            String lKey = makeAssignmentKey(region, xR);
-            // Use suffix "@queue" on keys so they do not collide with Phase 0 emat-only cells.
-            String bKeyQ = "queue|" + bKey;
-            String lKeyQ = "queue|" + lKey;
-            table.recordLeaf(bKeyQ, lKeyQ, lowerZ, upperZ, preGap);
-        }
-
-        regionAtomScoutLeavesSeen++;
-        regionAtomScoutLower = regionAtomScoutLower.add(lowerZ);
-        regionAtomScoutUpper = regionAtomScoutUpper.add(upperZ);
-        BigDecimal gap = upperZ.subtract(lowerZ);
-        if (gap.signum() > 0) regionAtomScoutGap = regionAtomScoutGap.add(gap);
-
-        if (regionAtomScoutLeavesSeen >= regionAtomScoutMaxLeaves) {
-            regionAtomScoutComplete = true;
-        }
-    }
-
-    /**
-     * Print Phase 1 queue-scout summary and Phase 2 what-if epsilon-drop projections.
-     * Called once from {@link #compute(int)} after the search loop terminates
-     * (normal completion or scoutOnly early-exit).
-     */
-    private void printRegionAtomSummary() {
-        if (!regionAtomEnabled || regionAtomScoutSummaryPrinted) return;
-        regionAtomScoutSummaryPrinted = true;
-
-        BigDecimal zUpper = flatSumZUpper.signum() > 0 ? flatSumZUpper : BigDecimal.ONE;
-        double epsBefore = computeEpsilon(flatSumZLower, flatSumZUpper);
-
-        System.out.println("[REGION_ATOM_SCOUT] state=" + stateName
-                + " leavesSeen=" + regionAtomScoutLeavesSeen
-                + " maxLeaves=" + regionAtomScoutMaxLeaves
-                + " sampledZLower=" + formatBigExp(regionAtomScoutLower)
-                + " sampledZUpper=" + formatBigExp(regionAtomScoutUpper)
-                + " sampledZGap=" + formatBigExp(regionAtomScoutGap)
-                + " globalZLower=" + formatBigExp(flatSumZLower)
-                + " globalZUpper=" + formatBigExp(flatSumZUpper)
-                + " epsilon=" + String.format("%.6f", epsBefore));
-
-        // Phase 4 DP-replacement stats (no-op when regionAtomCertifyUseDP=false).
-        long certifiedTables = regionAtomTables.stream().filter(t -> t.certified).count();
-        if (certifiedTables > 0) {
-            System.out.println("[REGION_ATOM_DP] state=" + stateName
-                    + " certifyUseDP=" + regionAtomCertifyUseDP
-                    + " certifiedTables=" + certifiedTables
-                    + " applied=" + regionAtomDPApplied
-                    + " skippedPartial=" + regionAtomDPSkippedPartial
-                    + " missingBoundary=" + regionAtomDPMissingBoundary
-                    + " missingLocal=" + regionAtomDPMissingLocal);
-        }
-
-        for (RegionAtomTable table : regionAtomTables) {
-            // Queue-scout boundary cells (suffix "queue|" key)
-            List<Map.Entry<String, RegionAtomCell>> queueCells = new ArrayList<>();
-            BigDecimal tableQueueGap = BigDecimal.ZERO;
-            int tableQueueLeaves = 0;
-            for (Map.Entry<String, RegionAtomCell> e : table.boundaryCells.entrySet()) {
-                if (!e.getKey().startsWith("queue|")) continue;
-                queueCells.add(e);
-                tableQueueGap = tableQueueGap.add(e.getValue().gap);
-                tableQueueLeaves += e.getValue().count;
-            }
-            queueCells.sort((a, b) -> b.getValue().gap.compareTo(a.getValue().gap));
-
-            System.out.println("[REGION_ATOM_SCOUT] name=" + table.spec.name
-                    + " phase=queue"
-                    + " boundaryCells=" + queueCells.size()
-                    + " leaves=" + tableQueueLeaves
-                    + " sumQueueGap=" + formatBigExp(tableQueueGap)
-                    + " ematPreGap=" + formatBigExp(table.localGap)
-                    + " ematSkipped=" + table.localTableSkipped);
-
-            int topK = Math.min(regionAtomScoutTopCells, queueCells.size());
-            for (int i = 0; i < topK; i++) {
-                Map.Entry<String, RegionAtomCell> e = queueCells.get(i);
-                RegionAtomCell cell = e.getValue();
-                System.out.println("[REGION_ATOM_BOUNDARY] name=" + table.spec.name
-                        + " phase=queue"
-                        + " rank=" + (i + 1)
-                        + " bKey=" + e.getKey().substring("queue|".length())
-                        + " leaves=" + cell.count
-                        + " L=" + formatBigExp(cell.lower)
-                        + " U=" + formatBigExp(cell.upper)
-                        + " gap=" + formatBigExp(cell.gap)
-                        + " meanPreGap=" + String.format("%.4f", cell.meanPreGap())
-                        + " maxPreGap=" + (cell.preGapMax == Double.NEGATIVE_INFINITY
-                                ? "-inf" : String.format("%.4f", cell.preGapMax)));
-            }
-
-            // Phase 2 what-if: simulate per-cell upper shrink by factor exp(-delta/RT).
-            // We model each boundary cell as "if we certified this cell and shrank U by
-            // factor f = exp(-delta/RT)" and report the resulting epsilon and jobs/drop ratio.
-            // jobs = sum of (count of x_R observations) on this cell — used for jobs/drop ratio
-            // approximation when comparing atoms.
-            if (regionAtomWhatIfDeltas.length == 0 || queueCells.isEmpty()) continue;
-            for (double delta : regionAtomWhatIfDeltas) {
-                double rt = BoltzmannCalculator.RClassic * BoltzmannCalculator.TClassic;
-                double factor = Math.exp(-delta / rt);  // shrink U by this factor
-                BigDecimal bigFactor = BigDecimal.valueOf(factor);
-
-                // Apply shrink to the top topK boundary cells; cap the total shrink to
-                // the queue-sampled upper mass attributable to those cells.
-                BigDecimal upperDrop = BigDecimal.ZERO;
-                BigDecimal lowerLift = BigDecimal.ZERO;
-                int jobs = 0;
-                int cellsUsed = Math.min(topK, queueCells.size());
-                for (int i = 0; i < cellsUsed; i++) {
-                    RegionAtomCell cell = queueCells.get(i).getValue();
-                    BigDecimal newU = cell.upper.multiply(bigFactor);
-                    BigDecimal newL = cell.lower; // lower stays in this model
-                    if (newU.compareTo(cell.lower) < 0) newU = cell.lower;
-                    upperDrop = upperDrop.add(cell.upper.subtract(newU));
-                    lowerLift = lowerLift.add(newL.subtract(cell.lower));
-                    jobs += cell.count;
-                }
-                BigDecimal newZUpper = flatSumZUpper.subtract(upperDrop);
-                BigDecimal newZLower = flatSumZLower.add(lowerLift);
-                if (newZUpper.signum() <= 0) newZUpper = BigDecimal.ONE;
-                double epsAfter = computeEpsilon(newZLower, newZUpper);
-                double epsDrop = epsBefore - epsAfter;
-                double dropPerJob = jobs > 0 ? epsDrop / jobs : 0.0;
-                BigDecimal sharedGap = upperDrop;
-                double shareOfQueueGap = tableQueueGap.signum() > 0
-                        ? MathTools.bigDivide(sharedGap, tableQueueGap, PartitionFunction.decimalPrecision).doubleValue()
-                        : 0.0;
-                System.out.println("[REGION_ATOM_WHATIF] name=" + table.spec.name
-                        + " delta=" + String.format("%.4f", delta)
-                        + " shrinkFactor=" + String.format("%.4e", factor)
-                        + " topCells=" + cellsUsed
-                        + " jobs=" + jobs
-                        + " upperDrop=" + formatBigExp(upperDrop)
-                        + " lowerLift=" + formatBigExp(lowerLift)
-                        + " epsBefore=" + String.format("%.6f", epsBefore)
-                        + " epsAfter=" + String.format("%.6f", epsAfter)
-                        + " epsDrop=" + String.format("%.6f", epsDrop)
-                        + " epsDropPerJob=" + String.format("%.3e", dropPerJob)
-                        + " shareOfQueueGap=" + String.format("%.4f", shareOfQueueGap));
-            }
-        }
-    }
-
-    // ========== Region-atom: Phase 3 certified CPU oracle ==========
-
-    /** Parse "7;6,7,8;0,2,6,7,8" into the matching {@code formatPositions} names. */
-    private static Set<String> parseRegionAtomCertifyNames(String spec) {
-        Set<String> out = new HashSet<>();
-        if (spec == null || spec.trim().isEmpty()) return out;
-        for (String token : spec.split(";")) {
-            String tok = token.trim();
-            if (tok.isEmpty()) continue;
-            // Normalize by sorting the comma-separated positions so user can pass
-            // any order; the canonical name uses ascending order.
-            String[] parts = tok.split(",");
-            TreeSet<Integer> sorted = new TreeSet<>();
-            boolean ok = true;
-            for (String p : parts) {
-                try {
-                    sorted.add(Integer.parseInt(p.trim()));
-                } catch (NumberFormatException e) {
-                    ok = false;
-                    System.err.println("[REGION_ATOM] WARN certify name '" + tok
-                            + "' contains non-integer '" + p + "'; ignoring");
-                    break;
-                }
-            }
-            if (!ok || sorted.isEmpty()) continue;
-            int[] arr = sorted.stream().mapToInt(Integer::intValue).toArray();
-            out.add(formatPositions(arr));
-        }
-        return out;
-    }
-
-    /**
-     * Phase 3 certified table: for each (b, x_R) call the CCD energy oracle on the
-     * tuple {@code (R ∪ B)} with R-owned residue interactions and accumulate
-     *   L_R(b) = sum_{x_R} exp(-E^+_rigid(x_R; b) / RT)   [pre-min lower bound]
-     *   U_R(b) = sum_{x_R} exp(-E_R^cert(x_R; b) / RT)    [CCD-min upper bound]
-     *
-     * Submits via {@code minimizingEcalc.calcEnergyAsync} so jobs run on the
-     * task executor (CPU pool by default; CUDA-backed pool if the ecalc is
-     * compiled GPU). Waits for completion before returning.
-     *
-     * NOTE: tighter U_R via joint R+B CCD with R-owned terms is sound (it
-     * gives a smaller min energy than any constrained-DOF minimization,
-     * hence a larger exp value, hence an UPPER bound on Z_R(b)).
-     */
-    private void certifyRegionAtomTable(RegionAtomTable table, RCs rcs) {
-        int[] region = table.spec.region;
-        int[] boundary = table.spec.boundary;
-        int[] xR = new int[region.length];
-        int[] xB = new int[boundary.length];
-
-        long t0 = System.currentTimeMillis();
-        final java.util.concurrent.atomic.AtomicLong jobsSubmitted = new java.util.concurrent.atomic.AtomicLong(0);
-        final java.util.concurrent.atomic.AtomicLong jobsPruned = new java.util.concurrent.atomic.AtomicLong(0);
-        final int totalLocalPerBoundary = table.spec.localStatesPerBoundary.intValueExact();
-
-        // Optional top-K subsampling: certify only the K boundary cells with the
-        // largest Phase 0 emat gap. The rest fall back to the pre-min sandwich
-        // (still valid bounds, just not tightened). This makes Phase 3 feasible
-        // for atoms with many boundary cells (e.g. {7} has 41040 cells).
-        final Set<String> certifyAllowedBoundary;
-        if (regionAtomCertifyTopK > 0
-                && table.boundaryCells.size() > regionAtomCertifyTopK) {
-            List<Map.Entry<String, RegionAtomCell>> sorted = new ArrayList<>(table.boundaryCells.entrySet());
-            sorted.sort((a, b) -> b.getValue().gap.compareTo(a.getValue().gap));
-            certifyAllowedBoundary = new HashSet<>();
-            int k = Math.min(regionAtomCertifyTopK, sorted.size());
-            for (int i = 0; i < k; i++) certifyAllowedBoundary.add(sorted.get(i).getKey());
-            System.out.println("[REGION_ATOM_CERT] name=" + table.spec.name
-                    + " topK=" + regionAtomCertifyTopK
-                    + " totalBoundaryCells=" + table.boundaryCells.size()
-                    + " certifying=" + certifyAllowedBoundary.size()
-                    + " skipping=" + (table.boundaryCells.size() - certifyAllowedBoundary.size())
-                    + " (others fall back to Phase 0 sandwich)");
-        } else {
-            certifyAllowedBoundary = null;  // certify all
-        }
-
-        enumerateAssignments(boundary, 0, xB, rcs, () -> {
-            final String bKey = makeAssignmentKey(boundary, xB);
-            if (certifyAllowedBoundary != null && !certifyAllowedBoundary.contains(bKey)) {
-                return;  // skipped boundary cell — uses Phase 0 pre-min bound
-            }
-            final int[] xBSnapshot = xB.clone();
-            final CertifiedBoundaryCell cell = table.certifiedCells.computeIfAbsent(bKey,
-                    k -> new CertifiedBoundaryCell(bKey, xBSnapshot, totalLocalPerBoundary));
-
-            enumerateAssignments(region, 0, xR, rcs, () -> {
-                final int[] xRSnapshot = xR.clone();
-
-                // Drop combinations pruned by sparse pfunc (rigid or minimizing emat returns +inf).
-                double rigidLocal = ownedLocalEnergy(branchRigidEmat, region, boundary,
-                        xRSnapshot, xBSnapshot);
-                double emins = ownedLocalEnergy(branchMinimizingEmat, region, boundary,
-                        xRSnapshot, xBSnapshot);
-                if (!Double.isFinite(rigidLocal) || !Double.isFinite(emins)) {
-                    cell.markPruned();
-                    jobsPruned.incrementAndGet();
-                    return;
-                }
-
-                final BigDecimal bL = bc.calc(rigidLocal);  // L stays at rigid (pre-min lower bound)
-
-                RCTuple tuple = makeRegionAtomTuple(region, boundary, xRSnapshot, xBSnapshot);
-                ResidueInteractions inters = makeRegionAtomInteractions(region, boundary,
-                        xRSnapshot, xBSnapshot);
-
-                long submitted = jobsSubmitted.incrementAndGet();
-                if (submitted % 2000 == 0) {
-                    System.out.println("[REGION_ATOM_CERT_PROGRESS] name=" + table.spec.name
-                            + " submitted=" + submitted
-                            + " elapsedMs=" + (System.currentTimeMillis() - t0));
-                }
-                final String localKey = makeAssignmentKey(region, xRSnapshot);
-                minimizingEcalc.calcEnergyAsync(tuple, inters, epmol -> {
-                    double eCert = epmol.energy;
-                    BigDecimal bU = bc.calc(eCert);
-                    cell.addLocal(localKey, bL, bU, eCert);
-                });
-            });
-        });
-
-        minimizingEcalc.tasks.waitForFinish();
-        long t1 = System.currentTimeMillis();
-
-        // Aggregate per-table sums
-        BigDecimal sumL = BigDecimal.ZERO;
-        BigDecimal sumU = BigDecimal.ZERO;
-        BigDecimal sumGap = BigDecimal.ZERO;
-        for (CertifiedBoundaryCell c : table.certifiedCells.values()) {
-            sumL = sumL.add(c.lowerZ);
-            sumU = sumU.add(c.upperZ);
-            BigDecimal gap = c.upperZ.subtract(c.lowerZ);
-            if (gap.signum() > 0) sumGap = sumGap.add(gap);
-        }
-        table.certifiedSumLower = sumL;
-        table.certifiedSumUpper = sumU;
-        table.certifiedSumGap = sumGap;
-        table.certified = true;
-
-        String gapShrinkStr = "n/a";
-        if (table.localGap.signum() > 0) {
-            double shrink = MathTools.bigDivide(sumGap, table.localGap,
-                    PartitionFunction.decimalPrecision).doubleValue();
-            gapShrinkStr = String.format("%.6f", shrink);
-        }
-
-        System.out.println("[REGION_ATOM_CERT] name=" + table.spec.name
-                + " status=certified"
-                + " boundaryCells=" + table.certifiedCells.size()
-                + " jobs=" + jobsSubmitted.get()
-                + " pruned=" + jobsPruned.get()
-                + " sumL=" + formatBigExp(sumL)
-                + " sumU=" + formatBigExp(sumU)
-                + " sumGap=" + formatBigExp(sumGap)
-                + " ematSumGap=" + formatBigExp(table.localGap)
-                + " gapShrink=" + gapShrinkStr
-                + " timeMs=" + (t1 - t0));
-
-        // Top-K certified boundary cells by gap
-        List<CertifiedBoundaryCell> cellList = new ArrayList<>(table.certifiedCells.values());
-        cellList.sort((a, b) -> {
-            BigDecimal ag = a.upperZ.subtract(a.lowerZ);
-            BigDecimal bg = b.upperZ.subtract(b.lowerZ);
-            return bg.compareTo(ag);
-        });
-        int topK = Math.min(regionAtomScoutTopCells, cellList.size());
-        for (int i = 0; i < topK; i++) {
-            CertifiedBoundaryCell c = cellList.get(i);
-            BigDecimal gap = c.upperZ.subtract(c.lowerZ);
-            if (gap.signum() < 0) gap = BigDecimal.ZERO;
-            System.out.println("[REGION_ATOM_CERT_BOUNDARY] name=" + table.spec.name
-                    + " rank=" + (i + 1)
-                    + " bKey=" + c.bKey
-                    + " localStatesDone=" + c.localStatesDone
-                    + " pruned=" + c.localStatesPruned
-                    + " L=" + formatBigExp(c.lowerZ)
-                    + " U=" + formatBigExp(c.upperZ)
-                    + " gap=" + formatBigExp(gap)
-                    + " minE=" + String.format("%.4f", c.minCertEnergy)
-                    + " maxE=" + String.format("%.4f", c.maxCertEnergy));
-        }
-    }
-
-    /** Combine R ∪ B positions/assignments into a sorted RCTuple suitable for calcEnergy. */
-    private static RCTuple makeRegionAtomTuple(int[] region, int[] boundary, int[] xR, int[] xB) {
-        int n = region.length + boundary.length;
-        int[][] entries = new int[n][2];
-        int idx = 0;
-        for (int i = 0; i < region.length; i++) {
-            entries[idx][0] = region[i];
-            entries[idx][1] = xR[i];
-            idx++;
-        }
-        for (int i = 0; i < boundary.length; i++) {
-            entries[idx][0] = boundary[i];
-            entries[idx][1] = xB[i];
-            idx++;
-        }
-        Arrays.sort(entries, (a, b) -> Integer.compare(a[0], b[0]));
-        ArrayList<Integer> posList = new ArrayList<>(n);
-        ArrayList<Integer> rcList = new ArrayList<>(n);
-        for (int[] e : entries) {
-            posList.add(e[0]);
-            rcList.add(e[1]);
-        }
-        return new RCTuple(posList, rcList);
-    }
-
-    /**
-     * R-owned ResidueInteractions:
-     *   - one-body single for each R position (includes shell)
-     *   - pair for every R-R combination
-     *   - pair for every R-B crossing
-     * Excludes B singles, B-B pairs, and all outside terms.
-     */
-    /**
-     * R-owned ResidueInteractions matching the emat's {@link EnergyPartition} convention.
-     *
-     * The emat values include offsets (reference energies, residue entropy) and shell
-     * interactions according to the chosen partition (Traditional puts shell+intra on
-     * singles; AllOnPairs distributes intra+shell across pairs with weight 1/(n-1)).
-     * To make calcEnergy(tuple, inters) return a value comparable to the emat sum, we
-     * must use the SAME {@code epart.makeSingle} / {@code epart.makePair} that built
-     * the emat — bare {@code addSingle}/{@code addPair} would silently drop offsets
-     * and shell, producing energies that are systematically too negative (this was
-     * the early-bug: certified U_R came out 10^3x larger than the pre-min sandwich).
-     */
-    private ResidueInteractions makeRegionAtomInteractions(int[] region, int[] boundary,
-                                                           int[] xR, int[] xB) {
-        ResidueInteractions inters = new ResidueInteractions();
-        EnergyPartition epart = minimizingEcalc.epart;
-        SimpleReferenceEnergies eref = minimizingEcalc.eref;
-        boolean addEntropy = minimizingEcalc.addResEntropy;
-
-        // R one-body
-        for (int i = 0; i < region.length; i++) {
-            inters.addAll(epart.makeSingle(confSpace, eref, addEntropy, region[i], xR[i]));
-        }
-        // R-R pairs
-        for (int i = 0; i < region.length; i++) {
-            for (int j = i + 1; j < region.length; j++) {
-                inters.addAll(epart.makePair(confSpace, eref, addEntropy,
-                        region[i], xR[i], region[j], xR[j]));
-            }
-        }
-        // R-B crossings
-        for (int i = 0; i < region.length; i++) {
-            for (int j = 0; j < boundary.length; j++) {
-                inters.addAll(epart.makePair(confSpace, eref, addEntropy,
-                        region[i], xR[i], boundary[j], xB[j]));
-            }
-        }
-        return inters;
-    }
-
-    // ========== Region-atom: Phase 4 DP factor replacement ==========
-
-    /** Per-pfunc tally of Phase 4 hits across all node tighten attempts. */
-    private long regionAtomDPApplied = 0;
-    /** Accumulated flatSumZUpper delta from region-atom tightening (flushed once per round). */
-    private BigDecimal regionAtomDPUpperDelta = BigDecimal.ZERO;
-    private long regionAtomDPSkippedPartial = 0;
-    private long regionAtomDPMissingBoundary = 0;
-    private long regionAtomDPMissingLocal = 0;
-
-    /**
-     * DP-level integration: apply certified region-atom corrections directly into
-     * DP table entries. For each lambda-edge whose lambda set covers R, and for
-     * each (mIdx, lambdaIdx) entry, replace the R-owned energy from minimizingEmat
-     * with the certified energy eCert. This tightens Z_upper at the DP source,
-     * propagating to ALL nodes without per-node patching.
-     *
-     * Soundness: eCert >= eMin_R_owned (certified CCD min >= pairwise emat min),
-     * so fullEnergyMin increases -> Boltzmann decreases -> Z_upper tighter.
-     */
-    private void applyRegionAtomToDP(double RT) {
-        // Collect all lambda edges
-        List<RootedTreeEdge> lambdaEdges = new ArrayList<>();
-        RootedTreeEdge.collectLambdaEdges(rootedRoot, lambdaEdges);
-
-        for (RegionAtomTable table : regionAtomTables) {
-            if (!table.certified) continue;
-            int[] region = table.spec.region;
-            int[] boundary = table.spec.boundary;
-
-            for (RootedTreeEdge edge : lambdaEdges) {
-                int[] lambdaPos = edge.getLambdaPositionsSorted();
-                int[] mPos = edge.getMPositionsSorted();
-
-                System.out.println("[REGION_ATOM_DP_DEBUG] checking edge lambda="
-                        + Arrays.toString(lambdaPos) + " m=" + Arrays.toString(mPos)
-                        + " R=" + Arrays.toString(region) + " B=" + Arrays.toString(boundary));
-
-                // Check: R must be a subset of lambda (so R is assigned at this edge)
-                boolean rInLambda = true;
-                for (int rp : region) {
-                    boolean found = false;
-                    for (int lp : lambdaPos) { if (lp == rp) { found = true; break; } }
-                    if (!found) { rInLambda = false; break; }
-                }
-                if (!rInLambda) {
-                    System.out.println("[REGION_ATOM_DP_DEBUG]   SKIP: R not in lambda");
-                    continue;
-                }
-
-                // Check: B positions must all be in lambda ∪ M
-                boolean bCovered = true;
-                for (int bp : boundary) {
-                    boolean found = false;
-                    for (int lp : lambdaPos) { if (lp == bp) { found = true; break; } }
-                    if (!found) {
-                        for (int mp : mPos) { if (mp == bp) { found = true; break; } }
-                    }
-                    if (!found) {
-                        System.out.println("[REGION_ATOM_DP_DEBUG]   SKIP: B pos " + bp + " not in lambda∪M");
-                        bCovered = false; break;
-                    }
-                }
-                if (!bCovered) continue;
-
-                double[][] fullEnergyMin = edge.getFullEnergyMin();
-                if (fullEnergyMin == null) continue;
-
-                int corrected = 0;
-                for (int mIdx = 0; mIdx < edge.getMArraySize(); mIdx++) {
-                    int[] mRCs = edge.decodeMStatePublic(mIdx);
-                    for (int lIdx = 0; lIdx < edge.getTotalLambdaStates(); lIdx++) {
-                        if (Double.isNaN(fullEnergyMin[mIdx][lIdx])) continue;
-
-                        int[] lambdaRCs = edge.decodeLambdaStatePublic(lIdx);
-
-                        // Build xR and xB from lambda+M RCs
-                        int[] xR = new int[region.length];
-                        int[] xB = new int[boundary.length];
-                        for (int i = 0; i < region.length; i++) {
-                            xR[i] = resolveRC(region[i], lambdaPos, lambdaRCs, mPos, mRCs, edge.getRCs());
-                        }
-                        boolean valid = true;
-                        for (int i = 0; i < boundary.length; i++) {
-                            int rc = resolveRC(boundary[i], lambdaPos, lambdaRCs, mPos, mRCs, edge.getRCs());
-                            if (rc < 0) { valid = false; break; }
-                            xB[i] = rc;
-                        }
-                        if (!valid) continue;
-
-                        // Look up certified energy
-                        String bKey = makeAssignmentKey(boundary, xB);
-                        CertifiedBoundaryCell cell = table.certifiedCells.get(bKey);
-                        if (cell == null) continue;
-                        String lKey = makeAssignmentKey(region, xR);
-                        Double eCert = cell.certifiedEnergyPerLocal.get(lKey);
-                        if (eCert == null) continue;
-
-                        // Compute R-owned energy from minimizing emat
-                        double eMinOwned = ownedLocalEnergy(branchMinimizingEmat, region, boundary, xR, xB);
-                        if (!Double.isFinite(eMinOwned)) continue;
-
-                        double correction = eCert - eMinOwned;
-                        if (correction > 0) {
-                            fullEnergyMin[mIdx][lIdx] += correction;
-                            corrected++;
-                        }
-                    }
-                }
-
-                if (corrected > 0) {
-                    // Re-sort lambda indices since energies changed
-                    edge.initIncrementalEnumeration(
-                            branchRigidEmat, branchMinimizingEmat, interactionGraph, RT, true);
-                    // Re-apply corrections after re-init (which resets energies)
-                    // Actually, let's apply corrections differently - modify after init
-                    // For now, just apply corrections to the re-initialized table
-                    fullEnergyMin = edge.getFullEnergyMin();
-                    if (fullEnergyMin != null) {
-                        int reapplied = 0;
-                        for (int mIdx = 0; mIdx < edge.getMArraySize(); mIdx++) {
-                            int[] mRCs = edge.decodeMStatePublic(mIdx);
-                            for (int lIdx = 0; lIdx < edge.getTotalLambdaStates(); lIdx++) {
-                                if (Double.isNaN(fullEnergyMin[mIdx][lIdx])) continue;
-                                int[] lambdaRCs = edge.decodeLambdaStatePublic(lIdx);
-                                int[] xR = new int[region.length];
-                                int[] xB = new int[boundary.length];
-                                for (int i = 0; i < region.length; i++)
-                                    xR[i] = resolveRC(region[i], lambdaPos, lambdaRCs, mPos, mRCs, edge.getRCs());
-                                boolean v2 = true;
-                                for (int i = 0; i < boundary.length; i++) {
-                                    int rc = resolveRC(boundary[i], lambdaPos, lambdaRCs, mPos, mRCs, edge.getRCs());
-                                    if (rc < 0) { v2 = false; break; }
-                                    xB[i] = rc;
-                                }
-                                if (!v2) continue;
-                                String bKey = makeAssignmentKey(boundary, xB);
-                                CertifiedBoundaryCell cell = table.certifiedCells.get(bKey);
-                                if (cell == null) continue;
-                                String lKey = makeAssignmentKey(region, xR);
-                                Double eCert = cell.certifiedEnergyPerLocal.get(lKey);
-                                if (eCert == null) continue;
-                                double eMinOwned = ownedLocalEnergy(branchMinimizingEmat, region, boundary, xR, xB);
-                                if (!Double.isFinite(eMinOwned)) continue;
-                                double corr = eCert - eMinOwned;
-                                if (corr > 0) {
-                                    fullEnergyMin[mIdx][lIdx] += corr;
-                                    reapplied++;
-                                }
-                            }
-                        }
-                        corrected = reapplied;
-                    }
-
-                    System.out.println("[REGION_ATOM_DP_INTEGRATE] edge lambda="
-                            + Arrays.toString(lambdaPos) + " corrected=" + corrected
-                            + "/" + (edge.getMArraySize() * edge.getTotalLambdaStates())
-                            + " entries");
-                }
-            }
-        }
-    }
-
-    /** Resolve a position's RC from lambda or M arrays. Returns the actual RC index. */
-    private int resolveRC(int pos, int[] lambdaPos, int[] lambdaRCs,
-                          int[] mPos, int[] mRCs, RCs edgeRCs) {
-        for (int i = 0; i < lambdaPos.length; i++) {
-            if (lambdaPos[i] == pos) return edgeRCs.get(pos, lambdaRCs[i]);
-        }
-        for (int i = 0; i < mPos.length; i++) {
-            if (mPos[i] == pos) return edgeRCs.get(pos, mRCs[i]);
-        }
-        return -1;
-    }
-
-    /**
-     * Region-atom Phase 4 hook: try to tighten a search node's bounds using any
-     * applicable certified region-atom table. Sound replacement of the R-owned
-     * slice of the leaf bound:
-     *
-     *   subtreeUpperBound_new = subtreeUpperBound_old * bc.calc(E_R_cert(x_R; b))
-     *                                                / bc.calc(E_R_emat_min(x_R; b))
-     *
-     * Because E_R_cert ≥ E_R_emat_min (joint CCD min ≥ pair-wise emat min lower
-     * bound), the ratio is ≤ 1, so the new upper bound is tighter while remaining
-     * a valid upper bound on Z (E_R_cert ≤ E_R_true with B's DOFs free).
-     *
-     * Requires the node to have all positions in R ∪ B assigned. Partial nodes
-     * are skipped (counted in regionAtomDPSkippedPartial).
-     *
-     * This is the per-leaf tightening flavor of DP factor replacement. A proper
-     * DP factor replacement that aligns the atom's (R, B) with a branch-decomp
-     * separator and replaces the edge's logZ table is a follow-up; this hook
-     * already exercises the certified table end-to-end.
-     */
-    private void tightenNodeWithCertifiedTables(DecompSearchNode node) {
-        // Per-node tightening disabled: DP-level integration (applyRegionAtomToDP)
-        // bakes corrections into DP table entries before search starts.
-    }
-
     private boolean isBetterRooting(RootingCandidate candidate, RootingCandidate best,
                                     double logNaive) {
         if (best == null) return true;
@@ -2611,7 +1348,7 @@ public abstract class BranchDpBackend extends MARKStarBound {
                 + ", positions=" + Arrays.toString(e.mPositions)
                 + ", estimatedFinalTableBytes=" + formatBytes(saturatingDPTableBytes(e.mStates))
                 + ". Suggested actions: lower branchwidth/rooting pressure, run with "
-                + "-Dbranchmarkstar.dp.cache=false for dense-only runs, or enable the shard-backed DP table once available.");
+                + "-Dbranchdp.dp.cache=false for dense-only runs, or enable the shard-backed DP table once available.");
     }
 
     private void logDPMemoryPredictions(String context, double logTESS) {
@@ -2887,17 +1624,8 @@ public abstract class BranchDpBackend extends MARKStarBound {
             double rtForDP = BoltzmannCalculator.RClassic * BoltzmannCalculator.TClassic;
             RootedTreeEdge.postOrderInitIncremental(rootedRoot,
                     branchRigidEmat, branchMinimizingEmat, interactionGraph, rtForDP,
-                    regionAtomCertifyUseDP);
-            DPCacheStats dpCacheStats = computeFullDPTables("initial", !regionAtomCertifyUseDP);
-
-            // Region-atom DP-level integration: apply certified corrections
-            // directly into the DP table entries BEFORE the full DP propagation
-            // is used by the search. This tightens Z_upper at the source.
-            if (regionAtomCertifyUseDP && !regionAtomTables.isEmpty()) {
-                applyRegionAtomToDP(rtForDP);
-                // Recompute full DP after modifying leaf-edge energies
-                RootedTreeEdge.postOrderComputeFullDP(rootedRoot);
-            }
+                    false);
+            DPCacheStats dpCacheStats = computeFullDPTables("initial", true);
 
             dpTablesReady = true;
             long dpInitTime = System.currentTimeMillis() - dpInitStart;
@@ -3149,11 +1877,6 @@ public abstract class BranchDpBackend extends MARKStarBound {
 
             if (node.errorBound.signum() <= 0) continue;
 
-            // Phase 4 region-atom hook: lazily tighten bounds on every pulled node.
-            // No-op when regionAtomCertifyUseDP=false or when no atom's R+B is fully
-            // covered by this node's partialConf. Updates flatSumZ as needed.
-            tightenNodeWithCertifiedTables(node);
-
             // In SPARSE mode, node Z bounds are certified by the branch DP tables
             // over E_sparse/C_sparse. The legacy correction matrix wraps the full
             // minimizing emat and would also overwrite DP-enhanced Z bounds, so only
@@ -3244,14 +1967,6 @@ public abstract class BranchDpBackend extends MARKStarBound {
         }
         decompQueue.addAll(leftoverLeaves);
 
-        // Flush accumulated region-atom delta in one synchronized batch.
-        if (regionAtomDPUpperDelta.signum() != 0) {
-            synchronized (this) {
-                flatSumZUpper = flatSumZUpper.add(regionAtomDPUpperDelta);
-            }
-            regionAtomDPUpperDelta = BigDecimal.ZERO;
-        }
-
         updateBound();
 
         if (trace && (roundCounter <= traceRounds || correctionsThisRound > 0)) {
@@ -3275,49 +1990,6 @@ public abstract class BranchDpBackend extends MARKStarBound {
         // === Phase 2: Error-driven selection (mirrors MARK*'s decision logic) ===
         // Compare aggregate leaf error vs internal error; process only the dominant type.
         BigDecimal drillDownThreshold = new BigDecimal(1 - targetEpsilon);
-
-        // Region-atom queue scout: record every pulled leaf into the diagnostic
-        // tables BEFORE the decision branch fires. This is diagnostic only —
-        // it does NOT mutate the leaf, flatSumZ, or the queue.
-        if (regionAtomEnabled && !leafNodes.isEmpty()) {
-            for (DecompSearchNode leaf : leafNodes) {
-                recordScoutLeaf(leaf);
-            }
-        }
-
-        // Scout-only mode: skip leaf minimization entirely and force the internal-
-        // expansion branch so the queue keeps producing new leaves. Pulled leaves
-        // are dropped (their flatSumZ contribution becomes orphaned, which is
-        // acceptable in diagnostic mode since scoutOnly does NOT certify a pfunc).
-        if (regionAtomScoutOnly) {
-            if (parallelInternal && parallelism.numThreads > 1 && internalNodes.size() > 1) {
-                processInternalNodesParallel(internalNodes, drillDownThreshold);
-            } else {
-                List<DecompSearchNode> newNodes = new ArrayList<>();
-                for (int i = 0; i < internalNodes.size(); i++) {
-                    DecompSearchNode internal = internalNodes.get(i);
-                    if (regionAtomScoutComplete) {
-                        // Stop expanding; defer remaining internals back to queue
-                        for (int j = i; j < internalNodes.size(); j++) {
-                            decompQueue.add(internalNodes.get(j));
-                        }
-                        break;
-                    }
-                    if (!internal.isAggregate && shouldDrillDown(internal, drillDownThreshold)) {
-                        drillDownFullEnum(internal, newNodes, drillDownThreshold);
-                    } else {
-                        expandDecompNode(internal);
-                        updateBound();
-                    }
-                }
-                for (DecompSearchNode n : newNodes) {
-                    if (n.errorBound.signum() > 0) decompQueue.add(n);
-                }
-            }
-            // Drop leafNodes: do not minimize, do not re-add.
-            updateBound();
-            return;
-        }
 
         if (MathTools.isLessThan(internalZ, leafZ)) {
             if (trace && (roundCounter <= traceRounds || correctionsThisRound > 0)) {
@@ -3482,10 +2154,6 @@ public abstract class BranchDpBackend extends MARKStarBound {
         }
         node.errorBound = node.subtreeUpperBound.subtract(node.subtreeLowerBound);
         if (node.errorBound.signum() < 0) node.errorBound = BigDecimal.ZERO;
-
-        // Phase 4: try certified region-atom tables on this node (no-op when
-        // regionAtomCertifyUseDP=false or when no atom's R+B covers this node).
-        tightenNodeWithCertifiedTables(node);
     }
 
     /** Number of lambda-states to produce per expand (top-k by energy). */
@@ -3839,16 +2507,9 @@ public abstract class BranchDpBackend extends MARKStarBound {
         }
 
         if (!lambdaAStar.isExhausted()) {
-            // Use the original (pre-tightening) upper bound for the aggregate
-            // computation. If the node was tightened by region-atom, its
-            // subtreeUpperBound is smaller than the DP-based children sum,
-            // which would make the aggregate negative. Using the original
-            // ensures children + aggregate = original (consistent with DP).
-            BigDecimal parentUpperForAggregate = node.regionAtomOriginalUpper != null
-                    ? node.regionAtomOriginalUpper : node.subtreeUpperBound;
             DecompSearchNode aggregate = DecompSearchNode.makeAggregate(
                     node, pendingIdx, lambdaAStar,
-                    parentUpperForAggregate, childrenZUpper, bc);
+                    node.subtreeUpperBound, childrenZUpper, bc);
             generatedNodes.add(aggregate);
             lowerDelta = lowerDelta.add(aggregate.subtreeLowerBound);
             upperDelta = upperDelta.add(aggregate.subtreeUpperBound);
@@ -4519,18 +3180,6 @@ public abstract class BranchDpBackend extends MARKStarBound {
                 System.err.println(BranchDpConfig.getBackendLogPrefix() + " Warning - bounds got looser. eps=" + epsilonBound);
             }
             lastEps = epsilonBound;
-
-            // Region-atom scoutOnly: terminate after enough leaves observed or
-            // when the queue drains (diagnostic mode does NOT certify pfunc).
-            if (regionAtomScoutOnly
-                    && (regionAtomScoutComplete || decompQueue.isEmpty())) {
-                System.out.println("[REGION_ATOM] scoutOnly early-exit: leavesSeen="
-                        + regionAtomScoutLeavesSeen
-                        + " maxLeaves=" + regionAtomScoutMaxLeaves
-                        + " queueSize=" + decompQueue.size()
-                        + " epsilon=" + String.format("%.6f", epsilonBound));
-                break;
-            }
         }
 
         System.out.println(BranchDpConfig.getBackendLogPrefix() + " Finished. epsilon=" + String.format("%.6f", epsilonBound)
@@ -4541,7 +3190,6 @@ public abstract class BranchDpBackend extends MARKStarBound {
         printLeafMinimizationProfile();
         printEdgeSelectionStats();
         printCorrectionAuditStats();
-        printRegionAtomSummary();
         auditFlatSumNumerics("final", true);
         edgeLookaheadCache.clear();
 
@@ -4556,10 +3204,7 @@ public abstract class BranchDpBackend extends MARKStarBound {
                     + "; leaving status as " + getStatus() + ".");
         }
 
-        if (regionAtomScoutOnly) {
-            // scoutOnly is diagnostic only — do NOT mark as Estimated; bounds are not certified.
-            System.out.println(BranchDpConfig.getBackendLogPrefix() + " scoutOnly mode complete; pfunc NOT certified.");
-        } else if (reportedEpsilon <= targetEpsilon) {
+        if (reportedEpsilon <= targetEpsilon) {
             setStatus(Status.Estimated);
         }
     }

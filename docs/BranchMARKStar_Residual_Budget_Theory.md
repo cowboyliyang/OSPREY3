@@ -104,11 +104,11 @@ The implemented default is now residual-budget cutoff:
 1. Start with the complete position-pair graph.
 2. Compute each edge risk as the max absolute pairwise energy over rigid and minimizing emats.
 3. Sort candidate cuts from lowest risk to highest risk, breaking ties by larger template distance.
-4. Cut edges while the sum of cut risks stays below `branchmarkstar.cutoff.residualBudget`.
-5. Keep the graph connected when `branchmarkstar.cutoff.keepConnected=true`.
+4. Cut edges while the sum of cut risks stays below `branchdp.cutoff.residualBudget`.
+5. Keep the graph connected when `branchdp.cutoff.keepConnected=true`.
 
 This makes the theoretical knob explicit: increasing `residualBudget` buys branch-decomposition speed, while decreasing it buys a tighter sparse-to-full Kstar certificate.
 
 ## Current caveat
 
-The fast BranchMARKStar path still mixes sparse branch decomposition with full-emat scoring/minimized leaves. The residual theorem is the clean certificate for a consistent sparse Hamiltonian and for any pfunc bound computed against that sparse Hamiltonian. The code exposes optional full-bound inflation with `branchmarkstar.certifyFullBounds=true`, but the main practical use right now is to report the residual factor and choose a cutoff that is defensible.
+The fast BranchMARKStar path still mixes sparse branch decomposition with full-emat scoring/minimized leaves. The residual theorem is the clean certificate for a consistent sparse Hamiltonian and for any pfunc bound computed against that sparse Hamiltonian. The code exposes optional full-bound inflation with `branchdp.certifyFullBounds=true`, but the main practical use right now is to report the residual factor and choose a cutoff that is defensible.

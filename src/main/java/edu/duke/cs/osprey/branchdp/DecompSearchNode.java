@@ -92,13 +92,6 @@ public class DecompSearchNode implements Comparable<DecompSearchNode> {
     // For leaves (all edges assigned): minimization state
     public boolean minimized = false;
 
-    // Whether region-atom certified table correction has already been applied.
-    // Prevents the multiplicative ratio from being applied more than once.
-    public boolean regionAtomApplied = false;
-
-    // Original (pre-tightening) subtreeUpperBound, used during expansion to
-    // compute aggregate bounds consistently with untightened children.
-    public BigDecimal regionAtomOriginalUpper = null;
     public double minimizedEnergy = Double.NaN;
 
     // ========== Aggregate node fields ==========

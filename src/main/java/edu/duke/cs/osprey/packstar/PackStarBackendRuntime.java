@@ -5,9 +5,8 @@ import edu.duke.cs.osprey.branchdp.BranchDpConfig;
 /**
  * Thread-local marker for calls that are executing through the PACK* backend.
  *
- * <p>The PACK* entry point owns when branch-DP primitives may accept
- * {@code packstar.*} aliases. Plain BranchMARK* calls do not enter this scope,
- * so they continue to see only their legacy {@code branchmarkstar.*} keys.</p>
+ * <p>The PACK* entry point owns when branch-DP primitives may prefer
+ * {@code packstar.*} aliases over neutral {@code branchdp.*} keys.</p>
  */
 final class PackStarBackendRuntime {
 

@@ -107,21 +107,21 @@ public class BenchGpuFullDP {
     }
 
     private static void baseGpuProps() {
-        System.setProperty("branchmarkstar.dp.gpu.minWork", "1");
-        System.setProperty("branchmarkstar.dp.gpu.maxBytes", String.valueOf(20L * 1024 * 1024 * 1024));
-        System.setProperty("branchmarkstar.dp.gpu.trace", "true");
-        System.setProperty("branchmarkstar.dp.nativeKernel", "false");
-        System.setProperty("branchmarkstar.dp.foldChildren", "true");
-        System.setProperty("branchmarkstar.dp.progress", "true");
+        System.setProperty("branchdp.dp.gpu.minWork", "1");
+        System.setProperty("branchdp.dp.gpu.maxBytes", String.valueOf(20L * 1024 * 1024 * 1024));
+        System.setProperty("branchdp.dp.gpu.trace", "true");
+        System.setProperty("branchdp.dp.nativeKernel", "false");
+        System.setProperty("branchdp.dp.foldChildren", "true");
+        System.setProperty("branchdp.dp.progress", "true");
     }
 
     /** Returns {minElapsedMs, lo0, up0, lastLo, lastUp} for correctness cross-check. */
     private double[] timeJava(int threads, int iters) {
-        System.setProperty("branchmarkstar.dp.gpu", "false");
-        System.setProperty("branchmarkstar.dp.parallel", threads > 1 ? "true" : "false");
-        System.setProperty("branchmarkstar.dp.parallel.threads", String.valueOf(Math.max(1, threads)));
-        System.setProperty("branchmarkstar.dp.parallel.minMStates", "1");
-        System.setProperty("branchmarkstar.dp.progress", "false");
+        System.setProperty("branchdp.dp.gpu", "false");
+        System.setProperty("branchdp.dp.parallel", threads > 1 ? "true" : "false");
+        System.setProperty("branchdp.dp.parallel.threads", String.valueOf(Math.max(1, threads)));
+        System.setProperty("branchdp.dp.parallel.minMStates", "1");
+        System.setProperty("branchdp.dp.progress", "false");
         double min = Double.MAX_VALUE; double lo0 = 0, up0 = 0;
         for (int it = 0; it < iters; it++) {
             RootedTreeEdge p = buildParent();
@@ -137,14 +137,14 @@ public class BenchGpuFullDP {
     /** maxGpus<=0 => all visible. Returns {minElapsedMs, lo0, up0, firedFlag}. */
     private double[] timeGpu(int maxGpus, int iters) {
         baseGpuProps();
-        System.setProperty("branchmarkstar.dp.gpu", "true");
-        System.setProperty("branchmarkstar.dp.parallel", "false");
+        System.setProperty("branchdp.dp.gpu", "true");
+        System.setProperty("branchdp.dp.parallel", "false");
         if (maxGpus <= 0) {
-            System.setProperty("branchmarkstar.dp.gpu.maxGpus", "0");
-            System.setProperty("branchmarkstar.dp.gpu.minMStatesPerGpu", "1");
+            System.setProperty("branchdp.dp.gpu.maxGpus", "0");
+            System.setProperty("branchdp.dp.gpu.minMStatesPerGpu", "1");
         } else {
-            System.setProperty("branchmarkstar.dp.gpu.maxGpus", String.valueOf(maxGpus));
-            System.setProperty("branchmarkstar.dp.gpu.minMStatesPerGpu", String.valueOf(Long.MAX_VALUE));
+            System.setProperty("branchdp.dp.gpu.maxGpus", String.valueOf(maxGpus));
+            System.setProperty("branchdp.dp.gpu.minMStatesPerGpu", String.valueOf(Long.MAX_VALUE));
         }
         double min = Double.MAX_VALUE; double lo0 = 0, up0 = 0; boolean fired = false;
         for (int it = 0; it < iters; it++) {

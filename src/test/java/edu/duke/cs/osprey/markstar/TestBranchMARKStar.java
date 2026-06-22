@@ -66,7 +66,7 @@ import java.util.*;
  */
 public class TestBranchMARKStar {
 
-    public static final int NUM_CPUs = Integer.getInteger("osprey.branchmarkstar.numCpus", 4);
+    public static final int NUM_CPUs = Integer.getInteger("osprey.branchdp.numCpus", 4);
 
     // ========== Test: MARK* + BBK* vs BranchMARK* + BranchBBK* ==========
 
@@ -103,11 +103,11 @@ public class TestBranchMARKStar {
      */
     @Test
     public void testBranchMARKStarSparseOnly() {
-        int numFlexible = Integer.getInteger("branchmarkstar.test.numFlexible", 10);
-        double epsilon = Double.parseDouble(System.getProperty("branchmarkstar.test.epsilon", "0.68"));
+        int numFlexible = Integer.getInteger("branchdp.test.numFlexible", 10);
+        double epsilon = Double.parseDouble(System.getProperty("branchdp.test.epsilon", "0.68"));
 
-        String oldEnergyMode = System.getProperty("branchmarkstar.energyMode");
-        System.setProperty("branchmarkstar.energyMode", "sparse");
+        String oldEnergyMode = System.getProperty("branchdp.energyMode");
+        System.setProperty("branchdp.energyMode", "sparse");
         try {
             System.out.println("========== BranchMARK* SPARSE PFUNC ONLY ==========");
             long t0 = System.currentTimeMillis();
@@ -123,9 +123,9 @@ public class TestBranchMARKStar {
             System.out.println("==================================================");
         } finally {
             if (oldEnergyMode == null) {
-                System.clearProperty("branchmarkstar.energyMode");
+                System.clearProperty("branchdp.energyMode");
             } else {
-                System.setProperty("branchmarkstar.energyMode", oldEnergyMode);
+                System.setProperty("branchdp.energyMode", oldEnergyMode);
             }
         }
     }
@@ -148,8 +148,8 @@ public class TestBranchMARKStar {
      */
     @Test
     public void testFlatSumVsOriginalMARKStar() {
-        int numFlexible = Integer.getInteger("branchmarkstar.test.numFlexible", 10);
-        double epsilon = Double.parseDouble(System.getProperty("branchmarkstar.test.epsilon", "0.68"));
+        int numFlexible = Integer.getInteger("branchdp.test.numFlexible", 10);
+        double epsilon = Double.parseDouble(System.getProperty("branchdp.test.epsilon", "0.68"));
 
         System.out.println("========== Original MARK* ==========");
         long t0 = System.currentTimeMillis();
@@ -189,8 +189,8 @@ public class TestBranchMARKStar {
      */
     @Test
     public void testBranchEdgeSelectionComparison() {
-        int numFlexible = Integer.getInteger("branchmarkstar.test.numFlexible", 10);
-        double epsilon = Double.parseDouble(System.getProperty("branchmarkstar.test.epsilon", "0.68"));
+        int numFlexible = Integer.getInteger("branchdp.test.numFlexible", 10);
+        double epsilon = Double.parseDouble(System.getProperty("branchdp.test.epsilon", "0.68"));
 
         System.out.println("========== BranchMARK* edge selection: lambdaStates ==========");
         long t0 = System.currentTimeMillis();
@@ -248,15 +248,15 @@ public class TestBranchMARKStar {
 
     private MARKStarResult runBranchWithEdgeSelection(int numFlexible, double epsilon,
                                                        String edgeSelection, String label) {
-        String oldEdgeSelection = System.getProperty("branchmarkstar.edgeSelection");
-        System.setProperty("branchmarkstar.edgeSelection", edgeSelection);
+        String oldEdgeSelection = System.getProperty("branchdp.edgeSelection");
+        System.setProperty("branchdp.edgeSelection", edgeSelection);
         try {
             return runMARKStarOnly(numFlexible, epsilon, true, label);
         } finally {
             if (oldEdgeSelection == null) {
-                System.clearProperty("branchmarkstar.edgeSelection");
+                System.clearProperty("branchdp.edgeSelection");
             } else {
-                System.setProperty("branchmarkstar.edgeSelection", oldEdgeSelection);
+                System.setProperty("branchdp.edgeSelection", oldEdgeSelection);
             }
         }
     }
@@ -364,8 +364,8 @@ public class TestBranchMARKStar {
                 new edu.duke.cs.osprey.markstar.bench.ScalingBench().benchmarkScaling24pos();
                 break;
             case "flatsum": {
-                int numFlexible = Integer.getInteger("branchmarkstar.test.numFlexible", 10);
-                double epsilon = Double.parseDouble(System.getProperty("branchmarkstar.test.epsilon", "0.68"));
+                int numFlexible = Integer.getInteger("branchdp.test.numFlexible", 10);
+                double epsilon = Double.parseDouble(System.getProperty("branchdp.test.epsilon", "0.68"));
                 System.out.println("========== Original MARK* ==========");
                 long t0 = System.currentTimeMillis();
                 MARKStarResult ms = runMARKStarOnly(numFlexible, epsilon, false, "Original-MARK*");
@@ -396,8 +396,8 @@ public class TestBranchMARKStar {
                 break;
             }
             case "markstar": {
-                int numFlexible = Integer.getInteger("branchmarkstar.test.numFlexible", 10);
-                double epsilon = Double.parseDouble(System.getProperty("branchmarkstar.test.epsilon", "0.68"));
+                int numFlexible = Integer.getInteger("branchdp.test.numFlexible", 10);
+                double epsilon = Double.parseDouble(System.getProperty("branchdp.test.epsilon", "0.68"));
                 System.out.println("========== Original MARK* ONLY (branchmarkstar disabled) ==========");
                 System.out.println("numFlexible=" + numFlexible + ", epsilon=" + epsilon);
                 System.out.println("leafProfile=" + System.getProperty("markstar.leafProfile", "(default false)")
@@ -416,12 +416,12 @@ public class TestBranchMARKStar {
                 break;
             }
             case "branchsparse": {
-                int numFlexible = Integer.getInteger("branchmarkstar.test.numFlexible", 10);
-                double epsilon = Double.parseDouble(System.getProperty("branchmarkstar.test.epsilon", "0.68"));
-                System.setProperty("branchmarkstar.energyMode", "sparse");
+                int numFlexible = Integer.getInteger("branchdp.test.numFlexible", 10);
+                double epsilon = Double.parseDouble(System.getProperty("branchdp.test.epsilon", "0.68"));
+                System.setProperty("branchdp.energyMode", "sparse");
                 System.out.println("========== BranchMARK* SPARSE PFUNC ONLY ==========");
                 System.out.println("numFlexible=" + numFlexible + ", epsilon=" + epsilon);
-                System.out.println("residualBudget=" + System.getProperty("branchmarkstar.cutoff.residualBudget", "(default)"));
+                System.out.println("residualBudget=" + System.getProperty("branchdp.cutoff.residualBudget", "(default)"));
                 long t0 = System.currentTimeMillis();
                 MARKStarResult br = runMARKStarOnly(numFlexible, epsilon, true, "BranchMARK*-SparseOnly");
                 long t1 = System.currentTimeMillis();

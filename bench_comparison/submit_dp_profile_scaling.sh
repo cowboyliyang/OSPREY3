@@ -128,12 +128,12 @@ for threads in $THREADS_LIST; do
                 -Dosprey.dpProfile.state=$STATE \
                 -Dosprey.dpProfile.seqIndex=$SEQ_INDEX \
                 -Dosprey.dpProfile.maxMut=$MAX_MUT \
-                -Dbranchmarkstar.rootSplit=$ROOT_SPLIT \
-                -Dbranchmarkstar.dp.cache=$DP_CACHE \
-                -Dbranchmarkstar.dp.parallel=true \
-                -Dbranchmarkstar.dp.parallel.minMStates=1 \
-                -Dbranchmarkstar.dp.parallel.threads=$threads \
-                -Dbranchmarkstar.dp.progress=true \
+                -Dbranchdp.rootSplit=$ROOT_SPLIT \
+                -Dbranchdp.dp.cache=$DP_CACHE \
+                -Dbranchdp.dp.parallel=true \
+                -Dbranchdp.dp.parallel.minMStates=1 \
+                -Dbranchdp.dp.parallel.threads=$threads \
+                -Dbranchdp.dp.progress=true \
                 -cp \"\$(cat $LOGDIR/.classpath_dp_profile.txt)\" $MAIN 2>&1")
         echo "submitted threads=$threads rep=$rep job=$jid"
     done

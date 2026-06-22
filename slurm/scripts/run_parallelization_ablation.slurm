@@ -81,18 +81,18 @@ echo "=========================================="
     --tests "edu.duke.cs.osprey.markstar.bench.PendingEdgeSweep.testPendingEdgeLookaheadSweep" \
     --no-daemon \
     -Dorg.gradle.jvmargs="-Xmx48g" \
-    -Dosprey.branchmarkstar.numFlexible="$NUM_FLEXIBLE" \
-    -Dosprey.branchmarkstar.epsilon="$EPSILON" \
-    -Dosprey.branchmarkstar.numCpus="$NUM_CPUS" \
-    -Dosprey.branchmarkstar.rootSplit="$ROOT_SPLIT" \
-    -Dosprey.branchmarkstar.rootSplit.maxFset="$ROOT_SPLIT_MAX_FSET" \
-    -Dosprey.branchmarkstar.pendingEdgeSweep="$PENDING_EDGE_SWEEP" \
-    -Dosprey.branchmarkstar.edgeSelections="$EDGE_SELECTIONS" \
-    -Dosprey.branchmarkstar.edgeSelection.maxPendingEdges="$LOOKAHEAD_MAX_PENDING_EDGES" \
-    -Dosprey.branchmarkstar.edgeSelection.maxExactStates="$LOOKAHEAD_MAX_STATES" \
-    -Dosprey.branchmarkstar.edgeSelection.parallelLookahead="$PARALLEL_LOOKAHEAD" \
-    -Dosprey.branchmarkstar.parallel.internal="$PARALLEL_INTERNAL" \
-    -Dosprey.branchmarkstar.parallel.enumeration="$PARALLEL_ENUMERATION" \
+    -Dosprey.branchdp.numFlexible="$NUM_FLEXIBLE" \
+    -Dosprey.branchdp.epsilon="$EPSILON" \
+    -Dosprey.branchdp.numCpus="$NUM_CPUS" \
+    -Dosprey.branchdp.rootSplit="$ROOT_SPLIT" \
+    -Dosprey.branchdp.rootSplit.maxFset="$ROOT_SPLIT_MAX_FSET" \
+    -Dosprey.branchdp.pendingEdgeSweep="$PENDING_EDGE_SWEEP" \
+    -Dosprey.branchdp.edgeSelections="$EDGE_SELECTIONS" \
+    -Dosprey.branchdp.edgeSelection.maxPendingEdges="$LOOKAHEAD_MAX_PENDING_EDGES" \
+    -Dosprey.branchdp.edgeSelection.maxExactStates="$LOOKAHEAD_MAX_STATES" \
+    -Dosprey.branchdp.edgeSelection.parallelLookahead="$PARALLEL_LOOKAHEAD" \
+    -Dosprey.branchdp.parallel.internal="$PARALLEL_INTERNAL" \
+    -Dosprey.branchdp.parallel.enumeration="$PARALLEL_ENUMERATION" \
     2>&1
 
 echo ""

@@ -369,6 +369,26 @@ public class InteractionGraph {
         return new InteractionGraph(numPositions, adj);
     }
 
+    public static InteractionGraph buildFromEdges(int numPositions, Collection<int[]> edges) {
+        boolean[][] adj = new boolean[numPositions][numPositions];
+        for (int[] edge : edges) {
+            if (edge == null || edge.length < 2) {
+                throw new IllegalArgumentException("Edge must contain two positions.");
+            }
+            int i = edge[0];
+            int j = edge[1];
+            if (i < 0 || i >= numPositions || j < 0 || j >= numPositions) {
+                throw new IllegalArgumentException("Edge position outside graph: " + i + "," + j);
+            }
+            if (i == j) {
+                throw new IllegalArgumentException("Self edges are not supported: " + i);
+            }
+            adj[i][j] = true;
+            adj[j][i] = true;
+        }
+        return new InteractionGraph(numPositions, adj);
+    }
+
     /** Returns graph density as fraction of possible edges present. */
     public double getDensity() {
         int maxEdges = numPositions * (numPositions - 1) / 2;

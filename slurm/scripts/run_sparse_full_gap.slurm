@@ -45,8 +45,8 @@ echo "=========================================="
     --tests "edu.duke.cs.osprey.markstar.bench.SparseFullCheck.compareSparseFullPartitionFunctionGap" \
     --no-daemon \
     -Dorg.gradle.jvmargs="-Xmx28g" \
-    -Dbranchmarkstar.sparseFull.numFlexible="$NUM_FLEXIBLE" \
-    -Dbranchmarkstar.sparseFull.maxConfs="$MAX_CONFS" \
+    -Dbranchdp.sparseFull.numFlexible="$NUM_FLEXIBLE" \
+    -Dbranchdp.sparseFull.maxConfs="$MAX_CONFS" \
     2>&1
 
 echo ""

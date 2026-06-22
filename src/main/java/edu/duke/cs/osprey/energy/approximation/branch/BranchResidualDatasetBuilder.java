@@ -12,8 +12,8 @@ import edu.duke.cs.osprey.energy.ResidueInteractions;
 import edu.duke.cs.osprey.energy.forcefield.ForcefieldParams;
 import edu.duke.cs.osprey.lute.LUTEConfEnergyCalculator;
 import edu.duke.cs.osprey.markstar.framework.GridDPMinimizer;
-import edu.duke.cs.osprey.markstar.framework.branch.InteractionGraph;
-import edu.duke.cs.osprey.markstar.framework.branch.RootedTreeEdge;
+import edu.duke.cs.osprey.branchdp.InteractionGraph;
+import edu.duke.cs.osprey.branchdp.RootedTreeEdge;
 import edu.duke.cs.osprey.pruning.PruningMatrix;
 
 import java.util.ArrayList;

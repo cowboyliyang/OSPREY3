@@ -9,8 +9,8 @@ import edu.duke.cs.osprey.energy.approximation.ApproximatedObjectiveFunction;
 import edu.duke.cs.osprey.energy.approximation.ApproximatorMatrix;
 import edu.duke.cs.osprey.energy.forcefield.ForcefieldParams;
 import edu.duke.cs.osprey.energy.forcefield.ResidueForcefieldEnergy;
-import edu.duke.cs.osprey.markstar.framework.branch.InteractionGraph;
-import edu.duke.cs.osprey.markstar.framework.branch.RootedTreeEdge;
+import edu.duke.cs.osprey.branchdp.InteractionGraph;
+import edu.duke.cs.osprey.branchdp.RootedTreeEdge;
 
 import java.util.HashMap;
 import java.util.Map;

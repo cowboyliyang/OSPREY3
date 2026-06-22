@@ -65,3 +65,6 @@ transfer-tensor/
 # JVM crash artifacts
 hs_err_pid*.log
 replay_pid*.log
+
+# CUDA build artifacts
+src/main/cu/CudaConfEcalc/build_sm86/

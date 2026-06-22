@@ -236,13 +236,13 @@ tasks.withType<Test> {
 	// method call appends additional arguments for the JVM
 	jvmArgs(Jvm.moduleArgs)
 
-	// Forward osprey.* AND branchmarkstar.* system properties from gradle CLI
-	// (-Dosprey.xxx=yyy / -Dbranchmarkstar.xxx=yyy) to the test JVM. Without
+	// Forward OSPREY branch-DP/PACK* system properties from gradle CLI
+	// (-Dosprey.xxx=yyy / -Dbranchdp.xxx=yyy / -Dpackstar.xxx=yyy) to the test JVM. Without
 	// this, properties set on the gradle command line are silently dropped
 	// (the test only sees its own defaults / System.setProperty calls).
 	System.getProperties().forEach { key, value ->
 		val k = key.toString()
-		if (k.startsWith("osprey.") || k.startsWith("branchmarkstar.")) {
+		if (k.startsWith("osprey.") || k.startsWith("branchdp.") || k.startsWith("packstar.")) {
 			systemProperty(k, value.toString())
 		}
 	}

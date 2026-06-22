@@ -45,13 +45,11 @@ set(CMAKE_CUDA_FLAGS "\
         -Xcudafe --display_error_number \
         --resource-usage \
         --generate-line-info \
-        -gencode=arch=compute_50,code=sm_50 \
-        -gencode=arch=compute_52,code=sm_52 \
-        -gencode=arch=compute_60,code=sm_60 \
-        -gencode=arch=compute_61,code=sm_61 \
+        --maxrregcount=64 \
         -gencode=arch=compute_70,code=sm_70 \
         -gencode=arch=compute_75,code=sm_75 \
-        -gencode=arch=compute_75,code=compute_75 \
+        -gencode=arch=compute_86,code=sm_86 \
+        -gencode=arch=compute_86,code=compute_86 \
         ")
 
 # make a library target, for calling from osprey

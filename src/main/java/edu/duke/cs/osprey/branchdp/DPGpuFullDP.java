@@ -41,6 +41,19 @@ final class DPGpuFullDP {
 
     static final int MAX_EDGE_POSITIONS = 32;
 
+    // When an edge's GPU footprint exceeds device memory, fail the whole run instead
+    // of silently falling back to the (single-threaded, hours-long) Java DP path.
+    private static final String DP_GPU_FAIL_IF_EXCEEDS_VRAM = "branchdp.dp.gpu.failIfExceedsVram";
+    private static final String DP_GPU_VRAM_HEADROOM_PERCENT = "branchdp.dp.gpu.vramHeadroomPercent";
+    private static final int DEFAULT_DP_GPU_VRAM_HEADROOM_PERCENT = 92;
+
+    /** Edge GPU footprint exceeds device memory; propagated as fatal (no CPU fallback). */
+    static final class GpuMemoryExceededException extends RuntimeException {
+        GpuMemoryExceededException(String message) {
+            super(message);
+        }
+    }
+
     private static volatile boolean unavailable = false;
     private static volatile boolean unavailableLogged = false;
     // Per-edge (non-sticky) fallback: a single oversized/failed edge falls back to
@@ -57,6 +70,32 @@ final class DPGpuFullDP {
 
     private static boolean getConfigBoolean(String key, boolean defaultValue) {
         return BranchDpConfig.getBackendBoolean(key, defaultValue);
+    }
+
+    private static int getConfigInteger(String key, int defaultValue) {
+        return BranchDpConfig.getBackendInteger(key, defaultValue, BranchDpConfig.getBackendLogPrefix());
+    }
+
+    /** True if t (or any cause) is a device-OOM / footprint-too-big condition. */
+    private static boolean isGpuMemoryFailure(Throwable t) {
+        for (Throwable c = t; c != null; c = c.getCause()) {
+            if (c instanceof GpuMemoryExceededException) {
+                return true;
+            }
+            String m = c.getMessage();
+            if (m != null && m.contains("OUT_OF_MEMORY")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String rootMessage(Throwable t) {
+        Throwable c = t;
+        while (c.getCause() != null) {
+            c = c.getCause();
+        }
+        return c.getMessage();
     }
 
     static final class Request {
@@ -88,9 +127,10 @@ final class DPGpuFullDP {
         long[] childLStrideAll;
         int[] childLTermOff;
         int[] childLTermCnt;
-        long[] childTableBase;
-        double[] childLowerAll;
-        double[] childUpperAll;
+        long[] childTableBase;     // per-child element offset into the device buffer (long: may exceed int)
+        long childTableTotal;      // total element count across all child tables (may exceed Integer.MAX_VALUE)
+        double[][] childLowerParts; // per-child dense lower tables; never concatenated on the Java heap
+        double[][] childUpperParts;
 
         DPTable outTable;     // parent table written tile-by-tile
 
@@ -135,6 +175,19 @@ final class DPGpuFullDP {
             consecutiveEdgeFailures = 0;
             return true;
         } catch (Throwable t) {
+            // Device out-of-memory: the only CPU fallback for these huge edges is the
+            // single-threaded Java DP path, which can take hours. Fail the run fast so
+            // the job can be resubmitted on a larger-VRAM GPU (a6000/rtx_pro_6000),
+            // unless the operator explicitly opts back into fallback.
+            if (getConfigBoolean(DP_GPU_FAIL_IF_EXCEEDS_VRAM, true) && isGpuMemoryFailure(t)) {
+                System.out.println(BranchDpConfig.getBackendLogPrefix()
+                        + " GPU DP out of device memory; failing fast (no CPU fallback): "
+                        + rootMessage(t));
+                if (t instanceof RuntimeException) {
+                    throw (RuntimeException)t;
+                }
+                throw new RuntimeException(t);
+            }
             // Per-edge failure (e.g. a buffer too big even for chunked upload, or a
             // device OOM on one oversized edge): fall back to Java for THIS edge and
             // keep GPU enabled. Disable globally only after a run of failures.
@@ -366,6 +419,26 @@ final class DPGpuFullDP {
         try {
             stream.getContext().attachCurrentThread();
 
+            // Proactive VRAM gate: child tables must be fully resident (their indexing
+            // is scattered, so they cannot be streamed in slices). If the footprint
+            // does not fit this GPU, stop here rather than allocate-then-OOM.
+            long[] freeMem = {0L};
+            long[] totalMem = {0L};
+            if (JCudaDriver.cuMemGetInfo(freeMem, totalMem) == CUresult.CUDA_SUCCESS) {
+                long need = estimateDeviceBytes(req);
+                int headroomPct = Math.max(1, Math.min(100,
+                        getConfigInteger(DP_GPU_VRAM_HEADROOM_PERCENT, DEFAULT_DP_GPU_VRAM_HEADROOM_PERCENT)));
+                long usable = (long)((double)freeMem[0]*headroomPct/100.0);
+                if (need > usable) {
+                    throw new GpuMemoryExceededException("GPU DP footprint ~" + need
+                            + " B exceeds usable VRAM " + usable + " B (free=" + freeMem[0]
+                            + " B, total=" + totalMem[0] + " B, headroom=" + headroomPct + "%); "
+                            + "lambdaStates=" + req.totalLambdaStates
+                            + ", childTableElems=" + req.childTableTotal
+                            + " -- resubmit on a larger-VRAM GPU (a6000 48G / rtx_pro_6000 96G)");
+                }
+            }
+
             int blockThreads = resolveBlockThreads(req, stream);
             Kernel kernel = new Kernel(stream, "dp");
             Kernel.Function func = kernel.makeFunction("full_dp_n_children");
@@ -391,8 +464,10 @@ final class DPGpuFullDP {
             CUBuffer<IntBuffer> childLTermOff = uploadInts(stream, req.childLTermOff, buffers);
             CUBuffer<IntBuffer> childLTermCnt = uploadInts(stream, req.childLTermCnt, buffers);
             CUBuffer<LongBuffer> childTableBase = uploadLongs(stream, req.childTableBase, buffers);
-            CUdeviceptr childLowerAll = uploadDoublesBig(req.childLowerAll, rawBufs);
-            CUdeviceptr childUpperAll = uploadDoublesBig(req.childUpperAll, rawBufs);
+            CUdeviceptr childLowerAll = uploadChildTables(req.childLowerParts, req.childTableBase,
+                    req.childTableTotal, rawBufs);
+            CUdeviceptr childUpperAll = uploadChildTables(req.childUpperParts, req.childTableBase,
+                    req.childTableTotal, rawBufs);
             int maxTile = (int)Math.min(req.mStateChunk, rangeSize);
             CUBuffer<DoubleBuffer> outLower = makeDoubles(stream, maxTile, buffers);
             CUBuffer<DoubleBuffer> outUpper = makeDoubles(stream, maxTile, buffers);
@@ -553,6 +628,33 @@ final class DPGpuFullDP {
         return dptr;
     }
 
+    /**
+     * Allocate one device buffer for all concatenated child tables and copy each
+     * child's dense table straight into its slot at {@code base[c]} (element offset).
+     * The child tables are NEVER concatenated on the Java heap, so their combined
+     * length may exceed Integer.MAX_VALUE; only device memory (long byte count via
+     * cuMemAlloc) bounds it. Device layout is byte-identical to the old single
+     * concatenated upload, so the kernel and childTableBase semantics are unchanged.
+     */
+    private static CUdeviceptr uploadChildTables(double[][] parts, long[] base, long total,
+            List<CUdeviceptr> rawBufs) {
+        long count = Math.max(1L, total);
+        long bytes = count*(long)Double.BYTES;
+        CUdeviceptr dptr = new CUdeviceptr();
+        cudaCheck(JCudaDriver.cuMemAlloc(dptr, bytes), "cuMemAlloc(" + bytes + " bytes)");
+        rawBufs.add(dptr);
+        for (int c = 0; c < parts.length; c++) {
+            double[] part = parts[c];
+            if (part == null || part.length == 0) {
+                continue;
+            }
+            CUdeviceptr slot = dptr.withByteOffset(base[c]*(long)Double.BYTES);
+            cudaCheck(JCudaDriver.cuMemcpyHtoD(slot, Pointer.to(part),
+                    (long)part.length*(long)Double.BYTES), "cuMemcpyHtoD(child " + c + ")");
+        }
+        return dptr;
+    }
+
     private static void cudaCheck(int result, String what) {
         if (result != CUresult.CUDA_SUCCESS) {
             throw new RuntimeException("CUDA " + what + " failed: " + CUresult.stringFor(result));
@@ -563,7 +665,7 @@ final class DPGpuFullDP {
         System.out.println(BranchDpConfig.getBackendLogPrefix() + " GPU DP edge fallback ("
                 + t.getClass().getSimpleName() + ": " + t.getMessage()
                 + "); this edge on Java DP path");
-        if (getConfigBoolean("branchmarkstar.dp.gpu.trace", false)) {
+        if (getConfigBoolean("branchdp.dp.gpu.trace", false)) {
             t.printStackTrace(System.err);
         }
     }
@@ -589,8 +691,8 @@ final class DPGpuFullDP {
         bytes = addBytes(bytes, req.childLTermOff.length, Integer.BYTES);
         bytes = addBytes(bytes, req.childLTermCnt.length, Integer.BYTES);
         bytes = addBytes(bytes, req.childTableBase.length, Long.BYTES);
-        bytes = addBytes(bytes, req.childLowerAll.length, Double.BYTES);
-        bytes = addBytes(bytes, req.childUpperAll.length, Double.BYTES);
+        bytes = addBytes(bytes, req.childTableTotal, Double.BYTES);
+        bytes = addBytes(bytes, req.childTableTotal, Double.BYTES);
         bytes = addBytes(bytes, req.mStateChunk, Double.BYTES);
         bytes = addBytes(bytes, req.mStateChunk, Double.BYTES);
         return bytes;
@@ -618,7 +720,7 @@ final class DPGpuFullDP {
             unavailableLogged = true;
             System.out.println(BranchDpConfig.getBackendLogPrefix() + " GPU DP unavailable (" + reason
                     + "); falling back to Java DP path");
-            if (t != null && getConfigBoolean("branchmarkstar.dp.gpu.trace", false)) {
+            if (t != null && getConfigBoolean("branchdp.dp.gpu.trace", false)) {
                 t.printStackTrace(System.err);
             }
         }

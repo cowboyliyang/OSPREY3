@@ -99,13 +99,13 @@ public class TestComputeFullDPSharded {
 
     /** Build a fresh parent edge + 3 children, inject the given DP table, run computeFullDP. */
     private double[][] runDP(DPTable table, boolean parallel) {
-        System.setProperty("branchmarkstar.dp.foldChildren", "true");
-        System.setProperty("branchmarkstar.dp.foldChildren.hoistInvariant", "false");
-        System.setProperty("branchmarkstar.dp.nativeKernel", "false");
-        System.setProperty("branchmarkstar.dp.progress", "false");
-        System.setProperty("branchmarkstar.dp.parallel", String.valueOf(parallel));
-        System.setProperty("branchmarkstar.dp.parallel.minMStates", "1");
-        System.setProperty("branchmarkstar.dp.computeShardSize", "3");
+        System.setProperty("branchdp.dp.foldChildren", "true");
+        System.setProperty("branchdp.dp.foldChildren.hoistInvariant", "false");
+        System.setProperty("branchdp.dp.nativeKernel", "false");
+        System.setProperty("branchdp.dp.progress", "false");
+        System.setProperty("branchdp.dp.parallel", String.valueOf(parallel));
+        System.setProperty("branchdp.dp.parallel.minMStates", "1");
+        System.setProperty("branchdp.dp.computeShardSize", "3");
 
         int numPos = 4;
         int[] cards = {4, 3, 3, 2};      // pos0..3 cardinalities

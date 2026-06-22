@@ -50,22 +50,22 @@ echo "Compilation OK."
 echo ""
 
 TEST_JAVA_TOOL_OPTIONS=" \
-  -Dbranchmarkstar.test.numFlexible=$NUM_FLEXIBLE \
-  -Dbranchmarkstar.test.epsilon=$EPSILON \
-  -Dbranchmarkstar.cutoff.strategy=residual_budget \
-  -Dbranchmarkstar.cutoff.residualBudget=$BUDGET \
-  -Dbranchmarkstar.cutoff.keepConnected=true"
+  -Dbranchdp.test.numFlexible=$NUM_FLEXIBLE \
+  -Dbranchdp.test.epsilon=$EPSILON \
+  -Dbranchdp.cutoff.strategy=residual_budget \
+  -Dbranchdp.cutoff.residualBudget=$BUDGET \
+  -Dbranchdp.cutoff.keepConnected=true"
 
 JAVA_TOOL_OPTIONS="$TEST_JAVA_TOOL_OPTIONS" \
 ./gradlew --project-cache-dir "$PROJECT_CACHE" test \
     --tests "edu.duke.cs.osprey.markstar.TestBranchMARKStar.testFlatSumVsOriginalMARKStar" \
     --no-daemon --rerun-tasks \
     -Dorg.gradle.jvmargs="-Xmx72g" \
-    -Dbranchmarkstar.test.numFlexible="$NUM_FLEXIBLE" \
-    -Dbranchmarkstar.test.epsilon="$EPSILON" \
-    -Dbranchmarkstar.cutoff.strategy=residual_budget \
-    -Dbranchmarkstar.cutoff.residualBudget="$BUDGET" \
-    -Dbranchmarkstar.cutoff.keepConnected=true \
+    -Dbranchdp.test.numFlexible="$NUM_FLEXIBLE" \
+    -Dbranchdp.test.epsilon="$EPSILON" \
+    -Dbranchdp.cutoff.strategy=residual_budget \
+    -Dbranchdp.cutoff.residualBudget="$BUDGET" \
+    -Dbranchdp.cutoff.keepConnected=true \
     2>&1
 
 echo ""

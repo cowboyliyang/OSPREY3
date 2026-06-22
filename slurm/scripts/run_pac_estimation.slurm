@@ -59,14 +59,14 @@ JARGS="--add-opens java.base/java.util=ALL-UNNAMED \
        $EXTRA_JVM_ARGS"
 
 $JAVA $JARGS \
-    -Dbranchmarkstar.test.numFlexible="$NUM_FLEXIBLE" \
-    -Dbranchmarkstar.test.epsilon="$EPSILON" \
-    -Dbranchmarkstar.usePAC=true \
-    -Dbranchmarkstar.pac.residualBound="$PAC_RESIDUAL_BOUND" \
-    -Dbranchmarkstar.dp.cache="$DP_CACHE" \
-    -Dbranchmarkstar.pac.samples="$PAC_SAMPLES" \
-    -Dbranchmarkstar.pac.confidence="$PAC_CONFIDENCE" \
-    -Dosprey.branchmarkstar.numCpus="$NUM_CPUS" \
+    -Dbranchdp.test.numFlexible="$NUM_FLEXIBLE" \
+    -Dbranchdp.test.epsilon="$EPSILON" \
+    -Dbranchdp.usePAC=true \
+    -Dbranchdp.pac.residualBound="$PAC_RESIDUAL_BOUND" \
+    -Dbranchdp.dp.cache="$DP_CACHE" \
+    -Dbranchdp.pac.samples="$PAC_SAMPLES" \
+    -Dbranchdp.pac.confidence="$PAC_CONFIDENCE" \
+    -Dosprey.branchdp.numCpus="$NUM_CPUS" \
     -cp "$CP" \
     edu.duke.cs.osprey.markstar.TestBranchMARKStar branchsparse
 

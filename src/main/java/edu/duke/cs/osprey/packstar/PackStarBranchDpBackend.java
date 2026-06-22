@@ -10,9 +10,6 @@ import edu.duke.cs.osprey.markstar.framework.MARKStarBound;
 import edu.duke.cs.osprey.parallelism.Parallelism;
 import edu.duke.cs.osprey.tools.MathTools;
 
-import java.util.Collections;
-import java.util.Set;
-
 /**
  * PACK* branch-DP backend.
  *
@@ -24,6 +21,8 @@ import java.util.Set;
 final class PackStarBranchDpBackend extends BranchDpBackend implements PackStarBackend {
 
     private static final String RESTORE_DP_PROPERTY = "packstar.pac.restoreDP";
+
+    private PackStarSampleListener sampleListener = null;
 
     PackStarBranchDpBackend(SimpleConfSpace confSpace,
                             EnergyMatrix rigidEmat,
@@ -62,38 +61,13 @@ final class PackStarBranchDpBackend extends BranchDpBackend implements PackStarB
     }
 
     @Override
-    protected boolean getRegionAtomEnabled() {
+    protected boolean getUseHigherOrderCorrections() {
         return false;
-    }
-
-    @Override
-    protected boolean getRegionAtomScoutOnly() {
-        return false;
-    }
-
-    @Override
-    protected double[] getRegionAtomWhatIfDeltas() {
-        return new double[0];
-    }
-
-    @Override
-    protected Set<String> getRegionAtomCertifyNames() {
-        return Collections.emptySet();
-    }
-
-    @Override
-    protected boolean getRegionAtomCertifyUseDP() {
-        return false;
-    }
-
-    @Override
-    protected int getRegionAtomCertifyTopK() {
-        return 0;
     }
 
     @Override
     protected void logBackendControlOverrides() {
-        System.out.println("PACK*: region-atom and edge-lookahead controls are disabled for the PACK* backend.");
+        System.out.println("PACK*: edge-lookahead and triple-correction controls are disabled for the PACK* backend.");
     }
 
     @Override
@@ -116,13 +90,18 @@ final class PackStarBranchDpBackend extends BranchDpBackend implements PackStarB
             return true;
         }
 
-        computeWithPackStarEstimator();
+        computeWithPackStarEstimator(maxNumConfs);
         return true;
     }
 
     @Override
     public void setReduceMinimizations(boolean enabled) {
         reduceMinimizations = enabled;
+    }
+
+    @Override
+    public void setSampleListener(PackStarSampleListener listener) {
+        this.sampleListener = listener;
     }
 
     private void abortPackStar(String reason) {
@@ -132,15 +111,18 @@ final class PackStarBranchDpBackend extends BranchDpBackend implements PackStarB
         setStatus(PartitionFunction.Status.Aborted);
     }
 
-    private void computeWithPackStarEstimator() {
-        System.out.println("PACK*: estimator activated for state=" + stateName);
+    private void computeWithPackStarEstimator(int sampleBudget) {
+        System.out.println("PACK*: estimator activated for state=" + stateName
+                + ", sampleBudget=" + (sampleBudget == Integer.MAX_VALUE ? "unbounded" : sampleBudget));
 
         PackStarEstimator estimator = new PackStarEstimator(
                 rootedRoot, rootedRootEdge,
                 branchMinimizingEmat, branchRigidEmat,
                 interactionGraph, getMinimizingEcalc(),
                 searchRCs, confSpace,
-                targetEpsilon);
+                targetEpsilon,
+                sampleBudget);
+        estimator.setSampleListener(sampleListener);
 
         double estimatorEpsilon = estimator.compute();
 

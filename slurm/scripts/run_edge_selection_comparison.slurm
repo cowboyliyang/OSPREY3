@@ -60,10 +60,10 @@ echo ""
     --tests "edu.duke.cs.osprey.markstar.TestBranchMARKStar.testBranchEdgeSelectionComparison" \
     --no-daemon \
     -Dorg.gradle.jvmargs="-Xmx28g" \
-    -Dbranchmarkstar.test.numFlexible="$NUM_FLEXIBLE" \
-    -Dbranchmarkstar.test.epsilon="$EPSILON" \
-    -Dbranchmarkstar.edgeSelection.maxExactStates="$LOOKAHEAD_MAX_STATES" \
-    -Dbranchmarkstar.edgeSelection.parallelLookahead="$PARALLEL_LOOKAHEAD" \
+    -Dbranchdp.test.numFlexible="$NUM_FLEXIBLE" \
+    -Dbranchdp.test.epsilon="$EPSILON" \
+    -Dbranchdp.edgeSelection.maxExactStates="$LOOKAHEAD_MAX_STATES" \
+    -Dbranchdp.edgeSelection.parallelLookahead="$PARALLEL_LOOKAHEAD" \
     2>&1
 
 echo ""

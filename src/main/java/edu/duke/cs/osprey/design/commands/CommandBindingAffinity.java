@@ -13,23 +13,18 @@ import edu.duke.cs.osprey.design.models.MoleculeDto;
 import edu.duke.cs.osprey.design.models.ResidueModifier;
 import edu.duke.cs.osprey.ematrix.SimpleReferenceEnergies;
 import edu.duke.cs.osprey.ematrix.SimplerEnergyMatrixCalculator;
-import edu.duke.cs.osprey.ematrix.EnergyMatrix;
 import edu.duke.cs.osprey.ematrix.UpdatingEnergyMatrix;
 import edu.duke.cs.osprey.energy.ConfEnergyCalculator;
 import edu.duke.cs.osprey.energy.EnergyCalculator;
 import edu.duke.cs.osprey.energy.forcefield.ForcefieldParams;
 import edu.duke.cs.osprey.energy.forcefield.amber.ForcefieldFileParser;
-import edu.duke.cs.osprey.energy.approximation.branch.GNNConfEnergyCalculator;
-import edu.duke.cs.osprey.energy.approximation.branch.GNNSubtreeEnergyCalculator;
 import edu.duke.cs.osprey.kstar.KStar;
 import edu.duke.cs.osprey.kstar.pfunc.GradientDescentPfunc;
 import edu.duke.cs.osprey.markstar.framework.BranchMARKStarBound;
 import edu.duke.cs.osprey.markstar.framework.MARKStarBoundFastQueues;
-import edu.duke.cs.osprey.restypes.ResidueTemplateLibrary;
+import edu.duke.cs.osprey.packstar.PackStarPartitionFunction;
 import edu.duke.cs.osprey.structure.Molecule;
-import edu.duke.cs.osprey.structure.PDBIO;
 import edu.duke.cs.osprey.structure.Residue;
-import edu.duke.cs.osprey.structure.Residues;
 import one.util.streamex.IntStreamEx;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.NotNull;
@@ -71,73 +66,21 @@ public class CommandBindingAffinity extends RunnableCommand {
     @Parameter(names = "--use-branchmarkstar", description = "Use BranchMARK* (branch-decomposition variant of MARK*) for the partition function calculation. Faster than MARK* on kinase-sized active sites.")
     public boolean useBranchMarkstar;
 
-    @Parameter(names = "--use-branchmarkstar-pac", description = "Use BranchMARK* with PAC partition-function sampling.")
-    public boolean useBranchMarkstarPac;
+    @Parameter(names = "--use-packstar",
+            description = "Use PACK* PAC partition-function sampling.")
+    public boolean usePackStar;
 
-    @Parameter(names = "--branchmarkstar-pac-samples", description = "Number of PAC samples for BranchMARK* PAC mode. Uses the BranchMARK* default when omitted.")
-    public int branchMarkstarPacSamples = -1;
+    @Parameter(names = "--packstar-pac-samples",
+            description = "Number of PACK* PAC samples. Uses the PACK* default when omitted.")
+    public int packStarPacSamples = -1;
 
-    @Parameter(names = "--branchmarkstar-pac-confidence", description = "PAC confidence level for BranchMARK* PAC mode. Uses the BranchMARK* default when omitted.")
-    public double branchMarkstarPacConfidence = Double.NaN;
+    @Parameter(names = "--packstar-pac-confidence",
+            description = "PACK* PAC confidence level. Uses the PACK* default when omitted.")
+    public double packStarPacConfidence = Double.NaN;
 
-    @Parameter(names = "--branchmarkstar-pac-residual-bound", description = "Deterministic absolute residual-energy bound |xi| in kcal/mol. Required for a strict PAC certificate.")
-    public double branchMarkstarPacResidualBound = Double.NaN;
-
-    // === GNN Strategy 8 (leaf + subtree GNN) — only used with --use-branchmarkstar ===
-    @Parameter(names = "--gnn-strategy", description = "GNN strategy ID (0=off, 8=leaf+subtree). Only effective with --use-branchmarkstar.")
-    public int gnnStrategy = 0;
-
-    @Parameter(names = "--gnn-protein-leaf", description = "Path to protein leaf-GNN ONNX model.")
-    public String gnnProteinLeaf;
-
-    @Parameter(names = "--gnn-protein-subtree", description = "Path to protein subtree-GNN ONNX model.")
-    public String gnnProteinSubtree;
-
-    @Parameter(names = "--gnn-complex-leaf", description = "Path to complex leaf-GNN ONNX model.")
-    public String gnnComplexLeaf;
-
-    @Parameter(names = "--gnn-complex-subtree", description = "Path to complex subtree-GNN ONNX model.")
-    public String gnnComplexSubtree;
-
-    // Training conf-space spec (for RC mapping)
-    @Parameter(names = "--gnn-train-protein-pdb", description = "Training protein PDB.")
-    public String gnnTrainProteinPdb;
-
-    @Parameter(names = "--gnn-train-ligand-pdb", description = "Training ligand PDB (HETATM).")
-    public String gnnTrainLigandPdb;
-
-    @Parameter(names = "--gnn-train-prepi", description = "Training ligand prepi file.")
-    public String gnnTrainPrepi;
-
-    @Parameter(names = "--gnn-train-frcmod", description = "Training ligand frcmod file.")
-    public String gnnTrainFrcmod;
-
-    @Parameter(names = "--gnn-train-tc", description = "Training ligand tc file.")
-    public String gnnTrainTc;
-
-    @Parameter(names = "--gnn-train-rot", description = "Training ligand rot file.")
-    public String gnnTrainRot;
-
-    @Parameter(names = "--gnn-train-chain", description = "Training protein chain ID (default: A).")
-    public String gnnTrainChain = "A";
-
-    @Parameter(names = "--gnn-train-hotspots", description = "Comma-separated training hotspot residue numbers, e.g. 694,766,768,772,773.")
-    public String gnnTrainHotspots;
-
-    @Parameter(names = "--gnn-gpu-batch", description = "GPU batch size for leaf GNN (default 1000).")
-    public int gnnGpuBatch = 1000;
-
-    @Parameter(names = "--gnn-leaf-gpu-protein", description = "GPU device id for protein leaf GNN (default 0).")
-    public int gnnLeafGpuProtein = 0;
-
-    @Parameter(names = "--gnn-subtree-gpu-protein", description = "GPU device id for protein subtree GNN (default 0).")
-    public int gnnSubtreeGpuProtein = 0;
-
-    @Parameter(names = "--gnn-leaf-gpu-complex", description = "GPU device id for complex leaf GNN (default 0).")
-    public int gnnLeafGpuComplex = 0;
-
-    @Parameter(names = "--gnn-subtree-gpu-complex", description = "GPU device id for complex subtree GNN (default 0).")
-    public int gnnSubtreeGpuComplex = 0;
+    @Parameter(names = "--packstar-pac-residual-bound",
+            description = "Deterministic absolute residual-energy bound |xi| in kcal/mol. Required for a strict PAC certificate.")
+    public double packStarPacResidualBound = Double.NaN;
 
     @Parameter(names = "--stability-threshold", description = "Pruning criteria to remove sequences with unstable unbound states relative to the wild type sequence. Set to a negative number to disable.")
     public double stabilityThreshold = 5.0;
@@ -163,18 +106,16 @@ public class CommandBindingAffinity extends RunnableCommand {
     }
 
     private int runAffinityDesign(AffinityDesign design) {
-        if (useBranchMarkstarPac) {
-            useBranchMarkstar = true;
-            System.setProperty("branchmarkstar.usePAC", "true");
-            if (branchMarkstarPacSamples > 0) {
-                System.setProperty("branchmarkstar.pac.samples", Integer.toString(branchMarkstarPacSamples));
+        if (usePackStar) {
+            if (packStarPacSamples > 0) {
+                System.setProperty("packstar.pac.samples", Integer.toString(packStarPacSamples));
             }
-            if (!Double.isNaN(branchMarkstarPacConfidence) && branchMarkstarPacConfidence > 0) {
-                System.setProperty("branchmarkstar.pac.confidence", Double.toString(branchMarkstarPacConfidence));
+            if (!Double.isNaN(packStarPacConfidence) && packStarPacConfidence > 0) {
+                System.setProperty("packstar.pac.confidence", Double.toString(packStarPacConfidence));
             }
-            if (!Double.isNaN(branchMarkstarPacResidualBound) && branchMarkstarPacResidualBound >= 0) {
-                System.setProperty("branchmarkstar.pac.residualBound",
-                        Double.toString(branchMarkstarPacResidualBound));
+            if (!Double.isNaN(packStarPacResidualBound) && packStarPacResidualBound >= 0) {
+                System.setProperty("packstar.pac.residualBound",
+                        Double.toString(packStarPacResidualBound));
             }
         }
 
@@ -201,31 +142,6 @@ public class CommandBindingAffinity extends RunnableCommand {
         var epsilon = delegate.epsilon > 0 ? delegate.epsilon : 0.999999;
         var kstar = new KStar(paramsAndStrands.proteinConfSpace, paramsAndStrands.ligandConfSpace, paramsAndStrands.complexConfSpace, makeKStarSettings(epsilon));
 
-        // ----- Lazy-build training conf spaces for GNN RC mapping (Strategy 8) -----
-        SimpleConfSpace trainProteinCS = null;
-        SimpleConfSpace trainComplexCS = null;
-        boolean useGnnS8 = useBranchMarkstar && gnnStrategy == 8;
-        if (useGnnS8) {
-            try {
-                int[] hotspots = Arrays.stream(gnnTrainHotspots.split(","))
-                        .mapToInt(s -> Integer.parseInt(s.trim())).toArray();
-                var train = buildTrainingConfSpaces(
-                        new File(gnnTrainProteinPdb), new File(gnnTrainLigandPdb),
-                        new File(gnnTrainPrepi), new File(gnnTrainFrcmod),
-                        new File(gnnTrainTc), new File(gnnTrainRot),
-                        gnnTrainChain, hotspots);
-                trainProteinCS = train[0];
-                trainComplexCS = train[1];
-                System.out.println("[GNN-S8] Training conf spaces built: protein="
-                        + trainProteinCS.positions.size() + "pos, complex="
-                        + trainComplexCS.positions.size() + "pos");
-            } catch (Exception e) {
-                throw new RuntimeException("[GNN-S8] Failed to build training conf spaces: " + e.getMessage(), e);
-            }
-        }
-        final SimpleConfSpace finalTrainProteinCS = trainProteinCS;
-        final SimpleConfSpace finalTrainComplexCS = trainComplexCS;
-
         for (var info : kstar.confSpaceInfos()) {
             var referenceEnergies = new SimpleReferenceEnergies.Builder(((SimpleConfSpace) info.confSpace), minimizingECalc)
                     .build();
@@ -238,50 +154,28 @@ public class CommandBindingAffinity extends RunnableCommand {
                     .build()
                     .calcEnergyMatrix();
 
-            if (useBranchMarkstar) {
+            if (usePackStar || useBranchMarkstar) {
                 var rigidConfECalc = new ConfEnergyCalculator(info.confEcalc, rigidECalc);
                 var rigidEnergymatrix = new SimplerEnergyMatrixCalculator.Builder(rigidConfECalc)
                         .build()
                         .calcEnergyMatrix();
 
-                final boolean isProtein = info.type == KStar.ConfSpaceType.Protein;
-                final boolean isComplex = info.type == KStar.ConfSpaceType.Complex;
-                final EnergyMatrix capturedEmatMin = minimizedEnergyMatrix;
-
                 info.pfuncFactory = (rcs) -> {
-                    var pfn = new BranchMARKStarBound(minimizingConfECalc.confSpace, rigidEnergymatrix, minimizedEnergyMatrix, info.confEcalc, rcs, minimizingECalc.parallelism);
-                    pfn.setCorrections(new UpdatingEnergyMatrix(info.confEcalc.confSpace, minimizedEnergyMatrix, info.confEcalc));
-
-                    if (useGnnS8 && (isProtein || isComplex)) {
-                        String leafModelPath  = isProtein ? gnnProteinLeaf    : gnnComplexLeaf;
-                        String subtreeModelPath = isProtein ? gnnProteinSubtree : gnnComplexSubtree;
-                        int leafGpu     = isProtein ? gnnLeafGpuProtein     : gnnLeafGpuComplex;
-                        int subtreeGpu  = isProtein ? gnnSubtreeGpuProtein  : gnnSubtreeGpuComplex;
-                        SimpleConfSpace inferenceCS = (SimpleConfSpace) info.confSpace;
-                        SimpleConfSpace trainCS = isProtein ? finalTrainProteinCS : finalTrainComplexCS;
-
-                        if (leafModelPath != null) {
-                            var leafGNN = new GNNConfEnergyCalculator(
-                                    new File(leafModelPath), capturedEmatMin,
-                                    inferenceCS.positions.size(), leafGpu);
-                            leafGNN.setRCMapping(GNNConfEnergyCalculator.buildRCMapping(inferenceCS, trainCS));
-                            pfn.setGNNBatchCalculator(leafGNN);
-                            pfn.setGPUBatchSize(gnnGpuBatch);
-                            pfn.setCPParams(0.001, 0.10, 0.06);
-                            System.out.println("[GNN-S8] " + (isProtein ? "protein" : "complex")
-                                    + " leaf GNN attached: " + leafModelPath + " (gpu " + leafGpu + ")");
-                        }
-                        if (subtreeModelPath != null) {
-                            var subtreeGNN = new GNNSubtreeEnergyCalculator(
-                                    new File(subtreeModelPath), capturedEmatMin,
-                                    inferenceCS.positions.size(), subtreeGpu);
-                            subtreeGNN.setRCMapping(GNNConfEnergyCalculator.buildRCMapping(inferenceCS, trainCS));
-                            pfn.setSubtreeGNN(subtreeGNN);
-                            System.out.println("[GNN-S8] " + (isProtein ? "protein" : "complex")
-                                    + " subtree GNN attached: " + subtreeModelPath + " (gpu " + subtreeGpu + ")");
-                        }
+                    if (usePackStar) {
+                        var pfn = new PackStarPartitionFunction(minimizingConfECalc.confSpace,
+                                rigidEnergymatrix, minimizedEnergyMatrix, info.confEcalc,
+                                rcs, minimizingECalc.parallelism);
+                        pfn.setCorrections(new UpdatingEnergyMatrix(info.confEcalc.confSpace,
+                                minimizedEnergyMatrix, info.confEcalc));
+                        return pfn;
+                    } else {
+                        var pfn = new BranchMARKStarBound(minimizingConfECalc.confSpace,
+                                rigidEnergymatrix, minimizedEnergyMatrix, info.confEcalc,
+                                rcs, minimizingECalc.parallelism);
+                        pfn.setCorrections(new UpdatingEnergyMatrix(info.confEcalc.confSpace,
+                                minimizedEnergyMatrix, info.confEcalc));
+                        return pfn;
                     }
-                    return pfn;
                 };
             } else if (useMarkstar) {
                 var rigidConfECalc = new ConfEnergyCalculator(info.confEcalc, rigidECalc);
@@ -571,83 +465,6 @@ public class CommandBindingAffinity extends RunnableCommand {
         }
 
         return Optional.of(design);
-    }
-
-    /**
-     * Build training {protein, complex} conf spaces matching the GNN training spec.
-     * Replicates TestBranchMARKStar.buildConfSpaceEGFR — same hotspot residues, all20, continuous.
-     * Returns array [protein, complex].
-     */
-    private static SimpleConfSpace[] buildTrainingConfSpaces(
-            File proteinPdb, File ligandPdb,
-            File prepiFile, File frcmodFile, File tcFile, File rotFile,
-            String chain, int[] hotspotResNums) throws IOException {
-
-        ForcefieldParams.Forcefield ff = ForcefieldParams.Forcefield.AMBER;
-        ForcefieldFileParser parser = (frcmodFile != null && frcmodFile.exists())
-                ? new ForcefieldFileParser(ForcefieldParams.class.getResourceAsStream(ff.paramsPath), frcmodFile.toPath())
-                : new ForcefieldFileParser(ForcefieldParams.class.getResourceAsStream(ff.paramsPath));
-        ForcefieldParams ffparams = new ForcefieldParams(ff, parser);
-
-        String prepiContent = Files.readString(prepiFile.toPath());
-        String tcContent  = (tcFile != null && tcFile.exists())  ? Files.readString(tcFile.toPath())  : "";
-        String rotContent = (rotFile != null && rotFile.exists()) ? Files.readString(rotFile.toPath()) : "";
-
-        ResidueTemplateLibrary templateLib = new ResidueTemplateLibrary.Builder(ffparams.forcefld)
-                .addTemplates(prepiContent)
-                .addTemplateCoords(tcContent)
-                .addRotamers(rotContent)
-                .build();
-
-        Molecule proteinMol = PDBIO.readFile(proteinPdb);
-        Molecule ligandMol  = PDBIO.readFile(ligandPdb);
-
-        // Protein residue range
-        int firstRes = Integer.MAX_VALUE, lastRes = Integer.MIN_VALUE;
-        for (Residue r : proteinMol.residues) {
-            String s = Residues.normalizeResNum(r.getPDBResNumber());
-            int i = 0;
-            while (i < s.length() && !Character.isDigit(s.charAt(i))) i++;
-            int rn = Integer.parseInt(s.substring(i).replaceAll("[^0-9-].*$", ""));
-            if (rn < firstRes) firstRes = rn;
-            if (rn > lastRes)  lastRes  = rn;
-        }
-        Strand protein = new Strand.Builder(proteinMol)
-                .setTemplateLibrary(templateLib)
-                .setTemplateMatchingMethod(Residue.TemplateMatchingMethod.AtomNames)
-                .setResidues(chain + firstRes, chain + lastRes)
-                .build();
-
-        String[] all20 = {"ALA","ARG","ASN","ASP","CYS","GLN","GLU","GLY","HIS","ILE","LEU",
-                          "LYS","MET","PHE","PRO","SER","THR","TRP","TYR","VAL"};
-        for (int rn : hotspotResNums) {
-            String id = chain + rn;
-            Strand.ResidueFlex rf = protein.flexibility.get(id);
-            if (rf != null) rf.setLibraryRotamers(all20).addWildTypeRotamers().setContinuous();
-        }
-
-        // Ligand strand (rigid)
-        int ligFirst = Integer.MAX_VALUE, ligLast = Integer.MIN_VALUE;
-        String ligChain = chain;
-        for (Residue r : ligandMol.residues) {
-            try {
-                String s = Residues.normalizeResNum(r.getPDBResNumber());
-                int i = 0;
-                while (i < s.length() && !Character.isDigit(s.charAt(i))) i++;
-                int rn = Integer.parseInt(s.substring(i).replaceAll("[^0-9-].*$", ""));
-                if (rn < ligFirst) { ligFirst = rn; ligChain = String.valueOf(r.getChainId()); }
-                if (rn > ligLast)  ligLast  = rn;
-            } catch (NumberFormatException ignored) {}
-        }
-        Strand ligand = new Strand.Builder(ligandMol)
-                .setTemplateLibrary(templateLib)
-                .setTemplateMatchingMethod(Residue.TemplateMatchingMethod.AtomNames)
-                .setResidues(ligChain + ligFirst, ligChain + ligLast)
-                .build();
-
-        SimpleConfSpace proteinCS = new SimpleConfSpace.Builder().addStrand(protein).build();
-        SimpleConfSpace complexCS = new SimpleConfSpace.Builder().addStrands(protein, ligand).build();
-        return new SimpleConfSpace[] { proteinCS, complexCS };
     }
 
     @Override

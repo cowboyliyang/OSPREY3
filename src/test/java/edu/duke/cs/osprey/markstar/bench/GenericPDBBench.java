@@ -133,12 +133,22 @@ public class GenericPDBBench {
         Strand proteinStrand = new Strand.Builder(mol).setTemplateLibrary(templateLib)
                 .setResidues(pFirst, pLast).build();
 
-        // Apply mutable residues to protein strand
-        for (String res : mutableResidues) {
-            res = res.trim(); if (res.isEmpty()) continue;
+        // Apply mutable residues to protein strand.
+        // Token syntax: "<chain><resnum>" => all 20 AAs (back-compat);
+        //               "<chain><resnum>=A,S,D" => only the listed AAs (1-letter) + wild type.
+        for (String tok : mutableResidues) {
+            tok = tok.trim(); if (tok.isEmpty()) continue;
+            String res; String[] rotamers;
+            int eq = tok.indexOf('=');
+            if (eq >= 0) {
+                res = tok.substring(0, eq).trim();
+                rotamers = parseAAList(tok.substring(eq + 1));
+            } else {
+                res = tok; rotamers = all20;
+            }
             try {
-                proteinStrand.flexibility.get(res).setLibraryRotamers(all20).addWildTypeRotamers().setContinuous();
-                System.out.println("  Protein mutable: " + res);
+                proteinStrand.flexibility.get(res).setLibraryRotamers(rotamers).addWildTypeRotamers().setContinuous();
+                System.out.println("  Protein mutable: " + res + " -> " + String.join(",", rotamers));
             } catch (Exception e) {
                 System.err.println("  WARNING: mutable residue " + res + " not on protein strand: " + e.getMessage());
             }
@@ -308,6 +318,31 @@ public class GenericPDBBench {
         } catch (Exception e) {
             System.err.println("Export failed: " + e.getMessage());
             e.printStackTrace();
+        }
+    }
+
+    /** Parse a comma-separated list of 1-letter AA codes into OSPREY 3-letter residue names. */
+    private static String[] parseAAList(String csv) {
+        String[] parts = csv.split(",");
+        List<String> out = new ArrayList<>();
+        for (String p : parts) {
+            p = p.trim();
+            if (p.isEmpty()) continue;
+            out.add(aa1to3(p.charAt(0)));
+        }
+        return out.toArray(new String[0]);
+    }
+
+    private static String aa1to3(char c) {
+        switch (Character.toUpperCase(c)) {
+            case 'A': return "ALA"; case 'R': return "ARG"; case 'N': return "ASN";
+            case 'D': return "ASP"; case 'C': return "CYS"; case 'E': return "GLU";
+            case 'Q': return "GLN"; case 'G': return "GLY"; case 'H': return "HIS";
+            case 'I': return "ILE"; case 'L': return "LEU"; case 'K': return "LYS";
+            case 'M': return "MET"; case 'F': return "PHE"; case 'P': return "PRO";
+            case 'S': return "SER"; case 'T': return "THR"; case 'W': return "TRP";
+            case 'Y': return "TYR"; case 'V': return "VAL";
+            default: throw new IllegalArgumentException("Unknown 1-letter AA code: " + c);
         }
     }
 
@@ -977,8 +1012,8 @@ public class GenericPDBBench {
     private static void runDPProfile(TestKStar.ConfSpaces confSpaces,
                                       Parallelism parallelism, String ematDir,
                                       String designId) {
-        if (System.getProperty("branchmarkstar.dp.cache") == null) {
-            System.setProperty("branchmarkstar.dp.cache", "false");
+        if (System.getProperty("branchdp.dp.cache") == null) {
+            System.setProperty("branchdp.dp.cache", "false");
         }
 
         String stateProp = System.getProperty("osprey.dpProfile.state", "complex")
@@ -1024,7 +1059,7 @@ public class GenericPDBBench {
         System.out.println("  Sequence: " + globalSequence.toString(Sequence.Renderer.ResType));
         System.out.println("  State sequence: " + stateSequence.toString(Sequence.Renderer.ResType));
         System.out.println("  Positions: " + cs.positions.size());
-        System.out.println("  DP cache: " + System.getProperty("branchmarkstar.dp.cache"));
+        System.out.println("  DP cache: " + System.getProperty("branchdp.dp.cache"));
 
         EnergyCalculator minimizingEcalc = new EnergyCalculator.Builder(
                 confSpaces.complex, confSpaces.ffparams)
@@ -1059,7 +1094,7 @@ public class GenericPDBBench {
                     + " state=" + stateName
                     + " seqIndex=" + seqIndex
                     + " elapsedMs=" + elapsedMs
-                    + " threads=" + System.getProperty("branchmarkstar.dp.parallel.threads", "auto"));
+                    + " threads=" + System.getProperty("branchdp.dp.parallel.threads", "auto"));
         } finally {
             minimizingEcalc.tasks.waitForFinish();
             rigidEcalc.tasks.waitForFinish();

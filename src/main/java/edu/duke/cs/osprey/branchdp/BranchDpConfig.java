@@ -1,12 +1,16 @@
 package edu.duke.cs.osprey.branchdp;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+
 /**
  * Shared branch-DP system-property resolver.
  *
- * <p>The branch-DP primitives own the legacy {@code branchmarkstar.*} keys.
+ * <p>The branch-DP primitives own the neutral {@code branchdp.*} keys.
  * PACK* callers may enter a scoped alias mode where matching {@code packstar.*}
- * keys are preferred, while plain BranchMARK* callers continue to see only the
- * legacy keys.</p>
+ * keys are preferred. Legacy {@code branchmarkstar.*} keys are accepted only as
+ * a fallback for non-PACK* callers.</p>
  */
 public final class BranchDpConfig {
 
@@ -21,7 +25,7 @@ public final class BranchDpConfig {
     }
 
     public static String getBackendName() {
-        return isPackStarAliasScopeActive() ? "PACK*" : "BranchMARK*";
+        return isPackStarAliasScopeActive() ? "PACK*" : "Branch-DP";
     }
 
     public static String getBackendLogPrefix() {
@@ -29,7 +33,7 @@ public final class BranchDpConfig {
     }
 
     public static String getBackendThreadNamePrefix() {
-        return isPackStarAliasScopeActive() ? "packstar" : "branchmarkstar";
+        return isPackStarAliasScopeActive() ? "packstar" : "branchdp";
     }
 
     public static Scope enterPackStarAliasScope() {
@@ -72,16 +76,49 @@ public final class BranchDpConfig {
         }
     }
 
+    public static double getBackendDouble(String key, double defaultValue, String warningPrefix) {
+        String value = getBackendProperty(key, null);
+        if (value == null || value.trim().isEmpty()) {
+            return defaultValue;
+        }
+        try {
+            return Double.parseDouble(value.trim());
+        } catch (NumberFormatException e) {
+            warn(warningPrefix, "Invalid double", key, value, Double.toString(defaultValue));
+            return defaultValue;
+        }
+    }
+
+    public static long getBackendBytes(String key, long defaultValue, String warningPrefix) {
+        String value = getBackendProperty(key, null);
+        if (value == null || value.trim().isEmpty()) {
+            return defaultValue;
+        }
+        try {
+            return parseByteCount(value.trim());
+        } catch (NumberFormatException e) {
+            warn(warningPrefix, "Invalid byte count", key, value, Long.toString(defaultValue));
+            return defaultValue;
+        }
+    }
+
     static String getProperty(String key, String defaultValue, boolean preferPackStarAliases) {
-        if (!preferPackStarAliases) {
-            String value = directProperty(key);
+        if (preferPackStarAliases) {
+            String preferredKey = preferPackStarKey(key);
+            String value = directProperty(preferredKey);
+            if (value == null) {
+                String neutralKey = neutralBranchDpKey(preferredKey);
+                if (!neutralKey.equals(preferredKey)) {
+                    value = directProperty(neutralKey);
+                }
+            }
             return value != null ? value : defaultValue;
         }
-        String preferredKey = preferPackStarKey(key);
-        String value = directProperty(preferredKey);
+
+        String value = directProperty(key);
         if (value == null) {
-            String legacyKey = legacyBranchMarkStarKey(preferredKey);
-            if (!legacyKey.equals(preferredKey)) {
+            String legacyKey = legacyBranchMarkStarKey(key);
+            if (!legacyKey.equals(key)) {
                 value = directProperty(legacyKey);
             }
         }
@@ -94,15 +131,23 @@ public final class BranchDpConfig {
     }
 
     private static String preferPackStarKey(String key) {
-        String prefix = "branchmarkstar.";
+        String prefix = "branchdp.";
         if (key.startsWith(prefix)) {
             return "packstar." + key.substring(prefix.length());
         }
         return key;
     }
 
-    private static String legacyBranchMarkStarKey(String key) {
+    private static String neutralBranchDpKey(String key) {
         String prefix = "packstar.";
+        if (key.startsWith(prefix)) {
+            return "branchdp." + key.substring(prefix.length());
+        }
+        return key;
+    }
+
+    private static String legacyBranchMarkStarKey(String key) {
+        String prefix = "branchdp.";
         if (key.startsWith(prefix)) {
             return "branchmarkstar." + key.substring(prefix.length());
         }
@@ -112,6 +157,66 @@ public final class BranchDpConfig {
     private static void warn(String warningPrefix, String kind, String key, String value, String defaultValue) {
         System.err.println(warningPrefix + " " + kind + " for '" + key
                 + "': '" + value + "', using " + defaultValue + ".");
+    }
+
+    public static long parseByteCount(String value) {
+        String normalized = value.trim().toLowerCase(Locale.ROOT).replace("_", "");
+        long multiplier = 1L;
+        if (normalized.endsWith("kib")) {
+            multiplier = 1024L;
+            normalized = normalized.substring(0, normalized.length() - 3);
+        } else if (normalized.endsWith("kb") || normalized.endsWith("k")) {
+            multiplier = 1024L;
+            normalized = normalized.replaceAll("kb?$", "");
+        } else if (normalized.endsWith("mib")) {
+            multiplier = 1024L * 1024L;
+            normalized = normalized.substring(0, normalized.length() - 3);
+        } else if (normalized.endsWith("mb") || normalized.endsWith("m")) {
+            multiplier = 1024L * 1024L;
+            normalized = normalized.replaceAll("mb?$", "");
+        } else if (normalized.endsWith("gib")) {
+            multiplier = 1024L * 1024L * 1024L;
+            normalized = normalized.substring(0, normalized.length() - 3);
+        } else if (normalized.endsWith("gb") || normalized.endsWith("g")) {
+            multiplier = 1024L * 1024L * 1024L;
+            normalized = normalized.replaceAll("gb?$", "");
+        } else if (normalized.endsWith("tib")) {
+            multiplier = 1024L * 1024L * 1024L * 1024L;
+            normalized = normalized.substring(0, normalized.length() - 3);
+        } else if (normalized.endsWith("tb") || normalized.endsWith("t")) {
+            multiplier = 1024L * 1024L * 1024L * 1024L;
+            normalized = normalized.replaceAll("tb?$", "");
+        } else if (normalized.endsWith("b")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+
+        double amount = Double.parseDouble(normalized.trim());
+        if (amount < 0 || amount > Long.MAX_VALUE / (double) multiplier) {
+            throw new NumberFormatException(value);
+        }
+        return (long) (amount * multiplier);
+    }
+
+    public static double[] parseDoubleList(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return new double[0];
+        }
+        String[] fields = value.split(",");
+        List<Double> parsed = new ArrayList<>();
+        for (String field : fields) {
+            String trimmed = field.trim();
+            if (trimmed.isEmpty()) continue;
+            try {
+                parsed.add(Double.parseDouble(trimmed));
+            } catch (NumberFormatException e) {
+                System.err.println(getBackendLogPrefix() + " Invalid double in list: '" + trimmed + "', skipping.");
+            }
+        }
+        double[] result = new double[parsed.size()];
+        for (int i = 0; i < parsed.size(); i++) {
+            result[i] = parsed.get(i);
+        }
+        return result;
     }
 
     public static final class Scope implements AutoCloseable {

@@ -7,7 +7,7 @@ import edu.duke.cs.osprey.confspace.ConfSearch;
 import edu.duke.cs.osprey.confspace.RCTuple;
 import edu.duke.cs.osprey.confspace.SimpleConfSpace;
 import edu.duke.cs.osprey.ematrix.EnergyMatrix;
-import edu.duke.cs.osprey.markstar.framework.branch.InteractionGraph;
+import edu.duke.cs.osprey.branchdp.InteractionGraph;
 import edu.duke.cs.osprey.pruning.PruningMatrix;
 
 import java.util.ArrayList;

@@ -11,48 +11,48 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 public class TestPackStarConfig {
 
     @Test
-    public void packStarAliasWinsWhenEnabled() {
+    public void packStarPropertyWinsWhenEnabled() {
         withProperties(Map.of(
                 "packstar.example.int", "7",
-                "branchmarkstar.example.int", "3"
+                "branchdp.example.int", "3"
         ), () -> assertEquals(7,
-                PackStarConfig.getInteger("branchmarkstar.example.int", 0, "[test]", true)));
+                PackStarConfig.getInteger("branchdp.example.int", 0, "[test]", true)));
     }
 
     @Test
-    public void legacyFallbackIsAcceptedWhenAliasEnabled() {
+    public void branchDpFallbackIsAcceptedWhenPackStarKeyIsMissing() {
         withProperties(Map.of(
-                "branchmarkstar.example.int", "3"
+                "branchdp.example.int", "3"
         ), () -> assertEquals(3,
                 PackStarConfig.getInteger("packstar.example.int", 0, "[test]", true)));
     }
 
     @Test
-    public void branchMarkStarModeIgnoresPackStarAlias() {
+    public void directModeIgnoresPackStarAlias() {
         withProperties(Map.of(
                 "packstar.example.int", "7",
-                "branchmarkstar.example.int", "3"
+                "branchdp.example.int", "3"
         ), () -> assertEquals(3,
-                PackStarConfig.getInteger("branchmarkstar.example.int", 0, "[test]", false)));
+                PackStarConfig.getInteger("branchdp.example.int", 0, "[test]", false)));
     }
 
     @Test
-    public void branchMarkStarModeUsesDefaultWithoutLegacyKey() {
+    public void directModeUsesDefaultWithoutBranchDpKey() {
         withProperties(Map.of(
                 "packstar.example.int", "7"
         ), () -> assertEquals(0,
-                PackStarConfig.getInteger("branchmarkstar.example.int", 0, "[test]", false)));
+                PackStarConfig.getInteger("branchdp.example.int", 0, "[test]", false)));
     }
 
     @Test
     public void backendConfigUsesPackStarAliasInsidePackStarScope() {
         withProperties(Map.of(
                 "packstar.example.backend", "7",
-                "branchmarkstar.example.backend", "3"
+                "branchdp.example.backend", "3"
         ), () -> {
             try (PackStarBackendRuntime.Scope scope = PackStarBackendRuntime.enter()) {
                 assertEquals(7,
-                        PackStarConfig.getBackendInteger("branchmarkstar.example.backend", 0, "[test]"));
+                        PackStarConfig.getBackendInteger("branchdp.example.backend", 0, "[test]"));
             }
         });
     }
@@ -61,16 +61,16 @@ public class TestPackStarConfig {
     public void backendConfigIgnoresPackStarAliasOutsidePackStarScope() {
         withProperties(Map.of(
                 "packstar.example.backend", "7",
-                "branchmarkstar.example.backend", "3"
+                "branchdp.example.backend", "3"
         ), () -> assertEquals(3,
-                PackStarConfig.getBackendInteger("branchmarkstar.example.backend", 0, "[test]")));
+                PackStarConfig.getBackendInteger("branchdp.example.backend", 0, "[test]")));
     }
 
     @Test
     public void backendIdentityTracksPackStarScope() {
-        assertEquals("BranchMARK*", BranchDpConfig.getBackendName());
-        assertEquals("BranchMARK*:", BranchDpConfig.getBackendLogPrefix());
-        assertEquals("branchmarkstar", BranchDpConfig.getBackendThreadNamePrefix());
+        assertEquals("Branch-DP", BranchDpConfig.getBackendName());
+        assertEquals("Branch-DP:", BranchDpConfig.getBackendLogPrefix());
+        assertEquals("branchdp", BranchDpConfig.getBackendThreadNamePrefix());
 
         try (PackStarBackendRuntime.Scope scope = PackStarBackendRuntime.enter()) {
             assertEquals("PACK*", BranchDpConfig.getBackendName());
@@ -78,9 +78,9 @@ public class TestPackStarConfig {
             assertEquals("packstar", BranchDpConfig.getBackendThreadNamePrefix());
         }
 
-        assertEquals("BranchMARK*", BranchDpConfig.getBackendName());
-        assertEquals("BranchMARK*:", BranchDpConfig.getBackendLogPrefix());
-        assertEquals("branchmarkstar", BranchDpConfig.getBackendThreadNamePrefix());
+        assertEquals("Branch-DP", BranchDpConfig.getBackendName());
+        assertEquals("Branch-DP:", BranchDpConfig.getBackendLogPrefix());
+        assertEquals("branchdp", BranchDpConfig.getBackendThreadNamePrefix());
     }
 
     private static void withProperties(Map<String, String> values, Runnable test) {

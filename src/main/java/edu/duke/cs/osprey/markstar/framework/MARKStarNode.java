@@ -433,34 +433,31 @@ public class MARKStarNode implements Comparable<MARKStarNode> {
         AStarScorer make(EnergyMatrix emat);
     }
 
-
-
     public static MARKStarNode makeRoot(SimpleConfSpace confSpace, EnergyMatrix rigidEnergyMatrix,
                                         EnergyMatrix minimizingEnergyMatrix, RCs rcs,
                                         AStarScorer gScorer, AStarScorer hScorer,
                                         AStarScorer rigidgScorer, AStarScorer negatedHScorer,
                                         boolean reportProgress) {
 
+        // make the A* scorers
 
-		// make the A* scorers
+        ConfIndex confIndex = new ConfIndex(confSpace.positions.size());
 
-		ConfIndex confIndex = new ConfIndex(confSpace.positions.size());
-
-		// make the root node
+        // make the root node
         Node node = new Node(confSpace.positions.size());
         Node rootNode = node;
-		rootNode.index(confIndex);
-		rootNode.gscore = gScorer.calc(confIndex, rcs);
-		rootNode.rigidScore = rigidgScorer.calc(confIndex,rcs);
+        rootNode.index(confIndex);
+        rootNode.gscore = gScorer.calc(confIndex, rcs);
+        rootNode.rigidScore = rigidgScorer.calc(confIndex,rcs);
 
-		// Calculate bounds
+        // Calculate bounds
         double confUpperBound = rigidgScorer.calc(confIndex, rcs) - negatedHScorer.calc(confIndex, rcs);
         double confLowerBound = gScorer.calc(confIndex, rcs) + hScorer.calc(confIndex, rcs);
 
         rootNode.computeNumConformations(rcs);
         rootNode.setBoundsFromConfLowerAndUpper(confLowerBound, confUpperBound);
-		return new MARKStarNode(rootNode, null);
-	}
+        return new MARKStarNode(rootNode, null);
+    }
 
 
     @Override
@@ -471,15 +468,16 @@ public class MARKStarNode implements Comparable<MARKStarNode> {
     public BigDecimal getErrorBound() {
         if(confSearchNode.isMinimized())
             return BigDecimal.ZERO;
+        BigDecimal nodeGap = confSearchNode.subtreeUpperBound.subtract(confSearchNode.subtreeLowerBound)
+                .multiply(new BigDecimal(confSearchNode.minimizationRatio));
         if(children == null || children.size() < 1) {
-            BigDecimal diff = confSearchNode.subtreeUpperBound.subtract(confSearchNode.subtreeLowerBound);
-            return  diff.multiply(new BigDecimal(confSearchNode.minimizationRatio));
+            return nodeGap;
         }
         BigDecimal errorSum = BigDecimal.ZERO;
         for(MARKStarNode childNode: children) {
             errorSum = errorSum.add(childNode.getErrorBound());
         }
-        errorBound = errorSum;
+        errorBound = nodeGap.compareTo(errorSum) < 0 ? nodeGap : errorSum;
         return errorBound;
     }
 
@@ -559,15 +557,19 @@ public class MARKStarNode implements Comparable<MARKStarNode> {
         private void updateSubtreeLowerBound(BigDecimal tighterLower) {
             if (subtreeLowerBound != null && subtreeLowerBound.compareTo(tighterLower) > 0)
                 System.err.println("Updating subtree lower bound " + setSigFigs(subtreeLowerBound)
-                        + " with " + tighterLower + ", which is lower!?");
-            subtreeLowerBound = tighterLower;
+                        + " with " + tighterLower + ", which is lower!? Keeping existing tighter bound.");
+            if (subtreeLowerBound == null || tighterLower.compareTo(subtreeLowerBound) > 0) {
+                subtreeLowerBound = tighterLower;
+            }
         }
 
         private void updateSubtreeUpperBound(BigDecimal tighterUpper) {
             if (subtreeUpperBound != null && subtreeUpperBound.compareTo(tighterUpper) < 0)
                 System.err.println("Updating subtree upper bound " + setSigFigs(subtreeUpperBound)
-                        + " with " + setSigFigs(tighterUpper) + ", which is greater!?");
-            subtreeUpperBound = tighterUpper;
+                        + " with " + setSigFigs(tighterUpper) + ", which is greater!? Keeping existing tighter bound.");
+            if (subtreeUpperBound == null || tighterUpper.compareTo(subtreeUpperBound) < 0) {
+                subtreeUpperBound = tighterUpper;
+            }
         }
 
         public boolean isMinimized() {

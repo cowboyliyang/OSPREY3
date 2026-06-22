@@ -32,26 +32,92 @@ import java.util.*;
  */
 public class BranchDecomposition {
 
+    public enum Strategy {
+        HICKS,
+        GREEDY_MERGE,
+        EXACT,
+        EXACT_IMPROVE,
+        AUTO;
+
+        public static Strategy fromProperty(String value) {
+            if (value == null || value.trim().isEmpty()) {
+                return HICKS;
+            }
+            switch (value.trim().toLowerCase(Locale.ROOT)) {
+                case "hicks":
+                case "hicks2005":
+                case "legacy":
+                    return HICKS;
+                case "greedy":
+                case "greedymerge":
+                case "greedy_merge":
+                case "edgegreedy":
+                case "edge_greedy":
+                    return GREEDY_MERGE;
+                case "exact":
+                case "exactbranchwidth":
+                case "exact_branchwidth":
+                case "optimal":
+                    return EXACT;
+                case "exactimprove":
+                case "exact_improve":
+                case "improve":
+                case "improve_exact":
+                case "targeted":
+                case "exactfast":
+                case "exact_fast":
+                    return EXACT_IMPROVE;
+                case "auto":
+                case "best":
+                    return AUTO;
+                default:
+                    System.err.println("BranchDecomposition: unknown strategy '" + value
+                            + "', using hicks.");
+                    return HICKS;
+            }
+        }
+    }
+
     private BranchTree bt;
     private Set<Integer> graphVertices;
     private int numPositions;
     private InteractionGraph interactionGraph;
+    private final Strategy strategy;
+    private boolean computed = false;
+    private static final int DEFAULT_EXACT_MAX_POSITIONS = 20;
+    private static final int DEFAULT_EXACT_IMPROVE_MAX_DROP = 1;
+    private static final long DEFAULT_EXACT_IMPROVE_MAX_MILLIS = 120_000L;
 
     /**
      * Build a branch decomposition from an interaction graph.
      * Call compute() to run the algorithm.
      */
     public BranchDecomposition(InteractionGraph graph) {
+        this(graph, Strategy.HICKS);
+    }
+
+    public BranchDecomposition(InteractionGraph graph, Strategy strategy) {
         this.interactionGraph = graph;
+        this.strategy = strategy == null ? Strategy.HICKS : strategy;
+        this.numPositions = graph.getNumPositions();
+        resetTree();
+        if (this.strategy == Strategy.HICKS) {
+            initializeHicksTree();
+        }
+    }
+
+    private void resetTree() {
         this.bt = new BranchTree();
         this.graphVertices = new LinkedHashSet<>();
-        this.numPositions = graph.getNumPositions();
+    }
 
+    private void initializeHicksTree() {
+        resetTree();
         // Build initial leaf nodes from interaction graph edges (analogous to readGraphFile)
         Set<Integer> gvDup = new LinkedHashSet<>();
         Set<Integer> seen = new LinkedHashSet<>();
 
-        for (int[] edge : graph.getEdgeList()) {
+        for (int[] edge : interactionGraph.getEdgeList()) {
             int pos1 = edge[0];
             int pos2 = edge[1];
             bt.addNode(new BranchNode(true, pos1, pos2));
@@ -67,6 +133,33 @@ public class BranchDecomposition {
 
     /** Run the branch decomposition algorithm. */
     public void compute() {
+        if (computed) {
+            return;
+        }
+
+        switch (strategy) {
+            case HICKS:
+                computeHicks();
+                break;
+            case GREEDY_MERGE:
+                computeGreedyMerge();
+                break;
+            case EXACT:
+                computeExact();
+                break;
+            case EXACT_IMPROVE:
+                computeExactImprove();
+                break;
+            case AUTO:
+                computeAuto();
+                break;
+            default:
+                throw new IllegalStateException("Unhandled branch decomposition strategy " + strategy);
+        }
+        computed = true;
+    }
+
+    private void computeHicks() {
         boolean done = false;
         boolean done2sep = false;
         boolean done3sep = false;
@@ -118,6 +211,217 @@ public class BranchDecomposition {
 
     public BranchTree getTree() { return bt; }
     public int getBranchwidth() { return bt.getBranchwidth(); }
+    public Strategy getStrategy() { return strategy; }
+
+    private void computeAuto() {
+        BranchDecomposition hicks = new BranchDecomposition(interactionGraph, Strategy.HICKS);
+        hicks.compute();
+
+        BranchDecomposition greedy = new BranchDecomposition(interactionGraph, Strategy.GREEDY_MERGE);
+        greedy.compute();
+
+        BranchDecomposition selected = greedy.getBranchwidth() < hicks.getBranchwidth() ? greedy : hicks;
+        this.bt = selected.bt;
+        this.graphVertices = selected.graphVertices;
+        System.out.println("BranchDecomposition auto: hicks bw=" + hicks.getBranchwidth()
+                + ", greedyMerge bw=" + greedy.getBranchwidth()
+                + ", selected=" + (selected == greedy ? "greedyMerge" : "hicks"));
+    }
+
+    private void computeExact() {
+        int activePositions = countActiveGraphPositions();
+        int maxPositions = getExactMaxPositions();
+        if (activePositions > maxPositions) {
+            System.out.println("BranchDecomposition exact: activePositions=" + activePositions
+                    + " > maxPositions=" + maxPositions + ", falling back to hicks.");
+            computeHicksFallback();
+            return;
+        }
+
+        BranchDecomposition hicks = new BranchDecomposition(interactionGraph, Strategy.HICKS);
+        hicks.compute();
+        int hicksWidth = hicks.getBranchwidth();
+        if (interactionGraph.getEdgeList().isEmpty()) {
+            this.bt = hicks.bt;
+            this.graphVertices = hicks.graphVertices;
+            return;
+        }
+
+        int lowerBound = 0;
+        try {
+            lowerBound = ExactTreewidth.compute(interactionGraph).branchwidthLowerBound;
+        } catch (RuntimeException e) {
+            System.err.println("BranchDecomposition exact: exact treewidth lower bound failed: "
+                    + e.getMessage() + ". Starting search at bw=0.");
+        }
+
+        ExactBranchwidth.Result exact = ExactBranchwidth.compute(
+                interactionGraph, Math.min(lowerBound, hicksWidth), hicksWidth);
+        if (exact.branchwidth <= hicksWidth) {
+            this.bt = exact.tree;
+            resetGraphVerticesFromEdges();
+            System.out.println("BranchDecomposition exact: bw=" + exact.branchwidth
+                    + ", hicksBw=" + hicksWidth
+                    + ", lowerBound=" + exact.lowerBound
+                    + ", activePositions=" + exact.activePositions
+                    + ", graphEdges=" + exact.graphEdges
+                    + ", elapsedMs=" + String.format(Locale.ROOT, "%.1f", exact.elapsedMillis()));
+        } else {
+            this.bt = hicks.bt;
+            this.graphVertices = hicks.graphVertices;
+            System.out.println("BranchDecomposition exact: reconstructed bw=" + exact.branchwidth
+                    + " > hicksBw=" + hicksWidth + ", using hicks.");
+        }
+    }
+
+    private void computeExactImprove() {
+        int activePositions = countActiveGraphPositions();
+        int maxPositions = getExactMaxPositions();
+        BranchDecomposition hicks = new BranchDecomposition(interactionGraph, Strategy.HICKS);
+        hicks.compute();
+        int hicksWidth = hicks.getBranchwidth();
+
+        if (activePositions > maxPositions) {
+            this.bt = hicks.bt;
+            this.graphVertices = hicks.graphVertices;
+            System.out.println("BranchDecomposition exact_improve: activePositions=" + activePositions
+                    + " > maxPositions=" + maxPositions + ", using hicks bw=" + hicksWidth + ".");
+            return;
+        }
+        if (interactionGraph.getEdgeList().isEmpty() || hicksWidth <= 0) {
+            this.bt = hicks.bt;
+            this.graphVertices = hicks.graphVertices;
+            return;
+        }
+
+        int lowerBound = 0;
+        try {
+            lowerBound = ExactTreewidth.compute(interactionGraph).branchwidthLowerBound;
+        } catch (RuntimeException e) {
+            System.err.println("BranchDecomposition exact_improve: exact treewidth lower bound failed: "
+                    + e.getMessage() + ". Using lowerBound=0.");
+        }
+
+        int maxDrop = getExactImproveMaxDrop();
+        int minTarget = Math.max(lowerBound, hicksWidth - maxDrop);
+        long targetTimeoutNanos = getExactImproveMaxMillis() * 1_000_000L;
+
+        for (int targetWidth = hicksWidth - 1; targetWidth >= minTarget; targetWidth--) {
+            long started = System.nanoTime();
+            try {
+                ExactBranchwidth.Result exact = ExactBranchwidth.computeAtMost(
+                        interactionGraph, targetWidth, targetTimeoutNanos);
+                if (exact == null) {
+                    System.out.println("BranchDecomposition exact_improve: no decomposition with bw<="
+                            + targetWidth + " (hicksBw=" + hicksWidth
+                            + ", elapsedMs=" + String.format(Locale.ROOT, "%.1f",
+                            (System.nanoTime() - started) / 1_000_000.0) + "), using hicks.");
+                    break;
+                }
+
+                this.bt = exact.tree;
+                resetGraphVerticesFromEdges();
+                System.out.println("BranchDecomposition exact_improve: bw=" + exact.branchwidth
+                        + ", hicksBw=" + hicksWidth
+                        + ", targetBw=" + targetWidth
+                        + ", lowerBound=" + lowerBound
+                        + ", activePositions=" + exact.activePositions
+                        + ", graphEdges=" + exact.graphEdges
+                        + ", elapsedMs=" + String.format(Locale.ROOT, "%.1f", exact.elapsedMillis()));
+                return;
+            } catch (ExactBranchwidth.SearchTimeoutException e) {
+                System.out.println("BranchDecomposition exact_improve: targetBw=" + targetWidth
+                        + " timed out after " + getExactImproveMaxMillis()
+                        + " ms (hicksBw=" + hicksWidth + "), using hicks.");
+                break;
+            }
+        }
+
+        this.bt = hicks.bt;
+        this.graphVertices = hicks.graphVertices;
+    }
+
+    private void computeHicksFallback() {
+        BranchDecomposition hicks = new BranchDecomposition(interactionGraph, Strategy.HICKS);
+        hicks.compute();
+        this.bt = hicks.bt;
+        this.graphVertices = hicks.graphVertices;
+    }
+
+    private int countActiveGraphPositions() {
+        boolean[] active = new boolean[numPositions];
+        int count = 0;
+        for (int[] edge : interactionGraph.getEdgeList()) {
+            if (!active[edge[0]]) {
+                active[edge[0]] = true;
+                count++;
+            }
+            if (!active[edge[1]]) {
+                active[edge[1]] = true;
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private void resetGraphVerticesFromEdges() {
+        graphVertices = new LinkedHashSet<>();
+        for (int[] edge : interactionGraph.getEdgeList()) {
+            graphVertices.add(edge[0]);
+            graphVertices.add(edge[1]);
+        }
+    }
+
+    private static int getExactMaxPositions() {
+        String value = System.getProperty("branchdp.decomp.exact.maxPositions");
+        if (value == null || value.trim().isEmpty()) {
+            value = System.getProperty("packstar.decomp.exact.maxPositions");
+        }
+        if (value == null || value.trim().isEmpty()) {
+            return DEFAULT_EXACT_MAX_POSITIONS;
+        }
+        try {
+            return Math.max(0, Integer.parseInt(value.trim()));
+        } catch (NumberFormatException e) {
+            System.err.println("BranchDecomposition exact: invalid maxPositions '" + value
+                    + "', using " + DEFAULT_EXACT_MAX_POSITIONS + ".");
+            return DEFAULT_EXACT_MAX_POSITIONS;
+        }
+    }
+
+    private static int getExactImproveMaxDrop() {
+        String value = System.getProperty("branchdp.decomp.exactImprove.maxDrop");
+        if (value == null || value.trim().isEmpty()) {
+            value = System.getProperty("packstar.decomp.exactImprove.maxDrop");
+        }
+        if (value == null || value.trim().isEmpty()) {
+            return DEFAULT_EXACT_IMPROVE_MAX_DROP;
+        }
+        try {
+            return Math.max(1, Integer.parseInt(value.trim()));
+        } catch (NumberFormatException e) {
+            System.err.println("BranchDecomposition exact_improve: invalid maxDrop '" + value
+                    + "', using " + DEFAULT_EXACT_IMPROVE_MAX_DROP + ".");
+            return DEFAULT_EXACT_IMPROVE_MAX_DROP;
+        }
+    }
+
+    private static long getExactImproveMaxMillis() {
+        String value = System.getProperty("branchdp.decomp.exactImprove.maxMillis");
+        if (value == null || value.trim().isEmpty()) {
+            value = System.getProperty("packstar.decomp.exactImprove.maxMillis");
+        }
+        if (value == null || value.trim().isEmpty()) {
+            return DEFAULT_EXACT_IMPROVE_MAX_MILLIS;
+        }
+        try {
+            return Math.max(1L, Long.parseLong(value.trim()));
+        } catch (NumberFormatException e) {
+            System.err.println("BranchDecomposition exact_improve: invalid maxMillis '" + value
+                    + "', using " + DEFAULT_EXACT_IMPROVE_MAX_MILLIS + ".");
+            return DEFAULT_EXACT_IMPROVE_MAX_MILLIS;
+        }
+    }
 
     // ========== Star graph construction ==========
 
@@ -138,6 +442,178 @@ public class BranchDecomposition {
                 if (gvDup.contains(pos2)) be.addM(pos2);
             }
         }
+    }
+
+    // ========== Greedy edge-cluster branch decomposition ==========
+
+    private static class GreedyCluster {
+        final BranchNode rootNode;
+        final BitSet edgeSet;
+        final int leafCount;
+        final int boundarySize;
+        final long serial;
+
+        GreedyCluster(BranchNode rootNode, BitSet edgeSet, int leafCount,
+                      int boundarySize, long serial) {
+            this.rootNode = rootNode;
+            this.edgeSet = edgeSet;
+            this.leafCount = leafCount;
+            this.boundarySize = boundarySize;
+            this.serial = serial;
+        }
+    }
+
+    private static class GreedyPair {
+        final int i;
+        final int j;
+        final int mergeWidth;
+        final int unionBoundarySize;
+        final int balance;
+        final int unionLeafCount;
+        final long serialSum;
+
+        GreedyPair(int i, int j, int mergeWidth, int unionBoundarySize,
+                   int balance, int unionLeafCount, long serialSum) {
+            this.i = i;
+            this.j = j;
+            this.mergeWidth = mergeWidth;
+            this.unionBoundarySize = unionBoundarySize;
+            this.balance = balance;
+            this.unionLeafCount = unionLeafCount;
+            this.serialSum = serialSum;
+        }
+
+        boolean isBetterThan(GreedyPair other) {
+            if (other == null) return true;
+            if (mergeWidth != other.mergeWidth) return mergeWidth < other.mergeWidth;
+            if (unionBoundarySize != other.unionBoundarySize) return unionBoundarySize < other.unionBoundarySize;
+            if (balance != other.balance) return balance < other.balance;
+            if (unionLeafCount != other.unionLeafCount) return unionLeafCount < other.unionLeafCount;
+            return serialSum < other.serialSum;
+        }
+    }
+
+    private void computeGreedyMerge() {
+        resetTree();
+
+        List<int[]> graphEdges = interactionGraph.getEdgeList();
+        int numGraphEdges = graphEdges.size();
+        if (numGraphEdges == 0) {
+            return;
+        }
+
+        List<GreedyCluster> clusters = new ArrayList<>();
+        long nextSerial = 0;
+        for (int edgeIndex = 0; edgeIndex < numGraphEdges; edgeIndex++) {
+            int[] edge = graphEdges.get(edgeIndex);
+            BranchNode leaf = new BranchNode(true, edge[0], edge[1]);
+            bt.addNode(leaf);
+            graphVertices.add(edge[0]);
+            graphVertices.add(edge[1]);
+
+            BitSet edgeSet = new BitSet(numGraphEdges);
+            edgeSet.set(edgeIndex);
+            clusters.add(new GreedyCluster(leaf, edgeSet, 1,
+                    middleSetSize(edgeSet, graphEdges), nextSerial++));
+        }
+
+        while (clusters.size() > 2) {
+            GreedyPair pair = findGreedyPair(clusters, graphEdges, numGraphEdges);
+            GreedyCluster merged = mergeGreedyClusters(
+                    clusters.get(pair.i), clusters.get(pair.j), graphEdges, nextSerial++);
+
+            clusters.remove(pair.j);
+            clusters.remove(pair.i);
+            clusters.add(merged);
+        }
+
+        if (clusters.size() == 1) {
+            BranchNode root = new BranchNode(false, -1, -1);
+            bt.addNode(root);
+            int edgeIndex = bt.addEdge(root.getIndex(), clusters.get(0).rootNode.getIndex());
+            if (edgeIndex >= 0) {
+                bt.getEdge(edgeIndex).setM(middleSet(clusters.get(0).edgeSet, graphEdges));
+            }
+        } else {
+            GreedyCluster left = clusters.get(0);
+            GreedyCluster right = clusters.get(1);
+            int edgeIndex = bt.addEdge(left.rootNode.getIndex(), right.rootNode.getIndex());
+            if (edgeIndex >= 0) {
+                bt.getEdge(edgeIndex).setM(middleSet(left.edgeSet, graphEdges));
+            }
+        }
+    }
+
+    private GreedyPair findGreedyPair(List<GreedyCluster> clusters, List<int[]> graphEdges,
+                                      int numGraphEdges) {
+        GreedyPair best = null;
+        for (int i = 0; i < clusters.size(); i++) {
+            GreedyCluster a = clusters.get(i);
+            for (int j = i + 1; j < clusters.size(); j++) {
+                GreedyCluster b = clusters.get(j);
+                BitSet union = unionEdgeSets(a.edgeSet, b.edgeSet);
+                int unionBoundarySize = middleSetSize(union, graphEdges);
+                int mergeWidth = Math.max(Math.max(a.boundarySize, b.boundarySize), unionBoundarySize);
+                int unionLeafCount = a.leafCount + b.leafCount;
+                int balance = Math.abs(numGraphEdges - 2 * unionLeafCount);
+                GreedyPair candidate = new GreedyPair(i, j, mergeWidth, unionBoundarySize,
+                        balance, unionLeafCount, a.serial + b.serial);
+                if (candidate.isBetterThan(best)) {
+                    best = candidate;
+                }
+            }
+        }
+        return best;
+    }
+
+    private GreedyCluster mergeGreedyClusters(GreedyCluster left, GreedyCluster right,
+                                              List<int[]> graphEdges, long serial) {
+        BranchNode parent = new BranchNode(false, -1, -1);
+        bt.addNode(parent);
+
+        int leftEdgeIndex = bt.addEdge(parent.getIndex(), left.rootNode.getIndex());
+        if (leftEdgeIndex >= 0) {
+            bt.getEdge(leftEdgeIndex).setM(middleSet(left.edgeSet, graphEdges));
+        }
+
+        int rightEdgeIndex = bt.addEdge(parent.getIndex(), right.rootNode.getIndex());
+        if (rightEdgeIndex >= 0) {
+            bt.getEdge(rightEdgeIndex).setM(middleSet(right.edgeSet, graphEdges));
+        }
+
+        BitSet union = unionEdgeSets(left.edgeSet, right.edgeSet);
+        return new GreedyCluster(parent, union, left.leafCount + right.leafCount,
+                middleSetSize(union, graphEdges), serial);
+    }
+
+    private BitSet unionEdgeSets(BitSet a, BitSet b) {
+        BitSet union = (BitSet) a.clone();
+        union.or(b);
+        return union;
+    }
+
+    private int middleSetSize(BitSet edgeSet, List<int[]> graphEdges) {
+        return middleSet(edgeSet, graphEdges).size();
+    }
+
+    private LinkedHashSet<Integer> middleSet(BitSet edgeSet, List<int[]> graphEdges) {
+        boolean[] inSubset = new boolean[numPositions];
+        boolean[] outSubset = new boolean[numPositions];
+
+        for (int edgeIndex = 0; edgeIndex < graphEdges.size(); edgeIndex++) {
+            int[] edge = graphEdges.get(edgeIndex);
+            boolean[] side = edgeSet.get(edgeIndex) ? inSubset : outSubset;
+            side[edge[0]] = true;
+            side[edge[1]] = true;
+        }
+
+        LinkedHashSet<Integer> middle = new LinkedHashSet<>();
+        for (int pos = 0; pos < numPositions; pos++) {
+            if (inSubset[pos] && outSubset[pos]) {
+                middle.add(pos);
+            }
+        }
+        return middle;
     }
 
     // ========== Node splitting logic ==========

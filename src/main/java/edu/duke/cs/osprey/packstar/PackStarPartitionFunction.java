@@ -14,11 +14,11 @@ import java.math.BigDecimal;
 /**
  * PACK* partition-function entry point.
  *
- * <p>This is currently a thin facade over the branch-decomposition PAC path
- * while the implementation is being moved out of BranchMARK*.  The facade gives
- * callers a PACK*-named API and keeps PAC mode mandatory for this path.</p>
+ * <p>This is currently a thin facade over the branch-decomposition PAC path.
+ * The facade gives callers a PACK*-named API and keeps PAC mode mandatory for
+ * this path.</p>
  */
-public class PackStarPartitionFunction implements PartitionFunction.WithConfDB {
+public class PackStarPartitionFunction implements PartitionFunction.WithConfDB, PackStarSampleTraceable {
 
     private final PackStarBound delegate;
 
@@ -79,6 +79,11 @@ public class PackStarPartitionFunction implements PartitionFunction.WithConfDB {
 
     public void setReduceMinimizations(boolean enabled) {
         delegate.setReduceMinimizations(enabled);
+    }
+
+    @Override
+    public void setSampleListener(PackStarSampleListener listener) {
+        delegate.setSampleListener(listener);
     }
 
     @Override

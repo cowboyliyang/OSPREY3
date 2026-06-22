@@ -1,9 +1,9 @@
 package edu.duke.cs.osprey.energy.approximation.branch;
 
 import edu.duke.cs.osprey.confspace.SimpleConfSpace;
-import edu.duke.cs.osprey.markstar.framework.branch.InteractionGraph;
-import edu.duke.cs.osprey.markstar.framework.branch.RootedTreeEdge;
-import edu.duke.cs.osprey.markstar.framework.branch.RootedTreeNode;
+import edu.duke.cs.osprey.branchdp.InteractionGraph;
+import edu.duke.cs.osprey.branchdp.RootedTreeEdge;
+import edu.duke.cs.osprey.branchdp.RootedTreeNode;
 
 import java.util.ArrayList;
 import java.util.Collections;

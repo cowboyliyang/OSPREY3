@@ -69,20 +69,20 @@ echo "Running testFlatSumVsOriginalMARKStar"
 echo "BranchMARK* edge selection fixed to $EDGE_SELECTION"
 echo "=========================================="
 echo ""
-TEST_JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} -Dbranchmarkstar.test.numFlexible=$NUM_FLEXIBLE -Dbranchmarkstar.test.epsilon=$EPSILON -Dbranchmarkstar.edgeSelection=$EDGE_SELECTION -Dbranchmarkstar.edgeSelection.maxExactStates=$LOOKAHEAD_MAX_STATES -Dbranchmarkstar.edgeSelection.parallelLookahead=$PARALLEL_LOOKAHEAD -Dbranchmarkstar.parallel.internal=$PARALLEL_INTERNAL -Dbranchmarkstar.parallel.enumeration=$PARALLEL_ENUMERATION -Dmarkstar.leafProfile=true -Dmarkstar.leafProfile.allConfs=true -Dmarkstar.leafProfile.detail=$LEAF_PROFILE_DETAIL -Dmarkstar.leafProfile.interval=$LEAF_PROFILE_INTERVAL"
+TEST_JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} -Dbranchdp.test.numFlexible=$NUM_FLEXIBLE -Dbranchdp.test.epsilon=$EPSILON -Dbranchdp.edgeSelection=$EDGE_SELECTION -Dbranchdp.edgeSelection.maxExactStates=$LOOKAHEAD_MAX_STATES -Dbranchdp.edgeSelection.parallelLookahead=$PARALLEL_LOOKAHEAD -Dbranchdp.parallel.internal=$PARALLEL_INTERNAL -Dbranchdp.parallel.enumeration=$PARALLEL_ENUMERATION -Dmarkstar.leafProfile=true -Dmarkstar.leafProfile.allConfs=true -Dmarkstar.leafProfile.detail=$LEAF_PROFILE_DETAIL -Dmarkstar.leafProfile.interval=$LEAF_PROFILE_INTERVAL"
 echo "  TEST_JAVA_TOOL_OPTIONS=$TEST_JAVA_TOOL_OPTIONS"
 echo ""
 JAVA_TOOL_OPTIONS="$TEST_JAVA_TOOL_OPTIONS" ./gradlew test \
     --tests "edu.duke.cs.osprey.markstar.TestBranchMARKStar.$TEST_METHOD" \
     --no-daemon \
     -Dorg.gradle.jvmargs="-Xmx48g" \
-    -Dbranchmarkstar.test.numFlexible="$NUM_FLEXIBLE" \
-    -Dbranchmarkstar.test.epsilon="$EPSILON" \
-    -Dbranchmarkstar.edgeSelection="$EDGE_SELECTION" \
-    -Dbranchmarkstar.edgeSelection.maxExactStates="$LOOKAHEAD_MAX_STATES" \
-    -Dbranchmarkstar.edgeSelection.parallelLookahead="$PARALLEL_LOOKAHEAD" \
-    -Dbranchmarkstar.parallel.internal="$PARALLEL_INTERNAL" \
-    -Dbranchmarkstar.parallel.enumeration="$PARALLEL_ENUMERATION" \
+    -Dbranchdp.test.numFlexible="$NUM_FLEXIBLE" \
+    -Dbranchdp.test.epsilon="$EPSILON" \
+    -Dbranchdp.edgeSelection="$EDGE_SELECTION" \
+    -Dbranchdp.edgeSelection.maxExactStates="$LOOKAHEAD_MAX_STATES" \
+    -Dbranchdp.edgeSelection.parallelLookahead="$PARALLEL_LOOKAHEAD" \
+    -Dbranchdp.parallel.internal="$PARALLEL_INTERNAL" \
+    -Dbranchdp.parallel.enumeration="$PARALLEL_ENUMERATION" \
     -Dmarkstar.leafProfile=true \
     -Dmarkstar.leafProfile.allConfs=true \
     -Dmarkstar.leafProfile.detail="$LEAF_PROFILE_DETAIL" \

@@ -66,6 +66,11 @@ final class BranchPackStarBackend implements PackStarBackend {
     }
 
     @Override
+    public void setSampleListener(PackStarSampleListener listener) {
+        runInPackStarBackend(() -> delegate.setSampleListener(listener));
+    }
+
+    @Override
     public void setReportProgress(boolean val) {
         runInPackStarBackend(() -> delegate.setReportProgress(val));
     }

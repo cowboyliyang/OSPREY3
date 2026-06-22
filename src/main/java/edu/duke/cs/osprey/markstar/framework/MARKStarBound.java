@@ -1652,13 +1652,13 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
                 correctionMatrix.setHigherOrder(tuple, correction);
             }
             else {
-                // When triple energy is lower than pairwise bound, the matrix bound is too high.
-                // This can happen when pairwise minimization doesn't find the global minimum
-                // but triple minimization does. We should use the lower (more accurate) triple energy.
-                System.err.println("Negative correction for "+tuple.stringListing() +
-                                 " (correction=" + correction + "). Using triple energy as correction.");
-                // Store a negative correction to lower the bound
-                correctionMatrix.setHigherOrder(tuple, correction);
+                // Negative correction means the pairwise "lower bound" came out above the
+                // minimized triple energy (a minimization artifact). Higher-order MARK*
+                // corrections must be >=0: they only tighten the lower bound upward.
+                // Storing a negative correction LOWERS the bound, which violates MARK*'s
+                // monotonic-tightening invariant ("bounds got looser") and prevents nodes
+                // from ever converging -> non-termination. Discard it, matching upstream MARK*.
+                // (Discarded silently to avoid flooding stderr / slowing the run.)
             }
 
         });

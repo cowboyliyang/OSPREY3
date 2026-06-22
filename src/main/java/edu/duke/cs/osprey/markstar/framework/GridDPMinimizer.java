@@ -10,9 +10,9 @@ import edu.duke.cs.osprey.energy.ResidueInteractions;
 import edu.duke.cs.osprey.energy.forcefield.ForcefieldParams;
 import edu.duke.cs.osprey.energy.forcefield.ResidueForcefieldEnergy;
 import edu.duke.cs.osprey.energy.forcefield.ResPairCache;
-import edu.duke.cs.osprey.markstar.framework.branch.InteractionGraph;
-import edu.duke.cs.osprey.markstar.framework.branch.RootedTreeEdge;
-import edu.duke.cs.osprey.markstar.framework.branch.RootedTreeNode;
+import edu.duke.cs.osprey.branchdp.InteractionGraph;
+import edu.duke.cs.osprey.branchdp.RootedTreeEdge;
+import edu.duke.cs.osprey.branchdp.RootedTreeNode;
 import edu.duke.cs.osprey.structure.AtomConnectivity;
 
 import org.apache.commons.math3.linear.*;

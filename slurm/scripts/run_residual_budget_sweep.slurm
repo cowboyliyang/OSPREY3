@@ -60,22 +60,22 @@ for BUDGET in $BUDGETS; do
     LOG=/home/users/lz280/IdeaProjects/OSPREY3/slurm/outputs/resBudget_${SLURM_JOB_ID}_b${BUDGET}.log
 
     TEST_JAVA_TOOL_OPTIONS=" \
-      -Dbranchmarkstar.test.numFlexible=$NUM_FLEXIBLE \
-      -Dbranchmarkstar.test.epsilon=$EPSILON \
-      -Dbranchmarkstar.cutoff.strategy=residual_budget \
-      -Dbranchmarkstar.cutoff.residualBudget=$BUDGET \
-      -Dbranchmarkstar.cutoff.keepConnected=true"
+      -Dbranchdp.test.numFlexible=$NUM_FLEXIBLE \
+      -Dbranchdp.test.epsilon=$EPSILON \
+      -Dbranchdp.cutoff.strategy=residual_budget \
+      -Dbranchdp.cutoff.residualBudget=$BUDGET \
+      -Dbranchdp.cutoff.keepConnected=true"
 
     JAVA_TOOL_OPTIONS="$TEST_JAVA_TOOL_OPTIONS" \
     ./gradlew test \
         --tests "edu.duke.cs.osprey.markstar.TestBranchMARKStar.testFlatSumVsOriginalMARKStar" \
         --no-daemon --rerun-tasks \
         -Dorg.gradle.jvmargs="-Xmx48g" \
-        -Dbranchmarkstar.test.numFlexible="$NUM_FLEXIBLE" \
-        -Dbranchmarkstar.test.epsilon="$EPSILON" \
-        -Dbranchmarkstar.cutoff.strategy=residual_budget \
-        -Dbranchmarkstar.cutoff.residualBudget="$BUDGET" \
-        -Dbranchmarkstar.cutoff.keepConnected=true \
+        -Dbranchdp.test.numFlexible="$NUM_FLEXIBLE" \
+        -Dbranchdp.test.epsilon="$EPSILON" \
+        -Dbranchdp.cutoff.strategy=residual_budget \
+        -Dbranchdp.cutoff.residualBudget="$BUDGET" \
+        -Dbranchdp.cutoff.keepConnected=true \
         2>&1 | tee "$LOG"
 
     # Parse runtime/scores from the gradle stdout itself

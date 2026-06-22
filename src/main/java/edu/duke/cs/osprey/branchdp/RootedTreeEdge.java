@@ -88,52 +88,54 @@ public class RootedTreeEdge {
     private static final ThreadLocal<double[]> NATIVE_OUT_BUF = ThreadLocal.withInitial(() -> new double[2]);
 
     private static final double NEG_INF = Double.NEGATIVE_INFINITY;
-    private static final String DP_PARALLEL_PROPERTY = "branchmarkstar.dp.parallel";
-    private static final String DP_PARALLEL_MIN_M_STATES_PROPERTY = "branchmarkstar.dp.parallel.minMStates";
-    private static final String DP_PARALLEL_THREADS_PROPERTY = "branchmarkstar.dp.parallel.threads";
-    private static final String DP_COMPUTE_SHARD_SIZE_PROPERTY = "branchmarkstar.dp.computeShardSize";
-    private static final String DP_PROGRESS_PROPERTY = "branchmarkstar.dp.progress";
+    private static final String DP_PARALLEL_PROPERTY = "branchdp.dp.parallel";
+    private static final String DP_PARALLEL_MIN_M_STATES_PROPERTY = "branchdp.dp.parallel.minMStates";
+    private static final String DP_PARALLEL_THREADS_PROPERTY = "branchdp.dp.parallel.threads";
+    private static final String DP_COMPUTE_SHARD_SIZE_PROPERTY = "branchdp.dp.computeShardSize";
+    private static final String DP_PROGRESS_PROPERTY = "branchdp.dp.progress";
     private static final int DEFAULT_DP_COMPUTE_SHARD_SIZE = 65_536;
-    private static final String DP_MAX_M_STATES_PROPERTY = "branchmarkstar.dp.maxMStates";
-    private static final String DP_MAX_MATERIALIZED_PAIRS_PROPERTY = "branchmarkstar.dp.maxMaterializedPairs";
-    private static final String DP_TABLE_MODE_PROPERTY = "branchmarkstar.dp.tableMode";
-    private static final String DP_SHARD_SIZE_PROPERTY = "branchmarkstar.dp.shardSize";
+    private static final String DP_MAX_M_STATES_PROPERTY = "branchdp.dp.maxMStates";
+    private static final String DP_MAX_MATERIALIZED_PAIRS_PROPERTY = "branchdp.dp.maxMaterializedPairs";
+    private static final String DP_TABLE_MODE_PROPERTY = "branchdp.dp.tableMode";
+    private static final String DP_SHARD_SIZE_PROPERTY = "branchdp.dp.shardSize";
     private static final int DEFAULT_DP_PARALLEL_MIN_M_STATES = 1024;
     private static final long DEFAULT_DP_MAX_MATERIALIZED_PAIRS = 50_000_000L;
     private static final int DEFAULT_DP_SHARD_SIZE = 1_048_576;
     // Option C: non-leaf child-table folding (pure Java, no SIMD/JIT-vector risk).
-    private static final String DP_FOLD_CHILDREN_PROPERTY = "branchmarkstar.dp.foldChildren";
-    private static final String DP_FOLD_HOIST_PROPERTY = "branchmarkstar.dp.foldChildren.hoistInvariant";
+    private static final String DP_FOLD_CHILDREN_PROPERTY = "branchdp.dp.foldChildren";
+    private static final String DP_FOLD_HOIST_PROPERTY = "branchdp.dp.foldChildren.hoistInvariant";
     // Option A: native SIMD log-sum-exp kernel. Default OFF (wired but dormant:
     // libOspreyLogSumExp.so is built/validated separately, see src/main/c/).
-    private static final String DP_NATIVE_KERNEL_PROPERTY = "branchmarkstar.dp.nativeKernel";
+    private static final String DP_NATIVE_KERNEL_PROPERTY = "branchdp.dp.nativeKernel";
     // CUDA full-DP fast path. Default OFF and intentionally narrow: one non-leaf
     // child, dense parent/child DP tables, and enough m*lambda work to amortize
     // GPU packing/transfer overhead.
-    private static final String DP_GPU_PROPERTY = "branchmarkstar.dp.gpu";
-    private static final String DP_GPU_MIN_WORK_PROPERTY = "branchmarkstar.dp.gpu.minWork";
-    private static final String DP_GPU_MAX_BYTES_PROPERTY = "branchmarkstar.dp.gpu.maxBytes";
-    private static final String DP_GPU_BLOCK_THREADS_PROPERTY = "branchmarkstar.dp.gpu.blockThreads";
-    private static final String DP_GPU_OUTPUT_TILE_MSTATES_PROPERTY = "branchmarkstar.dp.gpu.outputTileMStates";
-    private static final String DP_GPU_PERSISTENT_CONTEXT_PROPERTY = "branchmarkstar.dp.gpu.persistentContext";
+    private static final String DP_GPU_PROPERTY = "branchdp.dp.gpu";
+    private static final String DP_GPU_MIN_WORK_PROPERTY = "branchdp.dp.gpu.minWork";
+    private static final String DP_GPU_MAX_BYTES_PROPERTY = "branchdp.dp.gpu.maxBytes";
+    private static final String DP_GPU_FAIL_IF_EXCEEDS_VRAM_PROPERTY = "branchdp.dp.gpu.failIfExceedsVram";
+    private static final String DP_GPU_BLOCK_THREADS_PROPERTY = "branchdp.dp.gpu.blockThreads";
+    private static final String DP_GPU_OUTPUT_TILE_MSTATES_PROPERTY = "branchdp.dp.gpu.outputTileMStates";
+    private static final String DP_GPU_PERSISTENT_CONTEXT_PROPERTY = "branchdp.dp.gpu.persistentContext";
     private static final long DEFAULT_DP_GPU_MIN_WORK = 50_000_000L;
     // Single device buffers can now exceed 2 GiB (chunked raw upload in DPGpuFullDP),
-    // so the budget is bounded by device RAM (24 GiB A5000) with headroom, not by NIO.
-    private static final long DEFAULT_DP_GPU_MAX_BYTES = 20L*1024L*1024L*1024L;
+    // so 0 = no static cap: the real budget is detected free VRAM (cuMemGetInfo, with
+    // headroom) inside DPGpuFullDP. A positive value re-enables an explicit cap.
+    private static final long DEFAULT_DP_GPU_MAX_BYTES = 0L;
     private static final int DEFAULT_DP_GPU_BLOCK_THREADS = 256;
     private static final long DEFAULT_DP_GPU_OUTPUT_TILE_MSTATES = 1_048_576L;
     private static final boolean DEFAULT_DP_GPU_PERSISTENT_CONTEXT = true;
     private static final int DP_GPU_MAX_CHILDREN = 64;
-    private static final String DP_GPU_MULTI_PROPERTY = "branchmarkstar.dp.gpu.multiGpu";
-    private static final String DP_GPU_MAX_GPUS_PROPERTY = "branchmarkstar.dp.gpu.maxGpus";
-    private static final String DP_GPU_MIN_MSTATES_PER_GPU_PROPERTY = "branchmarkstar.dp.gpu.minMStatesPerGpu";
+    private static final String DP_GPU_MULTI_PROPERTY = "branchdp.dp.gpu.multiGpu";
+    private static final String DP_GPU_MAX_GPUS_PROPERTY = "branchdp.dp.gpu.maxGpus";
+    private static final String DP_GPU_MIN_MSTATES_PER_GPU_PROPERTY = "branchdp.dp.gpu.minMStatesPerGpu";
     private static final long DEFAULT_DP_GPU_MIN_MSTATES_PER_GPU = 4096L;
-    private static final String PAC_SAMPLING_GPU_MULTI_PROPERTY = "branchmarkstar.pac.sampling.gpu.multiGpu";
-    private static final String PAC_SAMPLING_GPU_MAX_GPUS_PROPERTY = "branchmarkstar.pac.sampling.gpu.maxGpus";
-    private static final String PAC_SAMPLING_GPU_MIN_GROUPS_PER_GPU_PROPERTY = "branchmarkstar.pac.sampling.gpu.minGroupsPerGpu";
-    private static final String PAC_SAMPLING_GPU_PERSISTENT_CONTEXT_PROPERTY = "branchmarkstar.pac.sampling.gpu.persistentContext";
-    private static final String PAC_SAMPLING_GPU_RESIDENT_CHILD_TABLES_PROPERTY = "branchmarkstar.pac.sampling.gpu.residentChildTables";
-    private static final String PAC_SAMPLING_GPU_METHOD_PROPERTY = "branchmarkstar.pac.sampling.gpu.method";
+    private static final String PAC_SAMPLING_GPU_MULTI_PROPERTY = "branchdp.pac.sampling.gpu.multiGpu";
+    private static final String PAC_SAMPLING_GPU_MAX_GPUS_PROPERTY = "branchdp.pac.sampling.gpu.maxGpus";
+    private static final String PAC_SAMPLING_GPU_MIN_GROUPS_PER_GPU_PROPERTY = "branchdp.pac.sampling.gpu.minGroupsPerGpu";
+    private static final String PAC_SAMPLING_GPU_PERSISTENT_CONTEXT_PROPERTY = "branchdp.pac.sampling.gpu.persistentContext";
+    private static final String PAC_SAMPLING_GPU_RESIDENT_CHILD_TABLES_PROPERTY = "branchdp.pac.sampling.gpu.residentChildTables";
+    private static final String PAC_SAMPLING_GPU_METHOD_PROPERTY = "branchdp.pac.sampling.gpu.method";
     private static final int DEFAULT_PAC_SAMPLING_GPU_MIN_GROUPS_PER_GPU = 1;
     private static final boolean DEFAULT_PAC_SAMPLING_GPU_PERSISTENT_CONTEXT = true;
     private static final boolean DEFAULT_PAC_SAMPLING_GPU_RESIDENT_CHILD_TABLES = true;
@@ -1284,11 +1286,18 @@ public class RootedTreeEdge {
         req.estimatedDeviceBytes = DPGpuFullDP.estimateDeviceBytes(req);
         boolean progress = getConfigBoolean(DP_PROGRESS_PROPERTY, true);
         req.progress = progress;
-        if (req.estimatedDeviceBytes > maxBytes) {
+        // maxBytes <= 0 means "no static cap": defer to the detected-VRAM gate in
+        // DPGpuFullDP. A positive cap is an explicit operator limit.
+        if (maxBytes > 0 && req.estimatedDeviceBytes > maxBytes) {
+            String msg = "GPU DP footprint " + req.estimatedDeviceBytes + " B exceeds "
+                    + DP_GPU_MAX_BYTES_PROPERTY + "=" + maxBytes + " B (lambdaStates="
+                    + totalLambdaStates + ", childTableElems=" + req.childTableTotal + ")";
+            if (getConfigBoolean(DP_GPU_FAIL_IF_EXCEEDS_VRAM_PROPERTY, true)) {
+                throw new DPGpuFullDP.GpuMemoryExceededException(msg
+                        + " -- resubmit on a larger-VRAM GPU or raise " + DP_GPU_MAX_BYTES_PROPERTY);
+            }
             if (progress) {
-                System.out.println(BranchDpConfig.getBackendLogPrefix() + " GPU DP skipped, estimatedDeviceBytes="
-                        + req.estimatedDeviceBytes + " exceeds " + DP_GPU_MAX_BYTES_PROPERTY
-                        + "=" + maxBytes);
+                System.out.println(BranchDpConfig.getBackendLogPrefix() + " GPU DP skipped, " + msg);
             }
             return false;
         }
@@ -1358,9 +1367,14 @@ public class RootedTreeEdge {
             lTermTotal += plan.lamSrcIdx.length;
             tableTotal += plan.child.getLogZLower().length;
         }
-        if (mTermTotal > Integer.MAX_VALUE || lTermTotal > Integer.MAX_VALUE
-                || tableTotal > Integer.MAX_VALUE) {
-            return null; // concatenated child arrays too large for a single dense buffer
+        // The CSR index arrays ARE concatenated into single Java int[] buffers, so they
+        // must each fit in an int (in practice tiny: ~#positions). The child *tables* are
+        // no longer concatenated on the Java heap -- each child keeps its own double[] and
+        // is copied straight into its device-buffer slot -- so their combined length
+        // (tableTotal) may exceed Integer.MAX_VALUE; only device VRAM bounds it (enforced
+        // at upload, where an over-budget edge fails the run instead of crawling on CPU).
+        if (mTermTotal > Integer.MAX_VALUE || lTermTotal > Integer.MAX_VALUE) {
+            return null;
         }
 
         req.childMSrcAll = new int[(int)mTermTotal];
@@ -1372,10 +1386,12 @@ public class RootedTreeEdge {
         req.childLTermOff = new int[nChildren];
         req.childLTermCnt = new int[nChildren];
         req.childTableBase = new long[nChildren];
-        req.childLowerAll = new double[(int)tableTotal];
-        req.childUpperAll = new double[(int)tableTotal];
+        req.childTableTotal = tableTotal;
+        req.childLowerParts = new double[nChildren][];
+        req.childUpperParts = new double[nChildren][];
 
-        int mOff = 0, lOff = 0, tBase = 0;
+        int mOff = 0, lOff = 0;
+        long tBase = 0L;
         for (int c = 0; c < nChildren; c++) {
             ChildFoldPlan plan = childFoldPlans[c];
             req.childMTermOff[c] = mOff;
@@ -1390,12 +1406,12 @@ public class RootedTreeEdge {
             System.arraycopy(plan.lamStride, 0, req.childLStrideAll, lOff, plan.lamStride.length);
             lOff += plan.lamSrcIdx.length;
 
-            double[] cl = plan.child.getLogZLower();
-            double[] cu = plan.child.getLogZUpper();
+            // Reference each child's dense table directly; copied per-child into the
+            // device buffer at childTableBase[c] (a long element offset).
             req.childTableBase[c] = tBase;
-            System.arraycopy(cl, 0, req.childLowerAll, tBase, cl.length);
-            System.arraycopy(cu, 0, req.childUpperAll, tBase, cu.length);
-            tBase += cl.length;
+            req.childLowerParts[c] = plan.child.getLogZLower();
+            req.childUpperParts[c] = plan.child.getLogZUpper();
+            tBase += req.childLowerParts[c].length;
         }
 
         int nPairs = lmPairs.size();
@@ -1916,7 +1932,7 @@ public class RootedTreeEdge {
      * matching the leaf-DP convention (lower uses rigid, upper uses min).
      *
      * Validated against brute-force joint enumeration in TestZeroEdgeDP. Wired
-     * behind {@code branchmarkstar.dp.zeroEdgeDirect} (default off) at the 0-edge
+     * behind {@code branchdp.dp.zeroEdgeDirect} (default off) at the 0-edge
      * fallback in BranchDpBackend.
      */
     public static double[] independentPositionLogZ(EnergyMatrix rigidEmat, EnergyMatrix minEmat,
@@ -1991,7 +2007,7 @@ public class RootedTreeEdge {
      * Build the child-fold plans once, before the (possibly parallel) DP loop.
      * The result is read-only afterwards, so it is safe to share across DP
      * worker threads. Disabled (null plans => legacy path) when
-     * {@code branchmarkstar.dp.foldChildren=false}, when there are no F-set
+     * {@code branchdp.dp.foldChildren=false}, when there are no F-set
      * children, or when any child M-position is not covered by this edge's
      * M ∪ lambda (in which case the legacy getMstateForFullState() path is used
      * unchanged, preserving behavior on malformed/edge-case decompositions).

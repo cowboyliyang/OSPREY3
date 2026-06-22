@@ -107,10 +107,10 @@ public class TestChildFold {
 
     /** Build a fresh parent edge + 3 children and run computeFullDP under the given flags. */
     private double[][] runDP(boolean fold, boolean hoist) {
-        System.setProperty("branchmarkstar.dp.foldChildren", String.valueOf(fold));
-        System.setProperty("branchmarkstar.dp.foldChildren.hoistInvariant", String.valueOf(hoist));
-        System.setProperty("branchmarkstar.dp.progress", "false");
-        System.setProperty("branchmarkstar.dp.parallel", "false");
+        System.setProperty("branchdp.dp.foldChildren", String.valueOf(fold));
+        System.setProperty("branchdp.dp.foldChildren.hoistInvariant", String.valueOf(hoist));
+        System.setProperty("branchdp.dp.progress", "false");
+        System.setProperty("branchdp.dp.parallel", "false");
 
         int numPos = 4;
         int[] cards = {2, 2, 3, 2};                 // pos0..3 cardinalities

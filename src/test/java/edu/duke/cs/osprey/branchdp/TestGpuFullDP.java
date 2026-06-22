@@ -15,7 +15,7 @@ import java.util.Locale;
 
 /**
  * Numeric validation of the CUDA GPU full-DP fast path
- * (dp.cu full_dp_n_children + DPGpuFullDP, gated by branchmarkstar.dp.gpu=true)
+ * (dp.cu full_dp_n_children + DPGpuFullDP, gated by branchdp.dp.gpu=true)
  * against the Java DP path, on the same synthetic non-leaf edge with N children.
  *
  * The GPU run goes through the real gate (tryComputeFullDPGpu via reflection) so
@@ -172,13 +172,13 @@ public class TestGpuFullDP {
     }
 
     private double[][] runJava(int[] cards, int[] mPos, int[] lambdaPos, int[][] childMPositions) {
-        System.setProperty("branchmarkstar.dp.gpu", "false");
-        System.setProperty("branchmarkstar.dp.nativeKernel", "false");
-        System.setProperty("branchmarkstar.dp.parallel", "false");
-        System.setProperty("branchmarkstar.dp.progress", "false");
+        System.setProperty("branchdp.dp.gpu", "false");
+        System.setProperty("branchdp.dp.nativeKernel", "false");
+        System.setProperty("branchdp.dp.parallel", "false");
+        System.setProperty("branchdp.dp.progress", "false");
         // Legacy (non-fold) index path: INDEPENDENT child-index from the GPU's
         // ChildFoldPlan, so agreement cross-validates the fold/CSR mapping.
-        System.setProperty("branchmarkstar.dp.foldChildren", "false");
+        System.setProperty("branchdp.dp.foldChildren", "false");
         RootedTreeEdge p = buildParent(cards, mPos, lambdaPos, childMPositions);
         p.computeFullDP();
         return read(p, product(cards, mPos));
@@ -190,24 +190,24 @@ public class TestGpuFullDP {
 
     private double[][] runGpu(int[] cards, int[] mPos, int[] lambdaPos, int[][] childMPositions,
                               boolean multiGpu, boolean shardedParent, int shardSize, long outputTileMStates) {
-        System.setProperty("branchmarkstar.dp.gpu", "true");
-        System.setProperty("branchmarkstar.dp.gpu.minWork", "1");
-        System.setProperty("branchmarkstar.dp.gpu.maxBytes", String.valueOf(6L * 1024 * 1024 * 1024));
-        System.setProperty("branchmarkstar.dp.gpu.trace", "true");
-        System.setProperty("branchmarkstar.dp.gpu.outputTileMStates", String.valueOf(outputTileMStates));
-        System.setProperty("branchmarkstar.dp.gpu.persistentContext", "true");
-        System.setProperty("branchmarkstar.dp.nativeKernel", "false");
-        System.setProperty("branchmarkstar.dp.parallel", "false");
-        System.setProperty("branchmarkstar.dp.foldChildren", "true");
+        System.setProperty("branchdp.dp.gpu", "true");
+        System.setProperty("branchdp.dp.gpu.minWork", "1");
+        System.setProperty("branchdp.dp.gpu.maxBytes", String.valueOf(6L * 1024 * 1024 * 1024));
+        System.setProperty("branchdp.dp.gpu.trace", "true");
+        System.setProperty("branchdp.dp.gpu.outputTileMStates", String.valueOf(outputTileMStates));
+        System.setProperty("branchdp.dp.gpu.persistentContext", "true");
+        System.setProperty("branchdp.dp.nativeKernel", "false");
+        System.setProperty("branchdp.dp.parallel", "false");
+        System.setProperty("branchdp.dp.foldChildren", "true");
         if (multiGpu) {
             // Force the M-state split across all visible GPUs + log the multi-gpu line.
-            System.setProperty("branchmarkstar.dp.progress", "true");
-            System.setProperty("branchmarkstar.dp.gpu.minMStatesPerGpu", "1");
-            System.setProperty("branchmarkstar.dp.gpu.maxGpus", "0");
+            System.setProperty("branchdp.dp.progress", "true");
+            System.setProperty("branchdp.dp.gpu.minMStatesPerGpu", "1");
+            System.setProperty("branchdp.dp.gpu.maxGpus", "0");
         } else {
-            System.setProperty("branchmarkstar.dp.progress", "false");
-            System.setProperty("branchmarkstar.dp.gpu.minMStatesPerGpu", String.valueOf(Long.MAX_VALUE));
-            System.setProperty("branchmarkstar.dp.gpu.maxGpus", "1");
+            System.setProperty("branchdp.dp.progress", "false");
+            System.setProperty("branchdp.dp.gpu.minMStatesPerGpu", String.valueOf(Long.MAX_VALUE));
+            System.setProperty("branchdp.dp.gpu.maxGpus", "1");
         }
         RootedTreeEdge p = buildParent(cards, mPos, lambdaPos, childMPositions, shardedParent, shardSize);
         invoke(p, "ensureChildFoldPlans");

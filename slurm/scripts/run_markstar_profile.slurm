@@ -52,8 +52,8 @@ JARGS="--add-opens java.base/java.util=ALL-UNNAMED \
        -Xms4g -Xmx72g"
 
 $JAVA $JARGS \
-    -Dbranchmarkstar.test.numFlexible="$NUM_FLEXIBLE" \
-    -Dbranchmarkstar.test.epsilon="$EPSILON" \
+    -Dbranchdp.test.numFlexible="$NUM_FLEXIBLE" \
+    -Dbranchdp.test.epsilon="$EPSILON" \
     -Dmarkstar.leafProfile=true \
     -Dmarkstar.leafProfile.allConfs=true \
     -Dmarkstar.leafProfile.detail="$LEAF_PROFILE_DETAIL" \
