@@ -32,17 +32,17 @@ import edu.duke.cs.osprey.branchdp.RootedTreeNode;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.util.*;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.function.IntConsumer;
 import java.io.File;
 import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 
 /**
  * PAC (Probably Approximately Correct) Partition Function Estimation
@@ -81,7 +81,17 @@ public class PackStarEstimator {
     private static final String PAC_PILOT_SAMPLES_PROPERTY = "packstar.pac.pilotSamples";
     private static final String PAC_MAX_EST_SAMPLES_PROPERTY = "packstar.pac.maxEstSamples";
     private static final String PAC_NSTAR_INFLATE_PROPERTY = "packstar.pac.nstarInflate";
+    // Assumed one-sided tail bound E_eta - E_true <= B. It supplies the range for
+    // the clipped upper certificate; the clipped lower and q_m upper do not need it.
     private static final String PAC_RESIDUAL_BOUND_PROPERTY = "packstar.pac.residualBound";
+    // Ablation switch (PACK* paper Table 3 / Fig 1 "no-eta" baseline): when false,
+    // Phase 3 (eta correction learning) is skipped and eta is fixed to the zero
+    // correction, so E_eta == E_m, q_eta == q_m, and Stage B reweights the full
+    // gap g = E_true - E_m sampled from p_m instead of the residual xi = E_true -
+    // E_eta sampled from p_eta (see SI Lemma 2, Remark "the residual factor is the
+    // only estimated object": the two-stage identity holds for any eta, including
+    // eta === 0). Does not change any other phase or the PAC sample-splitting logic.
+    private static final String PAC_ETA_ENABLED_PROPERTY = "packstar.pac.etaEnabled";
     private static final String DP_PARALLEL_THREADS_PROPERTY = "packstar.dp.parallel.threads";
     private static final String DP_CACHE_ENABLED_PROPERTY = "packstar.dp.cache";
     private static final String DP_CACHE_MAX_ENTRIES_PROPERTY = "packstar.dp.cache.maxEntries";
@@ -98,6 +108,7 @@ public class PackStarEstimator {
     private static final int DEFAULT_MAX_EST_SAMPLES = 4000;
     private static final double DEFAULT_NSTAR_INFLATE = 1.3;
     private static final double DEFAULT_RESIDUAL_BOUND = 1.0;
+    private static final boolean DEFAULT_ETA_ENABLED = true;
     private static final boolean DEFAULT_CLIP = true;
     private static final double DEFAULT_CLIP_QUANTILE = 0.85;
     private static final boolean DEFAULT_ITERATE = true;
@@ -109,7 +120,6 @@ public class PackStarEstimator {
     private static final long DEFAULT_DP_CACHE_SKIP_IF_M_STATES = 8_000_000L;
 
     private static final Object CORRECTED_DP_CACHE_LOCK = new Object();
-    private static final AtomicLong ESTIMATOR_INSTANCE_COUNTER = new AtomicLong(0L);
     private static final LinkedHashMap<String, CachedDPTable> CORRECTED_DP_CACHE =
             new LinkedHashMap<>(1024, 0.75f, true);
     private static long correctedDPCacheBytes = 0L;
@@ -130,6 +140,7 @@ public class PackStarEstimator {
     private final double delta; // confidence parameter
     private final double targetEpsilon;
     private final long randomSeed;
+    private final String randomStreamIdentity;
     private final boolean batchedSampling;
     private final boolean gpuSampling;
     private final int samplingThreads;
@@ -140,9 +151,12 @@ public class PackStarEstimator {
     private final int maxEstSamples;
     private final int sampleBudget;
     private double clipLogCap = Double.NaN; // clip threshold fixed on the pilot (PAC: chosen before S2)
+    private int pilotResidualBoundViolations = 0;
+    private double pilotMaxOverCorrectionKcal = Double.NEGATIVE_INFINITY;
     private double logZMinDet = Double.POSITIVE_INFINITY; // log q_m: deterministic, assumption-free upper bound on log q
     private final double nstarInflate;
     private final double residualBoundKcal;
+    private final boolean etaEnabled; // false => no-eta ablation (Table 3 / Fig 1 baseline)
     private final boolean dpCacheEnabled;
     private final int dpCacheMaxEntries;
     private final long dpCacheMaxTableBytes;
@@ -210,6 +224,34 @@ public class PackStarEstimator {
                                  SimpleConfSpace confSpace,
                                  double requestedTargetEpsilon,
                                  int requestedSampleBudget) {
+        this(rootedRoot, rootedRootEdge,
+                branchMinimizingEmat, branchRigidEmat,
+                interactionGraph, minimizingEcalc,
+                rcs, confSpace,
+                requestedTargetEpsilon,
+                requestedSampleBudget,
+                defaultRandomStreamIdentity(rcs));
+    }
+
+    /**
+     * Construct an estimator with a stable logical random-stream identity.
+     *
+     * <p>The identity describes the calculation rather than its process-local
+     * construction order. K-star supplies a state role plus the exact allowed-RC
+     * signature, so shard count and rank-to-node mapping do not change the
+     * estimator's random stream.</p>
+     */
+    public PackStarEstimator(RootedTreeNode rootedRoot,
+                                RootedTreeEdge rootedRootEdge,
+                                EnergyMatrix branchMinimizingEmat,
+                                 EnergyMatrix branchRigidEmat,
+                                 InteractionGraph interactionGraph,
+                                 ConfEnergyCalculator minimizingEcalc,
+                                 RCs rcs,
+                                 SimpleConfSpace confSpace,
+                                 double requestedTargetEpsilon,
+                                 int requestedSampleBudget,
+                                 String randomStreamIdentity) {
         this.rootedRoot = rootedRoot;
         this.rootedRootEdge = rootedRootEdge;
         this.branchMinimizingEmat = branchMinimizingEmat;
@@ -232,10 +274,8 @@ public class PackStarEstimator {
         this.targetEpsilon = Math.max(0.0,
                 getConfigDouble(PAC_TARGET_EPSILON_PROPERTY, defaultTarget));
         long baseRandomSeed = getConfigLong(PAC_RANDOM_SEED_PROPERTY, DEFAULT_RANDOM_SEED);
-        long instanceIndex = ESTIMATOR_INSTANCE_COUNTER.getAndIncrement();
-        this.randomSeed = instanceIndex == 0L
-                ? baseRandomSeed
-                : mix64(baseRandomSeed + 0x9E3779B97F4A7C15L * instanceIndex);
+        this.randomStreamIdentity = requireRandomStreamIdentity(randomStreamIdentity);
+        this.randomSeed = deriveRandomSeed(baseRandomSeed, this.randomStreamIdentity);
         this.batchedSampling = getConfigBoolean(PAC_SAMPLING_BATCHED_PROPERTY, true);
         this.gpuSampling = getConfigBoolean(PAC_SAMPLING_GPU_PROPERTY, false);
         this.samplingThreads = resolveConfiguredSamplingThreads();
@@ -259,6 +299,7 @@ public class PackStarEstimator {
         this.nstarInflate = Math.max(1.0, getConfigDouble(PAC_NSTAR_INFLATE_PROPERTY, DEFAULT_NSTAR_INFLATE));
         double configuredResidualBound = getConfigDouble(PAC_RESIDUAL_BOUND_PROPERTY, DEFAULT_RESIDUAL_BOUND);
         this.residualBoundKcal = configuredResidualBound >= 0.0 ? configuredResidualBound : Double.NaN;
+        this.etaEnabled = getConfigBoolean(PAC_ETA_ENABLED_PROPERTY, DEFAULT_ETA_ENABLED);
         this.dpCacheEnabled = getConfigBoolean(DP_CACHE_ENABLED_PROPERTY, true);
         this.dpCacheMaxEntries = Math.max(0,
                 getConfigInteger(DP_CACHE_MAX_ENTRIES_PROPERTY, DEFAULT_DP_CACHE_MAX_ENTRIES));
@@ -426,6 +467,37 @@ public class PackStarEstimator {
         return z ^ (z >>> 31);
     }
 
+    static long deriveRandomSeed(long baseRandomSeed, String randomStreamIdentity) {
+        String identity = requireRandomStreamIdentity(randomStreamIdentity);
+        long identityHash = 0xcbf29ce484222325L;
+        for (byte value : identity.getBytes(StandardCharsets.UTF_8)) {
+            identityHash ^= value & 0xffL;
+            identityHash *= 0x100000001b3L;
+        }
+        return mix64(baseRandomSeed ^ identityHash);
+    }
+
+    private static String requireRandomStreamIdentity(String identity) {
+        if (identity == null || identity.trim().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "PACK* random-stream identity is required");
+        }
+        return identity;
+    }
+
+    private static String defaultRandomStreamIdentity(RCs rcs) {
+        StringBuilder identity = new StringBuilder(
+                "packstar|standalone|pac-v1");
+        identity.append('|').append(rcs.getNumPos());
+        for (int pos = 0; pos < rcs.getNumPos(); pos++) {
+            identity.append('|').append(pos).append(':');
+            for (int rc : rcs.get(pos)) {
+                identity.append(rc).append(',');
+            }
+        }
+        return identity.toString();
+    }
+
     private static ThreadFactory daemonThreadFactory(String namePrefix) {
         AtomicInteger counter = new AtomicInteger(0);
         return runnable -> {
@@ -441,6 +513,12 @@ public class PackStarEstimator {
      */
     public double compute() {
         long startTime = System.currentTimeMillis();
+
+        System.out.println("[PACK*] random stream: seed="
+                + Long.toUnsignedString(randomSeed)
+                + ", identityHash="
+                + Long.toUnsignedString(
+                deriveRandomSeed(0L, randomStreamIdentity), 16));
 
         // Phase 0: Z_min from existing DP (already computed)
         double logZMin = rootedRootEdge.getLogZUpper(0);
@@ -520,7 +598,11 @@ public class PackStarEstimator {
             return;
         }
 
-        EtaCorrections eta = extractEtaCorrections(trainCCD);
+        EtaCorrections eta = etaEnabled ? extractEtaCorrections(trainCCD) : zeroEtaCorrections();
+        if (!etaEnabled) {
+            System.out.println("[PACK*-2stage] no-eta ablation active (packstar.pac.etaEnabled=false):"
+                    + " eta fixed to 0, E_eta=E_m, q_eta=q_m; Stage B reweights the full gap g=E_true-E_m.");
+        }
         EnergyMatrix correctedEmat = buildCorrectedEmat(eta);
         maybeDumpTrainingSamples(trainCCD, eta, correctedEmat);
         long tDP = System.currentTimeMillis();
@@ -565,7 +647,10 @@ public class PackStarEstimator {
         double driftFracThresh = getConfigDouble("packstar.pac.iterate.driftFraction", 0.2);
         int minTrainCount = getConfigInteger("packstar.pac.iterate.minTrainCount", 5);
         int maxRounds = getConfigInteger("packstar.pac.iterate.maxRounds", DEFAULT_ITERATE_MAX_ROUNDS);
-        if (iterate) {
+        // No-eta ablation must stay at eta===0 in every round; distribution-shift
+        // refinement re-learns a real eta, so it is force-disabled here rather than
+        // relying on callers to also pass packstar.pac.iterate=false.
+        if (iterate && etaEnabled) {
             // Multi-round (EM-style) distribution-shift refinement. eta is learned on p_m,
             // but the corrected p_eta can concentrate mass on rotamers p_m never sampled
             // (eta untrained there -> systematic residual, meanW collapse). Each round folds
@@ -634,11 +719,27 @@ public class PackStarEstimator {
         if (getConfigBoolean("packstar.pac.clip", DEFAULT_CLIP)) {
             double clipQuantile = getConfigDouble("packstar.pac.clipQuantile", DEFAULT_CLIP_QUANTILE);
             double[] plogW = new double[pilotCCD.size()];
+            pilotResidualBoundViolations = 0;
+            pilotMaxOverCorrectionKcal = Double.NEGATIVE_INFINITY;
             for (int i = 0; i < plogW.length; i++) {
                 CCDResult r = pilotCCD.get(i);
                 plogW[i] = -(r.eTrue - computeFullConfPairwiseEnergy(r.conf, correctedEmat)) / RT;
             }
             clipLogCap = quantile(plogW, clipQuantile);
+            if (Double.isFinite(residualBoundKcal)) {
+                for (double pilotLogW : plogW) {
+                    if (pilotLogW > clipLogCap) {
+                        double overCorrectionKcal = RT * pilotLogW;
+                        pilotMaxOverCorrectionKcal = Math.max(
+                                pilotMaxOverCorrectionKcal,
+                                overCorrectionKcal
+                        );
+                        if (overCorrectionKcal > residualBoundKcal) {
+                            pilotResidualBoundViolations++;
+                        }
+                    }
+                }
+            }
             System.out.println("[PACK*-2stage] clip threshold from pilot: logCap="
                     + String.format("%.4f", clipLogCap) + " (clipQ=" + clipQuantile
                     + ", nPilot=" + plogW.length + ")");
@@ -1167,24 +1268,51 @@ public class PackStarEstimator {
         // ---- upper side: clipped mass (Bernstein) + clip-bias E[(w-c)+]/c ----
         double meanUpper = mean + boundDelta;
         // Empirical clip-excess in units of c: u_i = max(0, w_i/c - 1), nonzero only on clipped samples.
-        double sumU = 0, sumU2 = 0, maxU = 0.0;
+        double sumU = 0, sumU2 = 0;
+        int estimationResidualBoundViolations = 0;
+        double estimationMaxOverCorrectionKcal = Double.NEGATIVE_INFINITY;
         for (int i = 0; i < N; i++) {
             double u = Math.max(0.0, Math.exp(logW[i] - logCap) - 1.0);
             sumU += u; sumU2 += u * u;
-            if (u > maxU) maxU = u;
+            if (logW[i] > logCap) {
+                double overCorrectionKcal = -xi[i];
+                estimationMaxOverCorrectionKcal = Math.max(
+                        estimationMaxOverCorrectionKcal,
+                        overCorrectionKcal
+                );
+                if (Double.isFinite(residualBoundKcal) && overCorrectionKcal > residualBoundKcal) {
+                    estimationResidualBoundViolations++;
+                }
+            }
         }
         double meanU = sumU / N;
         double varU = N > 1 ? Math.max(0.0, (sumU2 - N * meanU * meanU) / (N - 1)) : 0.0;
+        int residualBoundViolations = pilotResidualBoundViolations + estimationResidualBoundViolations;
+        double maxOverCorrectionKcal = Math.max(
+                pilotMaxOverCorrectionKcal,
+                estimationMaxOverCorrectionKcal
+        );
+        boolean residualBoundViolated = Double.isFinite(residualBoundKcal)
+                && residualBoundViolations > 0;
 
         double biasUpper;
         boolean biasCertified;
         String biasMode;
-        if (Double.isFinite(residualBoundKcal) && residualBoundKcal / RT - logCap > 0) {
+        if (residualBoundViolated) {
+            // A sample from the fixed corrected proposal directly falsifies the assumed
+            // one-sided support bound. A sample maximum cannot certify unseen tail mass,
+            // so fail closed and let the deterministic q_m ceiling supply the upper bound.
+            biasUpper = Double.POSITIVE_INFINITY;
+            biasCertified = false;
+            biasMode = "assumptionViolated";
+            System.out.println("[PACK*-2stage] WARNING: one-sided PAC residual bound violated by "
+                    + residualBoundViolations + " pilot/estimation sample(s): max(E_eta-E_true)="
+                    + String.format("%.6f", maxOverCorrectionKcal) + " kcal/mol > configured "
+                    + String.format("%.6f", residualBoundKcal)
+                    + "; conditional sampling upper disabled, falling back to q_m.");
+        } else if (Double.isFinite(residualBoundKcal) && residualBoundKcal / RT - logCap > 0) {
             // residualBound caps the (possibly unobserved) tail: u in [0, uRange], uRange = Wmax/c - 1.
-            // Defensive: if the data breaches the residual bound (some observed u > uRange), widen the
-            // Bernstein range to the observed max so the bound stays conservative instead of silently
-            // under-covering. Inert when the assumption holds (maxU <= uRange).
-            double uRange = Math.max(Math.expm1(residualBoundKcal / RT - logCap), maxU);
+            double uRange = Math.expm1(residualBoundKcal / RT - logCap);
             double pHat = (double) nClipped / N;
             double pUpper = Math.min(1.0, pHat + hoeffdingHalfWidth(N, deltaPer));
             double biasWorst = uRange * pUpper;                                      // every clipped sample at Wmax (old, loose)
@@ -1221,7 +1349,7 @@ public class PackStarEstimator {
                 + ", varWc=" + String.format("%.6f", var)
                 + ", range=1.0(det)"
                 + ", biasUpper=" + String.format("%.6f", biasUpper) + "(" + biasMode + ")"
-                + (biasCertified ? "" : "[no residualBound -> upper via q_m only]")
+                + (biasCertified ? "" : "[tail uncertified -> upper via q_m only]")
                 + ", upperVia=" + (qmBinds ? "q_m(det)" : "sampling")
                 + ", log10ZmDet=" + formatLog10(logZMinDet)
                 + ", meanResidual=" + String.format("%.4f", meanResidual) + " kcal/mol"
@@ -1920,9 +2048,10 @@ public class PackStarEstimator {
      * Run CCD minimizations in parallel via minimizingEcalc.tasks.
      */
     private List<CCDResult> runParallelCCD(List<int[]> conformations) {
-        ConcurrentLinkedQueue<CCDResult> results = new ConcurrentLinkedQueue<>();
-        AtomicInteger completed = new AtomicInteger(0);
         int total = conformations.size();
+        AtomicReferenceArray<CCDResult> results =
+                new AtomicReferenceArray<>(total);
+        AtomicInteger completed = new AtomicInteger(0);
 
         // ---- parallelism instrumentation ----
         long batchStartNs = System.nanoTime();
@@ -1946,7 +2075,11 @@ public class PackStarEstimator {
 
                 double eTrue = epmol.energy;
                 double eMin = computeFullConfPairwiseEnergy(conf, branchMinimizingEmat);
-                results.add(new CCDResult(conf, eTrue, eMin, epmol));
+                // Callback completion order depends on task scheduling and GPU
+                // load.  Preserve the seeded sample order so eta accumulation,
+                // pilot statistics, and all later floating-point reductions do
+                // not inherit that nondeterminism.
+                results.set(ci, new CCDResult(conf, eTrue, eMin, epmol));
                 ccdWallUs[ci] = (System.nanoTime() - submitNs) / 1000L;
 
                 inFlight.decrementAndGet();
@@ -1976,7 +2109,12 @@ public class PackStarEstimator {
                 p50, p95, maxMs, sumMs, effParallel);
         // -----------------------------
 
-        return new ArrayList<>(results);
+        List<CCDResult> orderedResults = new ArrayList<>(total);
+        for (int i = 0; i < total; i++) {
+            CCDResult result = results.get(i);
+            if (result != null) orderedResults.add(result);
+        }
+        return orderedResults;
     }
 
     // ========== Phase 3: Extract per-term eta corrections ==========
@@ -2033,6 +2171,21 @@ public class PackStarEstimator {
             if (val == null || val[1] == 0) return 0.0;
             return val[0] / val[1];
         }
+    }
+
+    /**
+     * No-eta ablation baseline (packstar.pac.etaEnabled=false): an EtaCorrections
+     * with no samples ever added. getOneBodyEta/getPairEta both return 0.0 for
+     * every (pos,rc) with a zero count, so this is exactly eta === 0, and
+     * buildCorrectedEmat(eta) below reduces to E_eta == E_m (SI Lemma 2 remark).
+     */
+    private EtaCorrections zeroEtaCorrections() {
+        int numPos = rcs.getNumPos();
+        int[] numRCs = new int[numPos];
+        for (int p = 0; p < numPos; p++) {
+            numRCs[p] = branchMinimizingEmat.getNumConfAtPos(p);
+        }
+        return new EtaCorrections(numPos, numRCs);
     }
 
     /**

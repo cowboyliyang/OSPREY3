@@ -3,6 +3,7 @@ package edu.duke.cs.osprey.packstar;
 import edu.duke.cs.osprey.astar.conf.RCs;
 import edu.duke.cs.osprey.confspace.SimpleConfSpace;
 import edu.duke.cs.osprey.branchdp.BranchDpBackend;
+import edu.duke.cs.osprey.branchdp.BranchDpAdmission;
 import edu.duke.cs.osprey.ematrix.EnergyMatrix;
 import edu.duke.cs.osprey.energy.ConfEnergyCalculator;
 import edu.duke.cs.osprey.kstar.pfunc.PartitionFunction;
@@ -21,8 +22,15 @@ import edu.duke.cs.osprey.tools.MathTools;
 final class PackStarBranchDpBackend extends BranchDpBackend implements PackStarBackend {
 
     private static final String RESTORE_DP_PROPERTY = "packstar.pac.restoreDP";
+    private static final String ETA_ENABLED_PROPERTY = "packstar.pac.etaEnabled";
+    private static final String ITERATE_PROPERTY = "packstar.pac.iterate";
+    private static final String ITERATE_MAX_ROUNDS_PROPERTY =
+            "packstar.pac.iterate.maxRounds";
+    private static final int DEFAULT_ITERATE_MAX_ROUNDS = 4;
 
     private PackStarSampleListener sampleListener = null;
+    private final String configuredSeedStateRole;
+    private Integer calculationInstanceId = null;
 
     PackStarBranchDpBackend(SimpleConfSpace confSpace,
                             EnergyMatrix rigidEmat,
@@ -33,6 +41,9 @@ final class PackStarBranchDpBackend extends BranchDpBackend implements PackStarB
                             String stateNameOverride) {
         super(confSpace, rigidEmat, minimizingEmat, minimizingConfEcalc,
                 rcs, parallelism, stateNameOverride);
+        this.configuredSeedStateRole = stateNameOverride == null
+                || stateNameOverride.trim().isEmpty()
+                ? "standalone" : stateNameOverride.trim();
     }
 
     @Override
@@ -66,12 +77,48 @@ final class PackStarBranchDpBackend extends BranchDpBackend implements PackStarB
     }
 
     @Override
+    protected int getAdmissionDpSweeps() {
+        int explicit = getConfigInteger(
+                BranchDpAdmission.DP_SWEEPS_PROPERTY, 0);
+        if (explicit > 0) {
+            return explicit;
+        }
+
+        // Fail-safe upper bound for the current PACK* estimator: one initial
+        // p_m DP, one corrected p_eta DP, up to maxRounds corrected refinement
+        // DPs, and an optional compatibility restore of the initial DP.
+        boolean etaEnabled = getConfigBoolean(ETA_ENABLED_PROPERTY, true);
+        boolean iterate = getConfigBoolean(ITERATE_PROPERTY, true);
+        int maxRounds = Math.max(0, getConfigInteger(
+                ITERATE_MAX_ROUNDS_PROPERTY,
+                DEFAULT_ITERATE_MAX_ROUNDS));
+        boolean restore = getConfigBoolean(RESTORE_DP_PROPERTY, false);
+        return conservativeDpSweeps(etaEnabled, iterate, maxRounds, restore);
+    }
+
+    static int conservativeDpSweeps(boolean etaEnabled, boolean iterate,
+                                    int maxRounds, boolean restore) {
+        int sweeps = 2;
+        if (etaEnabled && iterate) {
+            sweeps += Math.max(0, maxRounds);
+        }
+        return restore ? sweeps + 1 : sweeps;
+    }
+
+    @Override
     protected void logBackendControlOverrides() {
         System.out.println("PACK*: edge-lookahead and triple-correction controls are disabled for the PACK* backend.");
     }
 
     @Override
     protected void computeWithoutBranchDecomposition(int maxNumConfs) {
+        if (rootedRoot == null
+                && interactionGraph != null
+                && interactionGraph.getNumPositions() <= 1) {
+            System.out.println("PACK*: singleton/empty branch graph; using standard MARK* fallback for this exact small state.");
+            super.computeWithoutBranchDecomposition(maxNumConfs);
+            return;
+        }
         abortPackStar("branch decomposition is unavailable; refusing to fall back to deterministic MARK*");
     }
 
@@ -104,6 +151,16 @@ final class PackStarBranchDpBackend extends BranchDpBackend implements PackStarB
         this.sampleListener = listener;
     }
 
+    @Override
+    public void setInstanceId(int val) {
+        this.calculationInstanceId = val;
+    }
+
+    @Override
+    public void close() {
+        releaseLargeMemory();
+    }
+
     private void abortPackStar(String reason) {
         System.out.println("PACK*: aborted: " + reason + ".");
         values = new MARKStarBound.Values();
@@ -121,7 +178,8 @@ final class PackStarBranchDpBackend extends BranchDpBackend implements PackStarB
                 interactionGraph, getMinimizingEcalc(),
                 searchRCs, confSpace,
                 targetEpsilon,
-                sampleBudget);
+                sampleBudget,
+                randomStreamIdentity());
         estimator.setSampleListener(sampleListener);
 
         double estimatorEpsilon = estimator.compute();
@@ -151,5 +209,13 @@ final class PackStarBranchDpBackend extends BranchDpBackend implements PackStarB
         if (estimatorEpsilon <= targetEpsilon) {
             setStatus(PartitionFunction.Status.Estimated);
         }
+    }
+
+    private String randomStreamIdentity() {
+        String stateRole = calculationInstanceId == null
+                ? configuredSeedStateRole
+                : "kstar-state-" + calculationInstanceId;
+        return BranchDpAdmission.stateKey(
+                "packstar|" + stateRole + "|pac-v1", searchRCs);
     }
 }

@@ -352,16 +352,22 @@ public class KStar {
 
 			// compute the partition function
 			PartitionFunction pfunc = makePfunc(ctxGroup, sequence);
-			pfunc.setStabilityThreshold(stabilityThreshold);
-			if (settings.pfuncTimeout != null) {
-				pfunc.compute(settings.pfuncTimeout);
-			} else {
-				pfunc.compute(settings.maxNumConfs);
-			}
+			try {
+				pfunc.setStabilityThreshold(stabilityThreshold);
+				if (settings.pfuncTimeout != null) {
+					pfunc.compute(settings.pfuncTimeout);
+				} else {
+					pfunc.compute(settings.maxNumConfs);
+				}
 
-			// save the result
-			result = pfunc.makeResult();
-			pfuncResults.put(sequence, result);
+				// Copy the scalar result before releasing implementation-specific
+				// working storage. PACK* implements AutoCloseable specifically so its
+				// rooted DP tables do not survive into the next K* state/sequence.
+				result = pfunc.makeResult();
+				pfuncResults.put(sequence, result);
+			} finally {
+				closePfunc(pfunc);
+			}
 
 			/* HACKHACK: we're done using the A* tree, pfunc, etc
 				and normally the garbage collector will clean them up,
@@ -382,6 +388,19 @@ public class KStar {
 			}
 
 			return result;
+		}
+
+		private void closePfunc(PartitionFunction pfunc) {
+			if (!(pfunc instanceof AutoCloseable)) {
+				return;
+			}
+			try {
+				((AutoCloseable)pfunc).close();
+			} catch (RuntimeException ex) {
+				throw ex;
+			} catch (Exception ex) {
+				throw new RuntimeException("failed to release partition-function resources", ex);
+			}
 		}
 	}
 
@@ -495,10 +514,46 @@ public class KStar {
 				List<ScoredSequence> scores = new ArrayList<>();
 
 				// collect all the sequences explicitly
-				if (complex.confSpace.seqSpace().containsWildTypeSequence()) {
+				boolean hasWildTypeSequence = complex.confSpace.seqSpace()
+						.containsWildTypeSequence();
+				if (hasWildTypeSequence) {
 					sequences.add(complex.confSpace.seqSpace().makeWildTypeSequence());
 				}
 				sequences.addAll(complex.confSpace.seqSpace().getMutants(settings.maxSimultaneousMutations, true));
+
+				// A multi-node formal run owns complete sequence bundles at the node
+				// level. Recompute the wild type on every node because it supplies the
+				// local stability-threshold baseline and short-circuit decisions; only
+				// mutant sequences are disjoint across nodes. The node-local DP backend
+				// can then split each owned state's M range across its visible GPUs.
+				int sequenceShardCount = Integer.getInteger(
+						"osprey.kstar.sequenceShardCount", 1);
+				int sequenceShardIndex = Integer.getInteger(
+						"osprey.kstar.sequenceShardIndex", 0);
+				if (sequenceShardCount < 1 || sequenceShardIndex < 0
+						|| sequenceShardIndex >= sequenceShardCount) {
+					throw new IllegalArgumentException(
+							"invalid K* sequence shard index=" + sequenceShardIndex
+							+ " for shardCount=" + sequenceShardCount);
+				}
+				if (sequenceShardCount > 1) {
+					List<Sequence> allSequences = new ArrayList<>(sequences);
+					sequences.clear();
+					for (int i = 0; i < allSequences.size(); i++) {
+						if (KStarSequenceSharding.isAssignedToShard(
+								i, hasWildTypeSequence, sequenceShardIndex,
+								sequenceShardCount)) {
+							sequences.add(allSequences.get(i));
+						}
+					}
+					System.out.println("K* sequence shard " + sequenceShardIndex
+							+ "/" + sequenceShardCount + ": localSequences="
+							+ sequences.size() + " globalSequences="
+							+ allSequences.size()
+							+ (hasWildTypeSequence
+							? " (wild type replicated on every node)"
+							: " (no replicated wild type)"));
+				}
 
 				// TODO: sequence filtering? do we need to reject some mutation combinations for some reason?
 

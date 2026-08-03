@@ -2,12 +2,14 @@ package edu.duke.cs.osprey.branchdp;
 
 import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import edu.duke.cs.osprey.astar.conf.RCs;
 import edu.duke.cs.osprey.ematrix.EnergyMatrix;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.nio.file.Path;
 import java.util.LinkedHashSet;
 
 /**
@@ -26,6 +28,9 @@ import java.util.LinkedHashSet;
  * writing into a ShardedDPTable.
  */
 public class TestComputeFullDPSharded {
+
+    @TempDir
+    Path tempDir;
 
     // ---- reflection / construction helpers (mirror TestChildFold) ----------
 
@@ -174,5 +179,17 @@ public class TestComputeFullDPSharded {
         double[][] dense = runDP(new DenseDPTable(12), false);
         double[][] sharded = runDP(new ShardedDPTable(12, 1000), false); // one shard
         assertBitIdentical(dense, sharded, "single shard");
+    }
+
+    @Test
+    public void mappedMatchesDenseAcrossMapBoundaries_bitIdentical() {
+        double[][] dense = runDP(new DenseDPTable(12), false);
+        MappedDPTable mapped = new MappedDPTable(12, 4, tempDir);
+        try {
+            double[][] actual = runDP(mapped, true);
+            assertBitIdentical(dense, actual, "mapped parallel output");
+        } finally {
+            mapped.close();
+        }
     }
 }

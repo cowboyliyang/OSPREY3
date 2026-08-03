@@ -14,17 +14,27 @@ import edu.duke.cs.osprey.energy.approximation.branch.GNNConfEnergyCalculator;
 import edu.duke.cs.osprey.energy.approximation.branch.GNNDataExporter;
 import edu.duke.cs.osprey.energy.approximation.branch.GNNSubtreeEnergyCalculator;
 import edu.duke.cs.osprey.astar.conf.RCs;
+import edu.duke.cs.osprey.branchdp.BranchDpAdmission;
 import edu.duke.cs.osprey.branchdp.InteractionGraph;
+import edu.duke.cs.osprey.confspace.ConfDB;
 import edu.duke.cs.osprey.energy.forcefield.ForcefieldParams;
 import edu.duke.cs.osprey.kstar.KStar;
 import edu.duke.cs.osprey.kstar.TestKStar;
 import edu.duke.cs.osprey.kstar.pfunc.GradientDescentPfunc;
 import edu.duke.cs.osprey.kstar.pfunc.BoltzmannCalculator;
 import edu.duke.cs.osprey.kstar.pfunc.PartitionFunction;
+import edu.duke.cs.osprey.lute.ConfSampler;
+import edu.duke.cs.osprey.lute.LUTE;
+import edu.duke.cs.osprey.lute.LUTEConfEnergyCalculator;
+import edu.duke.cs.osprey.lute.LUTEIO;
+import edu.duke.cs.osprey.lute.LUTEPfunc;
+import edu.duke.cs.osprey.lute.LUTEState;
+import edu.duke.cs.osprey.lute.RandomizedDFSConfSampler;
 import edu.duke.cs.osprey.markstar.MARKStar;
 import edu.duke.cs.osprey.markstar.framework.BranchMARKStarBound;
 import edu.duke.cs.osprey.markstar.framework.MARKStarBound;
 import edu.duke.cs.osprey.packstar.PackStarPartitionFunction;
+import edu.duke.cs.osprey.packstar.PackStarCasePreflight;
 import edu.duke.cs.osprey.tools.ExpFunction;
 import edu.duke.cs.osprey.wmb.MeanFieldBound;
 import edu.duke.cs.osprey.wmb.WeightedMiniBucket;
@@ -32,6 +42,8 @@ import edu.duke.cs.osprey.wmb.WeightedMiniBucket;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import edu.duke.cs.osprey.parallelism.Parallelism;
+import edu.duke.cs.osprey.pruning.PruningMatrix;
+import edu.duke.cs.osprey.pruning.SimpleDEE;
 import edu.duke.cs.osprey.restypes.ResidueTemplateLibrary;
 import edu.duke.cs.osprey.structure.Molecule;
 import edu.duke.cs.osprey.structure.PDBIO;
@@ -48,7 +60,7 @@ import java.util.*;
  *   osprey.bench.ligandChains  — comma-separated chain IDs for ligand (e.g. "C")
  *   osprey.bench.mutable       — semicolon-separated mutable residue IDs (e.g. "A96;B85")
  *   osprey.bench.flexible      — semicolon-separated flexible residue IDs (e.g. "C7;C6;C5")
- *   osprey.bench.method        — kstar | markstar | packstar | pac | dp_profile | gnn_s9 | gnn_s10 | gnn_s11
+ *   osprey.bench.method        — kstar | markstar | packstar | pac | kstar_lute | dp_profile | gnn_s9 | gnn_s10 | gnn_s11
  *   osprey.bench.epsilon       — approximation ratio (default 0.683)
  *   osprey.bench.numCPUs       — number of CPUs (default 8)
  *   osprey.bench.designId      — design identifier for output
@@ -66,8 +78,8 @@ public class GenericPDBBench {
     public static void main(String[] args) throws Exception {
         // Read design spec from system properties
         String pdbPath = System.getProperty("osprey.bench.pdbPath");
-        String[] proteinChains = System.getProperty("osprey.bench.proteinChains", "A").split(",");
-        String[] ligandChains = System.getProperty("osprey.bench.ligandChains", "B").split(",");
+        String proteinChainsProp = System.getProperty("osprey.bench.proteinChains", "");
+        String ligandChainsProp = System.getProperty("osprey.bench.ligandChains", "");
         String mutableStr = System.getProperty("osprey.bench.mutable", "");
         String flexibleStr = System.getProperty("osprey.bench.flexible", "");
         String method = System.getProperty("osprey.bench.method", "markstar");
@@ -108,30 +120,38 @@ public class GenericPDBBench {
         Map<String, String[]> chainRanges = getChainRanges(mol);
         System.out.println("  Chains detected: " + chainRanges.keySet());
 
-        // Protein chains = chains with MUTABLE residues
-        // Ligand chains = all other non-empty chains
-        Set<String> proteinChainSet = new LinkedHashSet<>();
-        for (String res : mutableResidues) {
-            res = res.trim();
-            if (!res.isEmpty() && res.length() >= 2) proteinChainSet.add(String.valueOf(res.charAt(0)));
+        Set<String> proteinChainSet = parseChainSet(proteinChainsProp);
+        if (proteinChainSet.isEmpty()) {
+            for (String res : mutableResidues) {
+                res = res.trim();
+                if (!res.isEmpty() && res.length() >= 2) proteinChainSet.add(String.valueOf(res.charAt(0)));
+            }
         }
-        Set<String> ligandChainSet = new LinkedHashSet<>();
-        for (String ch : chainRanges.keySet()) {
-            if (!proteinChainSet.contains(ch) && !ch.trim().isEmpty()) ligandChainSet.add(ch);
+        Set<String> ligandChainSet = parseChainSet(ligandChainsProp);
+        if (ligandChainSet.isEmpty()) {
+            for (String ch : chainRanges.keySet()) {
+                if (!proteinChainSet.contains(ch) && !ch.trim().isEmpty()) ligandChainSet.add(ch);
+            }
         }
         System.out.println("  Protein chains: " + proteinChainSet);
         System.out.println("  Ligand chains: " + ligandChainSet);
 
-        // Build protein strand
-        String pFirst = null, pLast = null;
+        // Build one protein strand per chain so multi-chain proteins do not
+        // accidentally swallow ligand/intermediate chains in PDB order.
+        List<Strand> proteinStrands = new ArrayList<>();
         for (String ch : proteinChainSet) {
             String[] r = chainRanges.get(ch);
-            if (r != null) { if (pFirst == null) pFirst = r[0]; pLast = r[1]; }
+            if (r == null) {
+                System.err.println("  WARNING: requested protein chain " + ch + " not detected in PDB");
+                continue;
+            }
+            System.out.println("  Protein strand: " + r[0] + " - " + r[1]);
+            proteinStrands.add(new Strand.Builder(mol).setTemplateLibrary(templateLib)
+                    .setResidues(r[0], r[1]).build());
         }
-        System.out.println("  Protein strand: " + pFirst + " - " + pLast);
-
-        Strand proteinStrand = new Strand.Builder(mol).setTemplateLibrary(templateLib)
-                .setResidues(pFirst, pLast).build();
+        if (proteinStrands.isEmpty()) {
+            throw new IllegalArgumentException("no protein strands could be built from protein chains " + proteinChainSet);
+        }
 
         // Apply mutable residues to protein strand.
         // Token syntax: "<chain><resnum>" => all 20 AAs (back-compat);
@@ -146,22 +166,20 @@ public class GenericPDBBench {
             } else {
                 res = tok; rotamers = all20;
             }
-            try {
-                proteinStrand.flexibility.get(res).setLibraryRotamers(rotamers).addWildTypeRotamers().setContinuous();
+            if (applyResidueFlex(proteinStrands, res, rotamers)) {
                 System.out.println("  Protein mutable: " + res + " -> " + String.join(",", rotamers));
-            } catch (Exception e) {
-                System.err.println("  WARNING: mutable residue " + res + " not on protein strand: " + e.getMessage());
+            } else {
+                System.err.println("  WARNING: mutable residue " + res + " not on protein strand");
             }
         }
         // Apply protein-side flexible residues
         for (String res : flexibleResidues) {
             res = res.trim(); if (res.isEmpty()) continue;
             if (!proteinChainSet.contains(String.valueOf(res.charAt(0)))) continue;
-            try {
-                proteinStrand.flexibility.get(res).setLibraryRotamers(Strand.WildType).addWildTypeRotamers().setContinuous();
+            if (applyResidueFlex(proteinStrands, res, Strand.WildType)) {
                 System.out.println("  Protein flexible: " + res);
-            } catch (Exception e) {
-                System.err.println("  WARNING: flexible residue " + res + " not on protein strand: " + e.getMessage());
+            } else {
+                System.err.println("  WARNING: flexible residue " + res + " not on protein strand");
             }
         }
 
@@ -184,24 +202,23 @@ public class GenericPDBBench {
                 for (String res : flexibleResidues) {
                     res = res.trim(); if (res.isEmpty()) continue;
                     if (!ch.equals(String.valueOf(res.charAt(0)))) continue;
-                    try {
-                        ligStrand.flexibility.get(res).setLibraryRotamers(Strand.WildType).addWildTypeRotamers().setContinuous();
+                    if (applyResidueFlex(Collections.singletonList(ligStrand), res, Strand.WildType)) {
                         System.out.println("  Ligand flexible: " + res);
-                    } catch (Exception e) {
-                        System.err.println("  WARNING: flexible residue " + res + " not on ligand strand: " + e.getMessage());
+                    } else {
+                        System.err.println("  WARNING: flexible residue " + res + " not on ligand strand");
                     }
                 }
                 ligandStrands.add(ligStrand);
             }
 
-            confSpaces.protein = new SimpleConfSpace.Builder().addStrand(proteinStrand).build();
+            confSpaces.protein = new SimpleConfSpace.Builder().addStrands(proteinStrands).build();
             confSpaces.ligand = new SimpleConfSpace.Builder().addStrands(ligandStrands).build();
-            SimpleConfSpace.Builder complexBuilder = new SimpleConfSpace.Builder().addStrand(proteinStrand);
-            for (Strand ls : ligandStrands) complexBuilder.addStrand(ls);
+            SimpleConfSpace.Builder complexBuilder = new SimpleConfSpace.Builder().addStrands(proteinStrands);
+            complexBuilder.addStrands(ligandStrands);
             confSpaces.complex = complexBuilder.build();
         } else {
             System.out.println("  WARNING: no ligand chains — K* will be trivial");
-            confSpaces.protein = new SimpleConfSpace.Builder().addStrand(proteinStrand).build();
+            confSpaces.protein = new SimpleConfSpace.Builder().addStrands(proteinStrands).build();
             confSpaces.ligand = new SimpleConfSpace.Builder().build();
             confSpaces.complex = confSpaces.protein;
         }
@@ -222,6 +239,9 @@ public class GenericPDBBench {
         switch (method) {
             case "kstar":
                 runKStar(confSpaces, epsilon, parallelism, ematDir, designId, outputDir);
+                break;
+            case "kstar_lute":
+                runKStarLute(confSpaces, epsilon, parallelism, ematDir, designId, outputDir);
                 break;
             case "markstar":
                 runMARKStar(confSpaces, epsilon, parallelism, ematDir, designId, outputDir, false, false, false);
@@ -321,14 +341,21 @@ public class GenericPDBBench {
         }
     }
 
-    /** Parse a comma-separated list of 1-letter AA codes into OSPREY 3-letter residue names. */
+    /**
+     * Parse a comma-separated list of AA codes into OSPREY residue template names.
+     * Accepts standard 1-letter codes (A,S,D,...) AND already-3-letter OSPREY
+     * template names (HID,HIE,HIP,...) passed through unchanged/uppercased --
+     * this lets callers request alternate-protonation-state templates (which
+     * exist in all_amino94.in + LovellRotamer.dat for HIS tautomers) without
+     * being silently collapsed to their 1-letter parent by aa1to3().
+     */
     private static String[] parseAAList(String csv) {
         String[] parts = csv.split(",");
         List<String> out = new ArrayList<>();
         for (String p : parts) {
             p = p.trim();
             if (p.isEmpty()) continue;
-            out.add(aa1to3(p.charAt(0)));
+            out.add(p.length() > 1 ? p.toUpperCase() : aa1to3(p.charAt(0)));
         }
         return out.toArray(new String[0]);
     }
@@ -384,6 +411,110 @@ public class GenericPDBBench {
             List<KStar.ScoredSequence> scores = kstar.run(ecalc.tasks);
             double kstarElapsed = (System.currentTimeMillis() - kstarT0) / 1000.0;
             writeKStarResults(scores, designId, "kstar", outputDir, epsilon, kstarElapsed);
+        }
+    }
+
+    /**
+     * K* baseline using LUTE (Hallen 2017) in place of per-conformation CCD
+     * minimization: fit a pairwise-decomposable tuple expansion once per state
+     * (protein/ligand/complex, after SimpleDEE pruning), then run classic K*
+     * enumeration (LUTEPfunc) against the fitted energy — no PAC/deterministic
+     * guarantee, a point-estimate comparison for the "learned local correction"
+     * family (LUTE/EPIC) discussed in the paper's Discussion section.
+     * Method name for osprey.bench.method: "kstar_lute".
+     */
+    private static void runKStarLute(TestKStar.ConfSpaces confSpaces, double epsilon,
+                                      Parallelism parallelism, String ematDir,
+                                      String designId, String outputDir) {
+        try (EnergyCalculator ecalc = new EnergyCalculator.Builder(
+                confSpaces.complex, confSpaces.ffparams)
+                .setParallelism(parallelism).build()) {
+
+            KStar.Settings settings = new KStar.Settings.Builder()
+                    .setEpsilon(epsilon)
+                    .setStabilityThreshold(null)
+                    .setMaxSimultaneousMutations(1)
+                    .setShowPfuncProgress(true)
+                    .build();
+
+            KStar kstar = new KStar(confSpaces.protein, confSpaces.ligand,
+                    confSpaces.complex, settings);
+
+            double luteMaxRMSE = Double.parseDouble(System.getProperty("osprey.lute.maxRMSE", "0.1"));
+            double luteMaxOverfit = Double.parseDouble(System.getProperty("osprey.lute.maxOverfittingScore", "1.5"));
+            int luteSeed = Integer.getInteger("osprey.lute.randomSeed", 12345);
+            String luteDir = ematDir + "/lute";
+            new File(luteDir).mkdirs();
+
+            for (KStar.ConfSpaceInfo info : kstar.confSpaceInfos()) {
+                SimpleConfSpace cs = (SimpleConfSpace) info.confSpace;
+                String stateName = info.type.name().toLowerCase();
+
+                info.confEcalc = new ConfEnergyCalculator.Builder(cs, ecalc)
+                        .setReferenceEnergies(new SimplerEnergyMatrixCalculator.Builder(cs, ecalc)
+                                .build().calcReferenceEnergies())
+                        .build();
+                EnergyMatrix emat = new SimplerEnergyMatrixCalculator.Builder(info.confEcalc)
+                        .setCacheFile(new File(ematDir + "/kstar_lute." + stateName + ".dat"))
+                        .build().calcEnergyMatrix();
+
+                if (cs.positions.isEmpty()) {
+                    // trivial state (e.g. rigid ligand with no flexible/mutable positions):
+                    // nothing for LUTE to fit, fall back to classic pfunc (matches runKStar)
+                    info.pfuncFactory = (rcs) -> new GradientDescentPfunc(
+                            info.confEcalc,
+                            new ConfAStarTree.Builder(emat, rcs).setTraditional().build(),
+                            new ConfAStarTree.Builder(emat, rcs).setTraditional().build(),
+                            rcs.getNumConformations());
+                    info.confDBFile = null;
+                    continue;
+                }
+
+                PruningMatrix pmat = new SimpleDEE.Runner()
+                        .setSinglesThreshold(100.0)
+                        .setPairsThreshold(100.0)
+                        .setGoldsteinDiffThreshold(10.0)
+                        .setShowProgress(true)
+                        .setCacheFile(new File(luteDir + "/" + stateName + ".pmat.dat"))
+                        .setParallelism(parallelism)
+                        .run(cs, emat);
+
+                File luteFile = new File(luteDir + "/" + stateName + ".dat");
+                LUTEConfEnergyCalculator luteEcalc;
+                if (luteFile.exists()) {
+                    System.out.println("  Loading cached LUTE " + stateName + " from " + luteFile);
+                    luteEcalc = new LUTEConfEnergyCalculator(cs, LUTEIO.read(luteFile));
+                } else {
+                    System.out.println("  Training LUTE " + stateName + " (maxRMSE=" + luteMaxRMSE + ")...");
+                    File confDBFile = new File(luteDir + "/" + stateName + ".conf.db");
+                    try (ConfDB confdb = new ConfDB(cs, confDBFile)) {
+                        ConfDB.ConfTable confTable = confdb.new ConfTable("lute");
+                        LUTE lute = new LUTE(cs);
+                        ConfSampler sampler = new RandomizedDFSConfSampler(cs, pmat, luteSeed);
+                        lute.sampleTuplesAndFit(info.confEcalc, emat, pmat, confTable, sampler,
+                                LUTE.Fitter.OLSCG, luteMaxOverfit, luteMaxRMSE);
+                        lute.reportConfSpaceSize(pmat);
+                        lute.save(luteFile);
+                        luteEcalc = new LUTEConfEnergyCalculator(cs, new LUTEState(lute.getTrainingSystem()));
+                    }
+                }
+
+                final PruningMatrix finalPmat = pmat;
+                final LUTEConfEnergyCalculator finalLuteEcalc = luteEcalc;
+                info.pfuncFactory = (rcs) -> {
+                    RCs prunedRcs = new RCs(rcs, finalPmat);
+                    ConfAStarTree astar = new ConfAStarTree.Builder(null, prunedRcs)
+                            .setLUTE(finalLuteEcalc)
+                            .build();
+                    return new LUTEPfunc(finalLuteEcalc, astar, prunedRcs.getNumConformations());
+                };
+                info.confDBFile = null;
+            }
+
+            long kstarT0 = System.currentTimeMillis();
+            List<KStar.ScoredSequence> scores = kstar.run(ecalc.tasks);
+            double kstarElapsed = (System.currentTimeMillis() - kstarT0) / 1000.0;
+            writeKStarResults(scores, designId, "kstar_lute", outputDir, epsilon, kstarElapsed);
         }
     }
 
@@ -463,6 +594,21 @@ public class GenericPDBBench {
                     return pfunc;
                 };
                 info.confDBFile = null;
+            }
+
+            // Production admission enumerates exactly the WT + mutant state set
+            // that KStar.run() will request, de-duplicates filtered unbound
+            // sequences, and performs only allocation-free branch-DP previews.
+            // A positive caseSlaHours is the opt-in switch; an over-budget case
+            // is rejected here before K* can materialize a DP table.
+            BranchDpAdmission.CaseSummary admission =
+                    PackStarCasePreflight.runIfConfigured(kstar);
+            if (admission != null && Boolean.getBoolean(
+                    "osprey.bench.packstarPreflightOnly")) {
+                System.out.println(String.format(Locale.ROOT,
+                        "PACK* preflight-only complete: predictedCaseHours=%.4f caseSlaHours=%.4f; formal K* run and DP-table materialization were not started.",
+                        admission.totalHours(), admission.slaHours));
+                return;
             }
 
             long packT0 = System.currentTimeMillis();
@@ -1078,7 +1224,14 @@ public class GenericPDBBench {
                             .build().calcReferenceEnergies())
                     .build();
 
-            String cachePrefix = ematDir + "/markstar." + stateName.toLowerCase(Locale.ROOT);
+            String cacheFamily = System.getProperty("osprey.dpProfile.cacheFamily", "markstar")
+                    .trim().toLowerCase(Locale.ROOT);
+            if (!cacheFamily.equals("markstar") && !cacheFamily.equals("packstar")) {
+                throw new IllegalArgumentException("Unknown osprey.dpProfile.cacheFamily: "
+                        + cacheFamily);
+            }
+            String cachePrefix = ematDir + "/" + cacheFamily + "."
+                    + stateName.toLowerCase(Locale.ROOT);
             EnergyMatrix rigidEmat = new SimplerEnergyMatrixCalculator.Builder(rigidConfEcalc)
                     .setCacheFile(new File(cachePrefix + ".rigid.dat"))
                     .build().calcEnergyMatrix();
@@ -1145,8 +1298,14 @@ public class GenericPDBBench {
         Double ub = edu.duke.cs.osprey.kstar.KStarScore.scoreToLog10(r.values.calcUpperBound());
         String lbStr = (lb == null || lb.isNaN()) ? "" : String.format("%.6f", lb);
         String ubStr = (ub == null || ub.isNaN()) ? "" : String.format("%.6f", ub);
-        double eps = r.values.getEffectiveEpsilon();
-        String epsStr = Double.isNaN(eps) || Double.isInfinite(eps) ? "" : String.format("%.6f", eps);
+        String epsStr = "";
+        try {
+            double eps = r.values.getEffectiveEpsilon();
+            epsStr = Double.isNaN(eps) || Double.isInfinite(eps) ? "" : String.format("%.6f", eps);
+        } catch (RuntimeException e) {
+            // MARK*/PackStar bounds can use MagicBigDecimal infinities; keep the
+            // CSV row writable even when epsilon is not numerically meaningful.
+        }
         long leafGNN  = r.getStat("s9LeafGNNBounded");
         long subGNN   = r.getStat("s9SubtreeGNNBounded");
         long ccdFromGNN = r.getStat("s9CCDFromGNN");
@@ -1189,6 +1348,25 @@ public class GenericPDBBench {
         } catch (IOException e) {
             System.err.println("Error writing CSV: " + e.getMessage());
         }
+    }
+
+    private static Set<String> parseChainSet(String chains) {
+        Set<String> out = new LinkedHashSet<>();
+        for (String token : chains.split(",")) {
+            token = token.trim();
+            if (!token.isEmpty()) out.add(token);
+        }
+        return out;
+    }
+
+    private static boolean applyResidueFlex(List<Strand> strands, String res, String... rotamers) {
+        for (Strand strand : strands) {
+            var flex = strand.flexibility.get(res);
+            if (flex == null) continue;
+            flex.setLibraryRotamers(rotamers).addWildTypeRotamers().setContinuous();
+            return true;
+        }
+        return false;
     }
 
     private static Map<String, String[]> getChainRanges(Molecule mol) {

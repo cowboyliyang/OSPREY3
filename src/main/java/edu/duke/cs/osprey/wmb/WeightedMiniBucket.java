@@ -19,9 +19,11 @@
 package edu.duke.cs.osprey.wmb;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.TreeMap;
 
 /**
@@ -98,6 +100,20 @@ public class WeightedMiniBucket {
 		return p;
 	}
 
+	private static long productLong(int[] dims) {
+		long p = 1L;
+		for (int d : dims) {
+			if (d < 0) {
+				throw new IllegalArgumentException("negative domain size");
+			}
+			if (d != 0 && p > Long.MAX_VALUE / d) {
+				return Long.MAX_VALUE;
+			}
+			p *= d;
+		}
+		return p;
+	}
+
 	/** Sorted union of the factor scopes. */
 	private static int[] unionScope(List<LogFactor> factors) {
 		TreeMap<Integer, Boolean> seen = new TreeMap<>();
@@ -128,8 +144,12 @@ public class WeightedMiniBucket {
 		for (int i = 0; i < scope.length; i++) {
 			dims[i] = domainOfVar[scope[i]];
 		}
+		long sizeLong = productLong(dims);
+		if (sizeLong > Integer.MAX_VALUE) {
+			throw new IllegalArgumentException("WMB factor table too large: " + sizeLong + " cells");
+		}
+		int size = (int) sizeLong;
 		int[] str = strides(dims);
-		int size = product(dims);
 
 		// For each factor, map its scope onto union axes with the factor's own strides.
 		int n = factors.size();
@@ -183,7 +203,11 @@ public class WeightedMiniBucket {
 
 		int[] inStr = strides(factor.dims);
 		int axisStr = inStr[axis];
-		int outSize = product(outDims);
+		long outSizeLong = productLong(outDims);
+		if (outSizeLong > Integer.MAX_VALUE) {
+			throw new IllegalArgumentException("WMB factor table too large: " + outSizeLong + " cells");
+		}
+		int outSize = (int) outSizeLong;
 		double[] out = new double[outSize];
 
 		int[] coords = new int[outScope.length];
@@ -202,6 +226,49 @@ public class WeightedMiniBucket {
 				scratch[k] = factor.table[base + k * axisStr];
 			}
 			out[idx] = reduce(scratch, weight);
+			increment(coords, outDims);
+		}
+		return new LogFactor(outScope, outDims, out);
+	}
+
+	static LogFactor maxEliminate(LogFactor factor, int var) {
+		int axis = indexOf(factor.scope, var);
+		int dimVar = factor.dims[axis];
+
+		int[] outScope = new int[factor.scope.length - 1];
+		int[] outDims = new int[factor.scope.length - 1];
+		for (int i = 0, j = 0; i < factor.scope.length; i++) {
+			if (i != axis) {
+				outScope[j] = factor.scope[i];
+				outDims[j] = factor.dims[i];
+				j++;
+			}
+		}
+
+		int[] inStr = strides(factor.dims);
+		int axisStr = inStr[axis];
+		long outSizeLong = productLong(outDims);
+		if (outSizeLong > Integer.MAX_VALUE) {
+			throw new IllegalArgumentException("WMB factor table too large: " + outSizeLong + " cells");
+		}
+		int outSize = (int) outSizeLong;
+		double[] out = new double[outSize];
+
+		int[] coords = new int[outScope.length];
+		for (int idx = 0; idx < outSize; idx++) {
+			int base = 0;
+			for (int a = 0, ia = 0; a < factor.scope.length; a++) {
+				if (a == axis) {
+					continue;
+				}
+				base += coords[ia] * inStr[a];
+				ia++;
+			}
+			double max = Double.NEGATIVE_INFINITY;
+			for (int k = 0; k < dimVar; k++) {
+				max = Math.max(max, factor.table[base + k * axisStr]);
+			}
+			out[idx] = max;
 			increment(coords, outDims);
 		}
 		return new LogFactor(outScope, outDims, out);
@@ -313,7 +380,57 @@ public class WeightedMiniBucket {
 		long maxCells = 0;
 	}
 
+	public static final long UNLIMITED_TABLE_CELLS = Long.MAX_VALUE;
+
+	private static int effectiveIBound(WmbModel model, int requestedIBound, int[] order, long maxTableCells) {
+		if (model == null) {
+			throw new IllegalArgumentException("model is required");
+		}
+		if (requestedIBound < 1) {
+			throw new IllegalArgumentException("iBound must be >= 1");
+		}
+		if (maxTableCells < 1) {
+			throw new IllegalArgumentException("max table cells must be >= 1");
+		}
+		int width = model.numVars() == 0 ? 0 : inducedWidth(model, order);
+		int exactIBound = Math.max(width, 1);
+		int iEff = Math.min(requestedIBound, exactIBound);
+		if (maxTableCells == UNLIMITED_TABLE_CELLS) {
+			return iEff;
+		}
+
+		while (iEff > 1 && maxDomainProduct(model, iEff + 1) > maxTableCells) {
+			iEff--;
+		}
+		if (maxDomainProduct(model, iEff + 1) > maxTableCells) {
+			throw new IllegalArgumentException("WMB iBound=" + requestedIBound
+				+ " cannot satisfy maxTableCells=" + maxTableCells
+				+ "; the largest pair table needs " + maxDomainProduct(model, 2) + " cells");
+		}
+		return iEff;
+	}
+
+	private static long maxDomainProduct(WmbModel model, int maxVars) {
+		int[] domains = model.domains().clone();
+		Arrays.sort(domains);
+		long product = 1L;
+		int used = 0;
+		for (int i = domains.length - 1; i >= 0 && used < maxVars; i--, used++) {
+			int d = domains[i];
+			if (d != 0 && product > Long.MAX_VALUE / d) {
+				return Long.MAX_VALUE;
+			}
+			product *= d;
+		}
+		return product;
+	}
+
 	private static double run(WmbModel model, int iBound, int[] order, boolean upper, Stats stats) {
+		return run(model, iBound, order, upper, stats, null);
+	}
+
+	private static double run(WmbModel model, int iBound, int[] order, boolean upper, Stats stats,
+	                          List<LogFactor>[] conditionalBuckets) {
 		int numVars = model.numVars();
 		int[] domainOfVar = model.domains();
 		int[] pos = new int[numVars];
@@ -335,6 +452,9 @@ public class WeightedMiniBucket {
 			List<LogFactor> fs = buckets.get(v);
 			if (fs == null || fs.isEmpty()) {
 				continue;
+			}
+			if (conditionalBuckets != null) {
+				conditionalBuckets[v] = new ArrayList<>(fs);
 			}
 			List<List<LogFactor>> parts = partition(fs, iBound);
 			int p = parts.size();
@@ -360,6 +480,65 @@ public class WeightedMiniBucket {
 			}
 		}
 		return logConst;
+	}
+
+	private static double maxUpper(List<LogFactor> inputFactors, int[] domains,
+	                               int[] order, int iBound) {
+		Stats stats = new Stats();
+		int numVars = domains.length;
+		int[] pos = new int[numVars];
+		for (int k = 0; k < order.length; k++) {
+			pos[order[k]] = k;
+		}
+
+		Map<Integer, List<LogFactor>> buckets = new TreeMap<>();
+		for (int v = 0; v < numVars; v++) {
+			buckets.put(v, new ArrayList<>());
+		}
+		double constant = 0.0;
+		for (LogFactor factor : inputFactors) {
+			if (factor.isConstant()) {
+				constant += factor.constant();
+			} else {
+				placeFactor(factor, buckets, pos);
+			}
+		}
+
+		for (int v : order) {
+			List<LogFactor> fs = buckets.get(v);
+			if (fs == null || fs.isEmpty()) {
+				continue;
+			}
+			for (List<LogFactor> part : partition(fs, iBound)) {
+				LogFactor combined = combine(part, domains);
+				stats.maxVars = Math.max(stats.maxVars, combined.scope.length);
+				stats.maxCells = Math.max(stats.maxCells, combined.table.length);
+				LogFactor msg = maxEliminate(combined, v);
+				if (msg.isConstant()) {
+					constant += msg.constant();
+				} else {
+					placeFactor(msg, buckets, pos);
+				}
+			}
+		}
+		return constant;
+	}
+
+	private static double value(LogFactor factor, int[] assignment) {
+		if (factor.scope.length == 0) {
+			return factor.constant();
+		}
+		int idx = 0;
+		int stride = 1;
+		for (int a = factor.scope.length - 1; a >= 0; a--) {
+			int val = assignment[factor.scope[a]];
+			if (val < 0) {
+				throw new IllegalArgumentException("factor scope contains an unassigned variable");
+			}
+			idx += val * stride;
+			stride *= factor.dims[a];
+		}
+		return factor.table[idx];
 	}
 
 	private static void placeFactor(LogFactor f, Map<Integer, List<LogFactor>> buckets, int[] pos) {
@@ -444,12 +623,411 @@ public class WeightedMiniBucket {
 
 	// ---- public API -------------------------------------------------------
 
+	public static final class Sample {
+		public final int[] domainValues;
+		public final double logQ;
+
+		private Sample(int[] domainValues, double logQ) {
+			this.domainValues = domainValues;
+			this.logQ = logQ;
+		}
+	}
+
+	public static final class Proposal {
+		private final WmbModel model;
+		private final int[] order;
+		private final int[] domains;
+		private final int iBound;
+		private final List<LogFactor>[] conditionalBuckets;
+
+		private Proposal(WmbModel model, int[] order, int[] domains,
+		                 int iBound, List<LogFactor>[] conditionalBuckets) {
+			this.model = model;
+			this.order = order;
+			this.domains = domains;
+			this.iBound = iBound;
+			this.conditionalBuckets = conditionalBuckets;
+		}
+
+		public WmbModel model() {
+			return model;
+		}
+
+		public static final class LogWeightCap {
+			public final boolean exact;
+			public final String reason;
+			public final long assignments;
+			public final double logWeightUpper;
+			public final double fallbackLogWeightUpper;
+			public final double miniBucketLogWeightUpper;
+			public final String miniBucketReason;
+
+			private LogWeightCap(boolean exact, String reason, long assignments,
+			                     double logWeightUpper, double fallbackLogWeightUpper,
+			                     double miniBucketLogWeightUpper, String miniBucketReason) {
+				this.exact = exact;
+				this.reason = reason;
+				this.assignments = assignments;
+				this.logWeightUpper = logWeightUpper;
+				this.fallbackLogWeightUpper = fallbackLogWeightUpper;
+				this.miniBucketLogWeightUpper = miniBucketLogWeightUpper;
+				this.miniBucketReason = miniBucketReason;
+			}
+		}
+
+		private static final class MiniBucketCap {
+			final double logWeightUpper;
+			final String reason;
+
+			MiniBucketCap(double logWeightUpper, String reason) {
+				this.logWeightUpper = logWeightUpper;
+				this.reason = reason;
+			}
+		}
+
+		public Sample sample(Random rng) {
+			if (rng == null) {
+				throw new IllegalArgumentException("random generator is required");
+			}
+			int[] assignment = new int[model.numVars()];
+			Arrays.fill(assignment, -1);
+			double logQ = 0.0;
+			for (int oi = order.length - 1; oi >= 0; oi--) {
+				int var = order[oi];
+				double[] scores = conditionalScores(var, assignment);
+				double logNorm = logSumExp(scores, 1.0);
+				int chosen;
+				if (Double.isFinite(logNorm)) {
+					chosen = draw(scores, logNorm, rng);
+					logQ += scores[chosen] - logNorm;
+				} else {
+					chosen = rng.nextInt(domains[var]);
+					logQ -= Math.log(domains[var]);
+				}
+				assignment[var] = chosen;
+			}
+			return new Sample(assignment, logQ);
+		}
+
+		public double logProbability(int[] domainValues) {
+			if (domainValues == null || domainValues.length != model.numVars()) {
+				throw new IllegalArgumentException("domain assignment has wrong length");
+			}
+			int[] partial = new int[domainValues.length];
+			Arrays.fill(partial, -1);
+			double logQ = 0.0;
+			for (int oi = order.length - 1; oi >= 0; oi--) {
+				int var = order[oi];
+				double[] scores = conditionalScores(var, partial);
+				double logNorm = logSumExp(scores, 1.0);
+				int val = domainValues[var];
+				if (val < 0 || val >= domains[var]) {
+					throw new IllegalArgumentException("domain value out of range");
+				}
+				if (Double.isFinite(logNorm)) {
+					logQ += scores[val] - logNorm;
+				} else {
+					logQ -= Math.log(domains[var]);
+				}
+				partial[var] = val;
+			}
+			return logQ;
+		}
+
+		/**
+		 * Conservative lower bound on {@code log q(c)} for every full assignment
+		 * sampled by this proposal.
+		 */
+		public double logProbabilityLowerBound() {
+			double logQLower = 0.0;
+			for (int oi = order.length - 1; oi >= 0; oi--) {
+				int var = order[oi];
+				List<LogFactor> factors = conditionalBuckets[var];
+				if (factors == null || factors.isEmpty()) {
+					logQLower -= Math.log(domains[var]);
+					continue;
+				}
+				double scoreLower = 0.0;
+				double scoreUpper = 0.0;
+				for (LogFactor factor : factors) {
+					double min = minFiniteValue(factor);
+					double max = maxFiniteValue(factor);
+					if (!Double.isFinite(min) || !Double.isFinite(max)) {
+						continue;
+					}
+					scoreLower += min;
+					scoreUpper += max;
+				}
+				logQLower += scoreLower - scoreUpper - Math.log(domains[var]);
+			}
+			return logQLower;
+		}
+
+		/**
+		 * Upper-bound the local importance weight
+		 * {@code exp(theta_min(c)) / q(c)} for this model and proposal.
+		 *
+		 * <p>The fallback bound separates {@code theta_min(c)} and {@code q(c)}:
+		 * {@code log Z_upper - min_c log q(c)}.  When the local support is small
+		 * enough to enumerate, the exact max over
+		 * {@code theta_min(c) - log q(c)} keeps low-probability steric/sentinel
+		 * assignments paired with their own low Boltzmann weight.</p>
+		 */
+		public LogWeightCap logWeightUpperBound(double fallbackLogZUpper, long maxAssignments) {
+			double fallback = fallbackLogZUpper - logProbabilityLowerBound();
+			MiniBucketCap miniBucket = logWeightMiniBucketUpperBound();
+			long assignments = countAssignments();
+			if (assignments < 0) {
+				return fallbackOrMiniBucket("support size overflow", -1L, miniBucket, fallback);
+			}
+			if (maxAssignments >= 0 && assignments > maxAssignments) {
+				return fallbackOrMiniBucket("support too large for exact local cap",
+					assignments, miniBucket, fallback);
+			}
+			if (assignments == 0L) {
+				return fallbackOrMiniBucket("empty proposal support", assignments, miniBucket, fallback);
+			}
+
+			int[] values = new int[domains.length];
+			double exact = Double.NEGATIVE_INFINITY;
+			for (long i = 0; i < assignments; i++) {
+				double theta = model.logValue(values);
+				double logQ = logProbability(values);
+				if (Double.isFinite(theta) && Double.isFinite(logQ)) {
+					exact = Math.max(exact, theta - logQ);
+				} else if (theta != Double.NEGATIVE_INFINITY && logQ == Double.NEGATIVE_INFINITY) {
+					exact = Double.POSITIVE_INFINITY;
+					break;
+				}
+				incrementAssignment(values);
+			}
+			if (!Double.isFinite(exact)) {
+				return fallbackOrMiniBucket("non-finite exact local cap", assignments, miniBucket, fallback);
+			}
+			return new LogWeightCap(true, "exact local support cap", assignments,
+				Math.min(exact, fallback), fallback, miniBucket.logWeightUpper, miniBucket.reason);
+		}
+
+		private LogWeightCap fallbackOrMiniBucket(String exactReason, long assignments,
+		                                         MiniBucketCap miniBucket, double fallback) {
+			if (Double.isFinite(miniBucket.logWeightUpper)) {
+				return new LogWeightCap(false, "mini-bucket local cap after " + exactReason,
+					assignments, Math.min(miniBucket.logWeightUpper, fallback), fallback,
+					miniBucket.logWeightUpper, miniBucket.reason);
+			}
+			return new LogWeightCap(false, exactReason + "; mini-bucket local cap unavailable: "
+				+ miniBucket.reason, assignments, fallback, fallback,
+				miniBucket.logWeightUpper, miniBucket.reason);
+		}
+
+		private MiniBucketCap logWeightMiniBucketUpperBound() {
+			try {
+				List<LogFactor> factors = new ArrayList<>();
+				factors.addAll(initialFactors(model));
+				for (int var = 0; var < domains.length; var++) {
+					List<LogFactor> bucket = conditionalBuckets[var];
+					if (bucket == null || bucket.isEmpty()) {
+						factors.add(constantFactor(Math.log(domains[var])));
+						continue;
+					}
+					for (List<LogFactor> part : partition(bucket, iBound)) {
+						factors.add(conditionalPenaltyFactor(part, var));
+					}
+				}
+				double cap = maxUpper(factors, domains, order, iBound);
+				return Double.isFinite(cap)
+					? new MiniBucketCap(cap, "mini-bucket local cap")
+					: new MiniBucketCap(cap, "non-finite mini-bucket objective");
+			} catch (RuntimeException ex) {
+				return new MiniBucketCap(Double.POSITIVE_INFINITY,
+					ex.getClass().getSimpleName() + ": " + ex.getMessage());
+			}
+		}
+
+		private static LogFactor constantFactor(double value) {
+			return new LogFactor(new int[0], new int[0], new double[] { value });
+		}
+
+		private LogFactor conditionalPenaltyFactor(List<LogFactor> factors, int var) {
+			LogFactor combined = combine(factors, domains);
+			int axis = indexOf(combined.scope, var);
+			if (axis < 0) {
+				throw new IllegalArgumentException("conditional bucket is missing eliminated variable");
+			}
+			int dimVar = combined.dims[axis];
+			int[] str = strides(combined.dims);
+			int axisStr = str[axis];
+			double[] out = new double[combined.table.length];
+			int[] contextDims = new int[combined.dims.length - 1];
+			for (int i = 0, j = 0; i < combined.dims.length; i++) {
+				if (i != axis) {
+					contextDims[j++] = combined.dims[i];
+				}
+			}
+
+			int[] context = new int[contextDims.length];
+			long contexts = productLong(contextDims);
+			for (long c = 0; c < contexts; c++) {
+				int base = 0;
+				for (int a = 0, ia = 0; a < combined.dims.length; a++) {
+					if (a == axis) {
+						continue;
+					}
+					base += context[ia] * str[a];
+					ia++;
+				}
+
+				double[] scores = new double[dimVar];
+				for (int k = 0; k < dimVar; k++) {
+					scores[k] = combined.table[base + k * axisStr];
+				}
+				double norm = logSumExp(scores, 1.0);
+				for (int k = 0; k < dimVar; k++) {
+					int idx = base + k * axisStr;
+					if (Double.isFinite(norm)) {
+						out[idx] = Double.isFinite(scores[k])
+							? norm - scores[k]
+							: Double.NEGATIVE_INFINITY;
+					} else {
+						out[idx] = Math.log(dimVar);
+					}
+				}
+				increment(context, contextDims);
+			}
+			return new LogFactor(combined.scope.clone(), combined.dims.clone(), out);
+		}
+
+		private long countAssignments() {
+			long n = 1L;
+			for (int domain : domains) {
+				if (domain <= 0) {
+					return 0L;
+				}
+				if (n > Long.MAX_VALUE / domain) {
+					return -1L;
+				}
+				n *= domain;
+			}
+			return n;
+		}
+
+		private void incrementAssignment(int[] values) {
+			for (int v = values.length - 1; v >= 0; v--) {
+				values[v]++;
+				if (values[v] < domains[v]) {
+					return;
+				}
+				values[v] = 0;
+			}
+		}
+
+		private double[] conditionalScores(int var, int[] assignment) {
+			double[] scores = new double[domains[var]];
+			List<LogFactor> factors = conditionalBuckets[var];
+			for (int k = 0; k < domains[var]; k++) {
+				assignment[var] = k;
+				double score = 0.0;
+				if (factors != null) {
+					for (LogFactor factor : factors) {
+						score += value(factor, assignment);
+					}
+				}
+				scores[k] = score;
+			}
+			assignment[var] = -1;
+			return scores;
+		}
+
+		private static double minValue(LogFactor factor) {
+			double min = Double.POSITIVE_INFINITY;
+			for (double val : factor.table) {
+				min = Math.min(min, val);
+			}
+			return min;
+		}
+
+		private static double maxValue(LogFactor factor) {
+			double max = Double.NEGATIVE_INFINITY;
+			for (double val : factor.table) {
+				max = Math.max(max, val);
+			}
+			return max;
+		}
+
+		private static double minFiniteValue(LogFactor factor) {
+			double min = Double.POSITIVE_INFINITY;
+			for (double val : factor.table) {
+				if (Double.isFinite(val)) {
+					min = Math.min(min, val);
+				}
+			}
+			return min;
+		}
+
+		private static double maxFiniteValue(LogFactor factor) {
+			double max = Double.NEGATIVE_INFINITY;
+			for (double val : factor.table) {
+				if (Double.isFinite(val)) {
+					max = Math.max(max, val);
+				}
+			}
+			return max;
+		}
+
+		private static int draw(double[] scores, double logNorm, Random rng) {
+			double u = rng.nextDouble();
+			double cdf = 0.0;
+			for (int k = 0; k < scores.length; k++) {
+				cdf += Math.exp(scores[k] - logNorm);
+				if (u <= cdf || k == scores.length - 1) {
+					return k;
+				}
+			}
+			return scores.length - 1;
+		}
+	}
+
+	public static Proposal proposalForModel(WmbModel model, int iBound) {
+		return proposalForModel(model, iBound, naturalOrder(model.numVars()));
+	}
+
+	public static Proposal proposalForModel(WmbModel model, int iBound, long maxTableCells) {
+		return proposalForModel(model, iBound, naturalOrder(model.numVars()), maxTableCells);
+	}
+
+	@SuppressWarnings("unchecked")
+	public static Proposal proposalForModel(WmbModel model, int iBound, int[] order) {
+		return proposalForModel(model, iBound, order, UNLIMITED_TABLE_CELLS);
+	}
+
+	@SuppressWarnings("unchecked")
+	public static Proposal proposalForModel(WmbModel model, int iBound, int[] order, long maxTableCells) {
+		if (model == null) {
+			throw new IllegalArgumentException("model is required");
+		}
+		if (iBound < 1) {
+			throw new IllegalArgumentException("iBound must be >= 1");
+		}
+		int iEff = effectiveIBound(model, iBound, order, maxTableCells);
+		List<LogFactor>[] conditionalBuckets = (List<LogFactor>[]) new List[model.numVars()];
+		run(model, iEff, order, true, new Stats(), conditionalBuckets);
+		return new Proposal(model, order.clone(), model.domains().clone(), iEff, conditionalBuckets);
+	}
+
 	/** Deterministic {@code [Z-, Z+]} bracket (natural log) for one model at {@code iBound}. */
 	public static MiniBucketBound boundsForModel(WmbModel model, int iBound) {
 		return boundsForModel(model, iBound, naturalOrder(model.numVars()));
 	}
 
+	public static MiniBucketBound boundsForModel(WmbModel model, int iBound, long maxTableCells) {
+		return boundsForModel(model, iBound, naturalOrder(model.numVars()), maxTableCells);
+	}
+
 	public static MiniBucketBound boundsForModel(WmbModel model, int iBound, int[] order) {
+		return boundsForModel(model, iBound, order, UNLIMITED_TABLE_CELLS);
+	}
+
+	public static MiniBucketBound boundsForModel(WmbModel model, int iBound, int[] order, long maxTableCells) {
 		if (iBound < 1) {
 			throw new IllegalArgumentException("iBound must be >= 1");
 		}
@@ -459,14 +1037,14 @@ public class WeightedMiniBucket {
 			return new MiniBucketBound(c, c, iBound, 0, 0, 0);
 		}
 		int width = inducedWidth(model, order);
-		int iEff = Math.min(iBound, Math.max(width, 1));
+		int iEff = effectiveIBound(model, iBound, order, maxTableCells);
 
 		Stats su = new Stats();
 		double upper = run(model, iEff, order, true, su);
 		Stats sl = new Stats();
 		double lower = run(model, iEff, order, false, sl);
 
-		return new MiniBucketBound(lower, upper, iBound, width,
+		return new MiniBucketBound(lower, upper, iEff, width,
 				Math.max(su.maxVars, sl.maxVars),
 				Math.max(su.maxCells, sl.maxCells));
 	}
@@ -482,6 +1060,13 @@ public class WeightedMiniBucket {
 	                                     edu.duke.cs.osprey.ematrix.EnergyMatrix rigidEmat,
 	                                     edu.duke.cs.osprey.astar.conf.RCs rcs,
 	                                     int[] assignments, int iBound, double rt) {
+		return bounds(minimizedEmat, rigidEmat, rcs, assignments, iBound, UNLIMITED_TABLE_CELLS, rt);
+	}
+
+	public static MiniBucketBound bounds(edu.duke.cs.osprey.ematrix.EnergyMatrix minimizedEmat,
+	                                     edu.duke.cs.osprey.ematrix.EnergyMatrix rigidEmat,
+	                                     edu.duke.cs.osprey.astar.conf.RCs rcs,
+	                                     int[] assignments, int iBound, long maxTableCells, double rt) {
 		if (iBound < 1) {
 			throw new IllegalArgumentException("iBound must be >= 1");
 		}
@@ -496,14 +1081,14 @@ public class WeightedMiniBucket {
 		}
 		int[] order = naturalOrder(numVars);
 		int width = inducedWidth(minModel, order);
-		int iEff = Math.min(iBound, Math.max(width, 1));
+		int iEff = effectiveIBound(minModel, iBound, order, maxTableCells);
 
 		Stats su = new Stats();
 		double upper = run(minModel, iEff, order, true, su);
 		Stats sl = new Stats();
 		double lower = run(rigidModel, iEff, order, false, sl);
 
-		return new MiniBucketBound(lower, upper, iBound, width,
+		return new MiniBucketBound(lower, upper, iEff, width,
 				Math.max(su.maxVars, sl.maxVars),
 				Math.max(su.maxCells, sl.maxCells));
 	}
@@ -519,6 +1104,12 @@ public class WeightedMiniBucket {
 	public static double upperLogZ(edu.duke.cs.osprey.ematrix.EnergyMatrix minimizedEmat,
 	                               edu.duke.cs.osprey.astar.conf.RCs rcs,
 	                               int[] assignments, int iBound, double rt) {
+		return upperLogZ(minimizedEmat, rcs, assignments, iBound, UNLIMITED_TABLE_CELLS, rt);
+	}
+
+	public static double upperLogZ(edu.duke.cs.osprey.ematrix.EnergyMatrix minimizedEmat,
+	                               edu.duke.cs.osprey.astar.conf.RCs rcs,
+	                               int[] assignments, int iBound, long maxTableCells, double rt) {
 		if (iBound < 1) {
 			throw new IllegalArgumentException("iBound must be >= 1");
 		}
@@ -527,7 +1118,7 @@ public class WeightedMiniBucket {
 			return model.logConstant();
 		}
 		int[] order = naturalOrder(model.numVars());
-		int iEff = Math.min(iBound, Math.max(inducedWidth(model, order), 1));
+		int iEff = effectiveIBound(model, iBound, order, maxTableCells);
 		return run(model, iEff, order, true, new Stats());
 	}
 }

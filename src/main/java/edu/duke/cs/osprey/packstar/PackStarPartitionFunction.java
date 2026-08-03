@@ -1,6 +1,7 @@
 package edu.duke.cs.osprey.packstar;
 
 import edu.duke.cs.osprey.astar.conf.RCs;
+import edu.duke.cs.osprey.branchdp.BranchDpAdmission;
 import edu.duke.cs.osprey.confspace.ConfDB;
 import edu.duke.cs.osprey.confspace.SimpleConfSpace;
 import edu.duke.cs.osprey.ematrix.EnergyMatrix;
@@ -18,7 +19,7 @@ import java.math.BigDecimal;
  * The facade gives callers a PACK*-named API and keeps PAC mode mandatory for
  * this path.</p>
  */
-public class PackStarPartitionFunction implements PartitionFunction.WithConfDB, PackStarSampleTraceable {
+public class PackStarPartitionFunction implements PartitionFunction.WithConfDB, PackStarSampleTraceable, AutoCloseable {
 
     private final PackStarBound delegate;
 
@@ -55,6 +56,15 @@ public class PackStarPartitionFunction implements PartitionFunction.WithConfDB, 
 
     public PackStarBound getDelegate() {
         return delegate;
+    }
+
+    public BranchDpAdmission.Prediction getAdmissionPrediction() {
+        return delegate.getAdmissionPrediction();
+    }
+
+    @Override
+    public void setInstanceId(int val) {
+        delegate.setInstanceId(val);
     }
 
     public void setCorrections(UpdatingEnergyMatrix corrections) {
@@ -139,5 +149,10 @@ public class PackStarPartitionFunction implements PartitionFunction.WithConfDB, 
     @Override
     public void setConfDB(ConfDB confDB, ConfDB.Key key) {
         delegate.setConfDB(confDB, key);
+    }
+
+    @Override
+    public void close() {
+        delegate.close();
     }
 }

@@ -83,6 +83,18 @@ public class TestPackStarConfig {
         assertEquals("branchdp", BranchDpConfig.getBackendThreadNamePrefix());
     }
 
+    @Test
+    public void packStarAdmissionCountsWorstCaseDpSweeps() {
+        assertEquals(6, PackStarBranchDpBackend.conservativeDpSweeps(
+                true, true, 4, false));
+        assertEquals(2, PackStarBranchDpBackend.conservativeDpSweeps(
+                true, false, 4, false));
+        assertEquals(2, PackStarBranchDpBackend.conservativeDpSweeps(
+                false, true, 4, false));
+        assertEquals(7, PackStarBranchDpBackend.conservativeDpSweeps(
+                true, true, 4, true));
+    }
+
     private static void withProperties(Map<String, String> values, Runnable test) {
         Map<String, String> oldValues = new LinkedHashMap<>();
         for (String key : values.keySet()) {

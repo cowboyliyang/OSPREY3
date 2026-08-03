@@ -1,6 +1,7 @@
 package edu.duke.cs.osprey.packstar;
 
 import edu.duke.cs.osprey.astar.conf.RCs;
+import edu.duke.cs.osprey.branchdp.BranchDpAdmission;
 import edu.duke.cs.osprey.confspace.ConfDB;
 import edu.duke.cs.osprey.confspace.SimpleConfSpace;
 import edu.duke.cs.osprey.ematrix.EnergyMatrix;
@@ -66,6 +67,16 @@ final class BranchPackStarBackend implements PackStarBackend {
     }
 
     @Override
+    public BranchDpAdmission.Prediction getAdmissionPrediction() {
+        return callInPackStarBackend(delegate::getAdmissionPrediction);
+    }
+
+    @Override
+    public void setInstanceId(int val) {
+        runInPackStarBackend(() -> delegate.setInstanceId(val));
+    }
+
+    @Override
     public void setSampleListener(PackStarSampleListener listener) {
         runInPackStarBackend(() -> delegate.setSampleListener(listener));
     }
@@ -123,6 +134,11 @@ final class BranchPackStarBackend implements PackStarBackend {
     @Override
     public void setConfDB(ConfDB confDB, ConfDB.Key key) {
         runInPackStarBackend(() -> delegate.setConfDB(confDB, key));
+    }
+
+    @Override
+    public void close() {
+        runInPackStarBackend(delegate::releaseLargeMemory);
     }
 
     private void runInPackStarBackend(Runnable action) {

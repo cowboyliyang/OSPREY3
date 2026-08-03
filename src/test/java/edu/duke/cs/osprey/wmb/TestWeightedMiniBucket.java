@@ -170,6 +170,17 @@ public class TestWeightedMiniBucket {
 		return Math.log(n) - minEnergy / RT;
 	}
 
+	private static double confLogWeight(EnergyMatrix emat, int[] conf) {
+		double energy = 0.0;
+		for (int i = 0; i < conf.length; i++) {
+			energy += emat.getEnergy(i, conf[i]);
+			for (int j = i + 1; j < conf.length; j++) {
+				energy += emat.getEnergy(i, conf[i], j, conf[j]);
+			}
+		}
+		return -energy / RT;
+	}
+
 	// ---- validity / exactness ----
 
 	@Test
@@ -242,6 +253,138 @@ public class TestWeightedMiniBucket {
 	}
 
 	@Test
+	public void exactProposalLogProbabilityMatchesBoltzmannDistribution() {
+		int[] numRCs = {3, 2, 3, 2};
+		EnergyMatrix emat = randomEmat(numRCs, 11L);
+		RCs rcs = allRcs(numRCs);
+		int[] assignments = unassigned(numRCs.length);
+		WmbModel model = new WmbModel(emat, rcs, assignments, RT);
+		double logZ = bruteForceLogZ(emat, rcs, assignments);
+		WeightedMiniBucket.Proposal proposal = WeightedMiniBucket.proposalForModel(model, numRCs.length - 1);
+
+		int[] domainValues = new int[numRCs.length];
+		int n = (int) countCompletions(rcs, java.util.Arrays.asList(0, 1, 2, 3));
+		for (int idx = 0; idx < n; idx++) {
+			int[] conf = new int[numRCs.length];
+			for (int v = 0; v < domainValues.length; v++) {
+				conf[model.position(v)] = model.rotamer(v, domainValues[v]);
+			}
+			assertThat(proposal.logProbability(domainValues),
+					closeTo(confLogWeight(emat, conf) - logZ, 1e-9));
+			for (int v = domainValues.length - 1; v >= 0; v--) {
+				domainValues[v]++;
+				if (domainValues[v] < numRCs[v]) {
+					break;
+				}
+				domainValues[v] = 0;
+			}
+		}
+	}
+
+	@Test
+	public void exactLocalImportanceWeightCapCoversAllAssignments() {
+		int[] numRCs = {3, 2, 3, 2};
+		EnergyMatrix emat = randomEmat(numRCs, 13L);
+		RCs rcs = allRcs(numRCs);
+		int[] assignments = unassigned(numRCs.length);
+		WmbModel model = new WmbModel(emat, rcs, assignments, RT);
+		MiniBucketBound bound = WeightedMiniBucket.boundsForModel(model, 1);
+		WeightedMiniBucket.Proposal proposal = WeightedMiniBucket.proposalForModel(model, 1);
+		WeightedMiniBucket.Proposal.LogWeightCap cap =
+			proposal.logWeightUpperBound(bound.logZUpper, 1000L);
+		WeightedMiniBucket.Proposal.LogWeightCap miniBucketCap =
+			proposal.logWeightUpperBound(bound.logZUpper, 0L);
+
+		assertThat(cap.exact, is(true));
+		assertThat(miniBucketCap.exact, is(false));
+		assertThat(cap.assignments, is(countCompletions(rcs, java.util.Arrays.asList(0, 1, 2, 3))));
+		assertThat(cap.logWeightUpper, lessThanOrEqualTo(cap.fallbackLogWeightUpper + 1e-12));
+		assertThat(miniBucketCap.logWeightUpper, lessThanOrEqualTo(miniBucketCap.fallbackLogWeightUpper + 1e-12));
+
+		int[] domainValues = new int[numRCs.length];
+		int n = (int) cap.assignments;
+		for (int idx = 0; idx < n; idx++) {
+			double logWeight = model.logValue(domainValues) - proposal.logProbability(domainValues);
+			assertThat(logWeight, lessThanOrEqualTo(cap.logWeightUpper + 1e-12));
+			assertThat(logWeight, lessThanOrEqualTo(miniBucketCap.logWeightUpper + 1e-12));
+			for (int v = domainValues.length - 1; v >= 0; v--) {
+				domainValues[v]++;
+				if (domainValues[v] < numRCs[v]) {
+					break;
+				}
+				domainValues[v] = 0;
+			}
+		}
+	}
+
+	@Test
+	public void exactProposalLocalImportanceWeightCapEqualsLogZ() {
+		int[] numRCs = {3, 2, 3};
+		EnergyMatrix emat = randomEmat(numRCs, 15L);
+		RCs rcs = allRcs(numRCs);
+		int[] assignments = unassigned(numRCs.length);
+		WmbModel model = new WmbModel(emat, rcs, assignments, RT);
+		double logZ = bruteForceLogZ(emat, rcs, assignments);
+		WeightedMiniBucket.Proposal proposal = WeightedMiniBucket.proposalForModel(model, numRCs.length - 1);
+		WeightedMiniBucket.Proposal.LogWeightCap cap =
+			proposal.logWeightUpperBound(logZ, 1000L);
+
+		assertThat(cap.exact, is(true));
+		assertThat(cap.logWeightUpper, closeTo(logZ, 1e-9));
+	}
+
+	@Test
+	public void proposalLogProbabilityLowerBoundCoversAllAssignments() {
+		int[] numRCs = {3, 2, 3, 2};
+		EnergyMatrix emat = randomEmat(numRCs, 17L);
+		RCs rcs = allRcs(numRCs);
+		WmbModel model = new WmbModel(emat, rcs, unassigned(numRCs.length), RT);
+		WeightedMiniBucket.Proposal proposal = WeightedMiniBucket.proposalForModel(model, 1);
+		double lower = proposal.logProbabilityLowerBound();
+
+		int[] domainValues = new int[numRCs.length];
+		int n = (int) countCompletions(rcs, java.util.Arrays.asList(0, 1, 2, 3));
+		for (int idx = 0; idx < n; idx++) {
+			assertThat(proposal.logProbability(domainValues), greaterThanOrEqualTo(lower - 1e-12));
+			for (int v = domainValues.length - 1; v >= 0; v--) {
+				domainValues[v]++;
+				if (domainValues[v] < numRCs[v]) {
+					break;
+				}
+				domainValues[v] = 0;
+			}
+		}
+	}
+
+	@Test
+	public void looseProposalImportanceSamplingMatchesEnumeratedPartitionFunction() {
+		int[] numRCs = {3, 2, 3, 2, 2};
+		EnergyMatrix emat = randomEmat(numRCs, 19L);
+		RCs rcs = allRcs(numRCs);
+		int[] assignments = unassigned(numRCs.length);
+		WmbModel model = new WmbModel(emat, rcs, assignments, RT);
+		WeightedMiniBucket.Proposal proposal = WeightedMiniBucket.proposalForModel(model, 1);
+
+		int samples = 20000;
+		Random rng = new Random(23L);
+		double[] logWeights = new double[samples];
+		for (int i = 0; i < samples; i++) {
+			WeightedMiniBucket.Sample sample = proposal.sample(rng);
+			int[] conf = new int[numRCs.length];
+			for (int v = 0; v < sample.domainValues.length; v++) {
+				conf[model.position(v)] = model.rotamer(v, sample.domainValues[v]);
+			}
+			logWeights[i] = confLogWeight(emat, conf) - sample.logQ;
+		}
+
+		double exact = bruteForceLogZ(emat, rcs, assignments);
+		double estimate = logSumExp(logWeights) - Math.log(samples);
+		System.out.printf("WMB-IS small validation logZ exact=%.10f estimate=%.10f absErr=%.10f samples=%d%n",
+				exact, estimate, Math.abs(estimate - exact), samples);
+		assertThat(estimate, closeTo(exact, 0.08));
+	}
+
+	@Test
 	public void fullyAssignedSubtreeIsASingleTerm() {
 		int[] numRCs = {2, 2, 2};
 		EnergyMatrix emat = randomEmat(numRCs, 3L);
@@ -303,6 +446,41 @@ public class TestWeightedMiniBucket {
 			assertThat(b.maxMiniBucketVars, lessThanOrEqualTo(ib + 1));
 			assertThat(b.maxTableCells, lessThanOrEqualTo((long) Math.pow(q, ib + 1)));
 		}
+	}
+
+	@Test
+	public void maxTableCellsLowersEffectiveIBound() {
+		int[] numRCs = {3, 3, 3, 3};
+		EnergyMatrix emat = randomEmat(numRCs, 34L);
+		RCs rcs = allRcs(numRCs);
+		WmbModel model = new WmbModel(emat, rcs, unassigned(numRCs.length), RT);
+
+		MiniBucketBound b = WeightedMiniBucket.boundsForModel(model, 3, 9L);
+		assertThat(b.iBound, is(1));
+		assertThat(b.inducedWidth, is(3));
+		assertThat(b.isExact(), is(false));
+		assertThat(b.maxMiniBucketVars, lessThanOrEqualTo(2));
+		assertThat(b.maxTableCells, lessThanOrEqualTo(9L));
+
+		MiniBucketBound stateBound = WeightedMiniBucket.bounds(
+			emat, emat, rcs, unassigned(numRCs.length), 3, 9L, RT);
+		assertThat(stateBound.iBound, is(1));
+		assertThat(stateBound.maxTableCells, lessThanOrEqualTo(9L));
+		assertThat(WeightedMiniBucket.upperLogZ(
+			emat, rcs, unassigned(numRCs.length), 3, 9L, RT), closeTo(b.logZUpper, 1e-9));
+	}
+
+	@Test
+	public void maxTableCellsTooSmallForPairFactorsIsRejected() {
+		int[] numRCs = {4, 4, 4};
+		EnergyMatrix emat = randomEmat(numRCs, 35L);
+		RCs rcs = allRcs(numRCs);
+		WmbModel model = new WmbModel(emat, rcs, unassigned(numRCs.length), RT);
+
+		assertThrows(IllegalArgumentException.class,
+				() -> WeightedMiniBucket.boundsForModel(model, 2, 15L));
+		assertThrows(IllegalArgumentException.class,
+				() -> WeightedMiniBucket.proposalForModel(model, 2, 15L));
 	}
 
 	@Test

@@ -17,6 +17,8 @@ package edu.duke.cs.osprey.branchdp;
 import com.sun.jna.Native;
 import edu.duke.cs.osprey.astar.conf.RCs;
 import edu.duke.cs.osprey.ematrix.EnergyMatrix;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -98,9 +100,15 @@ public class RootedTreeEdge {
     private static final String DP_MAX_MATERIALIZED_PAIRS_PROPERTY = "branchdp.dp.maxMaterializedPairs";
     private static final String DP_TABLE_MODE_PROPERTY = "branchdp.dp.tableMode";
     private static final String DP_SHARD_SIZE_PROPERTY = "branchdp.dp.shardSize";
+    private static final String DP_MMAP_THRESHOLD_BYTES_PROPERTY = "branchdp.dp.mmap.thresholdBytes";
+    private static final String DP_MMAP_DIRECTORY_PROPERTY = "branchdp.dp.mmap.dir";
+    private static final String DP_MMAP_CHUNK_ENTRIES_PROPERTY = "branchdp.dp.mmap.chunkEntries";
+    private static final String DP_MMAP_SKIP_INITIAL_FILL_PROPERTY = "branchdp.dp.mmap.skipInitialFill";
     private static final int DEFAULT_DP_PARALLEL_MIN_M_STATES = 1024;
     private static final long DEFAULT_DP_MAX_MATERIALIZED_PAIRS = 50_000_000L;
     private static final int DEFAULT_DP_SHARD_SIZE = 1_048_576;
+    private static final long DEFAULT_DP_MMAP_THRESHOLD_BYTES = 128L * 1024L * 1024L * 1024L;
+    private static final int DEFAULT_DP_MMAP_CHUNK_ENTRIES = 67_108_864; // 512 MiB/map
     // Option C: non-leaf child-table folding (pure Java, no SIMD/JIT-vector risk).
     private static final String DP_FOLD_CHILDREN_PROPERTY = "branchdp.dp.foldChildren";
     private static final String DP_FOLD_HOIST_PROPERTY = "branchdp.dp.foldChildren.hoistInvariant";
@@ -114,6 +122,15 @@ public class RootedTreeEdge {
     private static final String DP_GPU_MIN_WORK_PROPERTY = "branchdp.dp.gpu.minWork";
     private static final String DP_GPU_MAX_BYTES_PROPERTY = "branchdp.dp.gpu.maxBytes";
     private static final String DP_GPU_FAIL_IF_EXCEEDS_VRAM_PROPERTY = "branchdp.dp.gpu.failIfExceedsVram";
+    // GPU DP was requested (branchdp.dp.gpu=true) but this edge is structurally
+    // unsupported (e.g. MAX_EDGE_POSITIONS exceeded, or an int-overflow building the
+    // request) even though the work is non-trivial: fail the run instead of silently
+    // degrading to the single-threaded Java DP path, which can take hours to days on
+    // multi-billion-state edges with zero GPU speedup. Benign reasons to skip GPU
+    // (GPU not requested, native kernel chosen, leaf edge, trivial/empty edge, or work
+    // below DP_GPU_MIN_WORK_PROPERTY) are never affected by this flag.
+    private static final String DP_GPU_FAIL_IF_NO_GPU_PATH_PROPERTY = "branchdp.dp.gpu.failIfNoGpuPath";
+    private static final boolean DEFAULT_DP_GPU_FAIL_IF_NO_GPU_PATH = true;
     private static final String DP_GPU_BLOCK_THREADS_PROPERTY = "branchdp.dp.gpu.blockThreads";
     private static final String DP_GPU_OUTPUT_TILE_MSTATES_PROPERTY = "branchdp.dp.gpu.outputTileMStates";
     private static final String DP_GPU_PERSISTENT_CONTEXT_PROPERTY = "branchdp.dp.gpu.persistentContext";
@@ -193,6 +210,11 @@ public class RootedTreeEdge {
     public LinkedHashSet<Integer> getL() { return L; }
     public double[] getLogZLower() { return dpTable == null ? null : dpTable.lowerArrayUnsafe(); }
     public double[] getLogZUpper() { return dpTable == null ? null : dpTable.upperArrayUnsafe(); }
+    /** Like {@link #getLogZLower()}/{@link #getLogZUpper()} for dense and sharded
+     *  array-backed tables. File-backed tables must instead be streamed through
+     *  DPTable reads; callers must check {@link DPTable#supportsArrayChunks()}. */
+    public double[][] getLogZLowerChunks() { return dpTable == null ? null : dpTable.lowerChunks(); }
+    public double[][] getLogZUpperChunks() { return dpTable == null ? null : dpTable.upperChunks(); }
     public double getLogZLower(long mIdx) { return dpTable.lower(mIdx); }
     public double getLogZUpper(long mIdx) { return dpTable.upper(mIdx); }
     public void setLogZ(long mIdx, double lower, double upper) { dpTable.set(mIdx, lower, upper); }
@@ -213,6 +235,44 @@ public class RootedTreeEdge {
     public int getEnumeratedCount(int mIdx) { return enumeratedCount != null ? enumeratedCount[mIdx] : 0; }
     public double[][] getFullEnergyMin() { return fullEnergyMin; }
     public double[][] getFullEnergyRigid() { return fullEnergyRigid; }
+
+    /**
+     * Drop all large, computation-only storage owned by this rooted edge.
+     *
+     * <p>PACK* and K* construct a fresh partition function for every state and
+     * sequence.  Some production tables are hundreds of GiB, so waiting for a
+     * later GC to discover that the whole backend is unreachable is not a safe
+     * lifecycle policy.  The scalar partition-function result no longer needs
+     * any of these arrays after {@code makeResult()}, so the PACK* facade calls
+     * this deterministically before asking the JVM to collect the backend.</p>
+     */
+    public void releaseLargeMemory() {
+        if (dpTable != null) {
+            dpTable.close();
+        }
+        dpTable = null;
+        childFoldPlans = null;
+        enumeratedCount = null;
+        sortedLambdaIndices = null;
+        lambdaOnlyRigid = null;
+        lambdaOnlyMin = null;
+        fullEnergyRigid = null;
+        fullEnergyMin = null;
+        fullEnergyTablesMaterialized = false;
+        cachedRigidEmat = null;
+        cachedMinEmat = null;
+        cachedG = null;
+
+        // Break the compact/F-set graph too. The ordinary rooted tree is still
+        // traversable while postOrderReleaseLargeMemory is running.
+        if (Fset != null) {
+            Fset.clear();
+            Fset = null;
+        }
+        compactLeftChild = null;
+        compactRightChild = null;
+        compactParent = null;
+    }
 
     // ========== Log-space utility ==========
 
@@ -237,6 +297,10 @@ public class RootedTreeEdge {
 
     private static long getConfigLong(String key, long defaultValue) {
         return BranchDpConfig.getBackendLong(key, defaultValue, BranchDpConfig.getBackendLogPrefix());
+    }
+
+    private static long getConfigBytes(String key, long defaultValue) {
+        return BranchDpConfig.getBackendBytes(key, defaultValue, BranchDpConfig.getBackendLogPrefix());
     }
 
     // ========== compLlambda: compute L and lambda sets ==========
@@ -340,25 +404,34 @@ public class RootedTreeEdge {
                 ? getConfigLong(DP_MAX_M_STATES_PROPERTY, Long.MAX_VALUE)
                 : Integer.MAX_VALUE;
         if (count > maxStates) {
+            String limit = isMStateCount
+                    ? DP_MAX_M_STATES_PROPERTY + "=" + maxStates
+                    : "the int-addressable lambda-state limit=" + maxStates;
+            String action = isMStateCount
+                    ? "Reduce branchwidth/rooting, enable a shard- or file-backed DP table, "
+                        + "or raise the limit only if memory allows."
+                    : "Choose a root with a smaller lambda separator; lambda indexing and "
+                        + "GPU launch metadata are intentionally int-addressable.";
             throw new DPTableTooLargeException(label, count, positions,
-                    "DP " + label + "-state count exceeds "
-                            + DP_MAX_M_STATES_PROPERTY + "=" + maxStates
-                            + ". Reduce branchwidth/rooting, enable a shard-backed DP table, "
-                            + "or raise the limit only if memory allows.");
+                    "DP " + label + "-state count exceeds " + limit + ". " + action);
         }
         return count;
     }
 
     private DPTableTooLargeException stateCountException(String label, int[] positions, long count) {
         return new DPTableTooLargeException(label, count, positions,
-                "DP " + label + "-state count exceeds Java array indexing limits. "
+                "DP " + label + "-state count exceeds int indexing limits. "
                         + "This used to overflow into NegativeArraySizeException; "
-                        + "use a smaller separator or a shard-backed DP table.");
+                        + ("M".equals(label)
+                        ? "use a shard- or file-backed DP table."
+                        : "choose a root with a smaller lambda separator."));
     }
 
     private void initializeArrays() {
         dpTable = makeDPTable();
-        dpTable.fill(NEG_INF, NEG_INF);
+        if (!skipInitialMappedFill(false)) {
+            dpTable.fill(NEG_INF, NEG_INF);
+        }
 
         enumeratedCount = mStateCount <= Integer.MAX_VALUE
                 ? new int[(int) mStateCount]
@@ -369,9 +442,24 @@ public class RootedTreeEdge {
     private DPTable makeDPTable() {
         String mode = getConfigProperty(DP_TABLE_MODE_PROPERTY, "auto").trim().toLowerCase(Locale.ROOT);
         int shardSize = Math.max(1, getConfigInteger(DP_SHARD_SIZE_PROPERTY, DEFAULT_DP_SHARD_SIZE));
+        if (shouldUseFileBackedDPTable(mStateCount)) {
+            int chunkEntries = Math.max(1, getConfigInteger(
+                    DP_MMAP_CHUNK_ENTRIES_PROPERTY, DEFAULT_DP_MMAP_CHUNK_ENTRIES));
+            Path directory = Paths.get(getConfigProperty(
+                    DP_MMAP_DIRECTORY_PROPERTY, System.getProperty("java.io.tmpdir")));
+            DPTable table = new MappedDPTable(mStateCount, chunkEntries, directory);
+            System.out.println(BranchDpConfig.getBackendLogPrefix()
+                    + " file-backed DP table created, states=" + mStateCount
+                    + ", bytes=" + table.estimatedBytes()
+                    + ", directory=" + directory);
+            return table;
+        }
         switch (mode) {
             case "":
             case "auto":
+            case "auto_mmap":
+            case "mmap_auto":
+            case "tiered":
                 return mStateCount <= Integer.MAX_VALUE
                         ? new DenseDPTable(mStateCount)
                         : new ShardedDPTable(mStateCount, shardSize);
@@ -383,6 +471,11 @@ public class RootedTreeEdge {
             case "sharded":
             case "shard":
                 return new ShardedDPTable(mStateCount, shardSize);
+            case "mmap":
+            case "mapped":
+            case "file":
+                // shouldUseFileBackedDPTable() handles unconditional mmap modes.
+                throw new IllegalStateException("Unable to create requested mapped DP table");
             default:
                 System.err.println(BranchDpConfig.getBackendLogPrefix() + " Unknown DP table mode '" + mode
                         + "', using auto.");
@@ -390,6 +483,27 @@ public class RootedTreeEdge {
                         ? new DenseDPTable(mStateCount)
                         : new ShardedDPTable(mStateCount, shardSize);
         }
+    }
+
+    static boolean shouldUseFileBackedDPTable(long mStates) {
+        String mode = getConfigProperty(DP_TABLE_MODE_PROPERTY, "auto")
+                .trim().toLowerCase(Locale.ROOT);
+        if (mode.equals("mmap") || mode.equals("mapped") || mode.equals("file")) {
+            return true;
+        }
+        if (!(mode.equals("auto_mmap") || mode.equals("mmap_auto")
+                || mode.equals("tiered"))) {
+            return false;
+        }
+        long threshold = Math.max(1L, getConfigBytes(
+                DP_MMAP_THRESHOLD_BYTES_PROPERTY, DEFAULT_DP_MMAP_THRESHOLD_BYTES));
+        return estimateDPTableBytes(mStates) >= threshold;
+    }
+
+    private boolean skipInitialMappedFill(boolean materializedEnergyTables) {
+        return dpTable != null && dpTable.isFileBacked()
+                && !materializedEnergyTables
+                && getConfigBoolean(DP_MMAP_SKIP_INITIAL_FILL_PROPERTY, true);
     }
 
     private int requireDenseMStateCount() {
@@ -697,8 +811,12 @@ public class RootedTreeEdge {
             }
         }
 
-        // Set initial logZ bounds: k=0 for all M-states
-        dpTable.fill(NEG_INF, NEG_INF);
+        // Set initial logZ bounds: k=0 for all M-states. Full-DP production
+        // overwrites every mapped entry immediately; skipping this multi-TiB
+        // pre-write is safe only for the non-materialized full-DP path.
+        if (!skipInitialMappedFill(materializeFullEnergyTables)) {
+            dpTable.fill(NEG_INF, NEG_INF);
+        }
         if (materializeFullEnergyTables) {
             // logZ_upper = tail bound for all K lambda-states in incremental mode.
             for (int mIdx = 0; mIdx < mArraySize; mIdx++) {
@@ -1233,6 +1351,26 @@ public class RootedTreeEdge {
         return Math.max(1L, shardSize);
     }
 
+    /**
+     * An edge is structurally unsupported by the GPU full-DP path even though GPU DP
+     * was requested and the edge's work is non-trivial. Fails fast by default
+     * (branchdp.dp.gpu.failIfNoGpuPath=true) rather than silently falling through to
+     * computeFullDPSharded()/the plain Java path, which is single-threaded-per-shard
+     * and can take hours to days on multi-billion-state edges with zero GPU speedup.
+     * Set the property to false to restore the old silent-fallback behavior.
+     */
+    private boolean failNoGpuPath(String reason) {
+        String msg = "GPU DP unsupported for this edge (mStates=" + mStateCount
+                + ", lambdaStates=" + totalLambdaStates + "): " + reason;
+        if (getConfigBoolean(DP_GPU_FAIL_IF_NO_GPU_PATH_PROPERTY, DEFAULT_DP_GPU_FAIL_IF_NO_GPU_PATH)) {
+            throw new DPGpuFullDP.GpuUnsupportedEdgeException(msg
+                    + " -- set -D" + DP_GPU_FAIL_IF_NO_GPU_PATH_PROPERTY + "=false to fall back to the"
+                    + " (much slower) Java DP path for this edge instead of aborting");
+        }
+        System.out.println(BranchDpConfig.getBackendLogPrefix() + " GPU DP skipped (falling back to Java), " + msg);
+        return false;
+    }
+
     private boolean tryComputeFullDPGpu() {
         if (!getConfigBoolean(DP_GPU_PROPERTY, false)) {
             return false;
@@ -1240,50 +1378,82 @@ public class RootedTreeEdge {
         if (nativeKernelEnabled) {
             return false;
         }
-        if (!hasFsetChildren() || childFoldPlans == null
-                || childFoldPlans.length < 1
-                || childFoldPlans.length > DP_GPU_MAX_CHILDREN) {
-            return false;
+        // Leaf edges (no F-set children) have nothing to fold, but the GPU kernel
+        // already handles numChildren=0 as a trivial empty sum (child_sum() loops
+        // 0 times), so a leaf edge with enough raw (mState x lambdaState) work is
+        // still worth dispatching to GPU -- it just skips every childFoldPlans-only
+        // check below. Only non-leaf edges require a populated fold plan.
+        boolean isLeafEdge = !hasFsetChildren();
+        if (!isLeafEdge && (childFoldPlans == null || childFoldPlans.length < 1)) {
+            return false; // non-leaf edge with no fold plan (yet): benign, not ready
         }
         if (dpTable == null) {
             return false;
         }
         if (mStateCount <= 0 || totalLambdaStates <= 0) {
-            return false;
-        }
-        if (mPositionsSorted.length > DPGpuFullDP.MAX_EDGE_POSITIONS
-                || lambdaPositionsSorted.length > DPGpuFullDP.MAX_EDGE_POSITIONS) {
-            return false;
-        }
-        for (ChildFoldPlan plan : childFoldPlans) {
-            if (plan == null || plan.child == null || !plan.child.hasDenseDPTable()
-                    || plan.mSrcIdx.length > DPGpuFullDP.MAX_EDGE_POSITIONS
-                    || plan.lamSrcIdx.length > DPGpuFullDP.MAX_EDGE_POSITIONS) {
-                return false;
-            }
-        }
-        if (lambdaOnlyRigid == null || lambdaOnlyMin == null
-                || cachedRigidEmat == null || cachedMinEmat == null
-                || cachedG == null || cachedRT == 0.0 || !Double.isFinite(cachedRT)) {
-            return false;
+            return false; // trivial/empty edge
         }
         if (mStateCount > Long.MAX_VALUE/(long)totalLambdaStates) {
-            return false;
+            // Work itself overflows a long; no amount of hardware fixes this structurally.
+            return failNoGpuPath("mStateCount*totalLambdaStates overflows a 64-bit long");
         }
 
         long work = mStateCount*(long)totalLambdaStates;
         long minWork = getConfigLong(DP_GPU_MIN_WORK_PROPERTY, DEFAULT_DP_GPU_MIN_WORK);
         if (work < minWork) {
-            return false;
+            return false; // deliberately not worth GPU dispatch overhead
+        }
+
+        if (!isLeafEdge) {
+            if (childFoldPlans.length > DP_GPU_MAX_CHILDREN) {
+                return failNoGpuPath("edge has " + childFoldPlans.length + " children, exceeds"
+                        + " DP_GPU_MAX_CHILDREN=" + DP_GPU_MAX_CHILDREN);
+            }
+        }
+        if (mPositionsSorted.length > DPGpuFullDP.MAX_EDGE_POSITIONS
+                || lambdaPositionsSorted.length > DPGpuFullDP.MAX_EDGE_POSITIONS) {
+            return failNoGpuPath("edge has mPositions=" + mPositionsSorted.length
+                    + ", lambdaPositions=" + lambdaPositionsSorted.length
+                    + ", exceeds MAX_EDGE_POSITIONS=" + DPGpuFullDP.MAX_EDGE_POSITIONS);
+        }
+        if (!isLeafEdge) {
+            for (ChildFoldPlan plan : childFoldPlans) {
+                if (plan == null || plan.child == null) {
+                    return false; // missing fold plan: benign/not-ready-yet, not a capacity limit
+                }
+                // NOTE: no dense-table requirement on the child anymore -- child tables are
+                // uploaded chunk-by-chunk (getLogZLowerChunks()/getLogZUpperChunks()), so a
+                // sharded (>Integer.MAX_VALUE-element) child is fully supported on GPU.
+                if (plan.mSrcIdx.length > DPGpuFullDP.MAX_EDGE_POSITIONS
+                        || plan.lamSrcIdx.length > DPGpuFullDP.MAX_EDGE_POSITIONS) {
+                    return failNoGpuPath("a child fold plan exceeds MAX_EDGE_POSITIONS="
+                            + DPGpuFullDP.MAX_EDGE_POSITIONS);
+                }
+            }
+        }
+        if (lambdaOnlyRigid == null || lambdaOnlyMin == null
+                || cachedRigidEmat == null || cachedMinEmat == null
+                || cachedG == null || cachedRT == 0.0 || !Double.isFinite(cachedRT)) {
+            return false; // precomputed state not ready yet: benign
         }
 
         DPGpuFullDP.Request req = buildGpuFullDPRequest(work);
         if (req == null) {
-            return false;
+            return failNoGpuPath("lm cross-term count (or a child CSR index array) overflows a 32-bit int"
+                    + " while building the GPU request");
         }
 
         long maxBytes = getConfigLong(DP_GPU_MAX_BYTES_PROPERTY, DEFAULT_DP_GPU_MAX_BYTES);
-        req.estimatedDeviceBytes = DPGpuFullDP.estimateDeviceBytes(req);
+        req.maxDeviceBytes = maxBytes;
+        req.estimatedFullDeviceBytes = DPGpuFullDP.estimateDeviceBytes(req);
+        req.estimatedSlicedDeviceBytes = DPGpuFullDP.estimateSlicedDeviceBytes(req);
+        req.estimatedOutOfCoreMinimumDeviceBytes =
+                DPGpuOutOfCore.estimateMinimumDeviceBytes(req);
+        req.estimatedDeviceBytes = req.childSlicing
+                ? Math.min(req.estimatedFullDeviceBytes,
+                Math.min(req.estimatedSlicedDeviceBytes,
+                        req.estimatedOutOfCoreMinimumDeviceBytes))
+                : req.estimatedFullDeviceBytes;
         boolean progress = getConfigBoolean(DP_PROGRESS_PROPERTY, true);
         req.progress = progress;
         // maxBytes <= 0 means "no static cap": defer to the detected-VRAM gate in
@@ -1311,7 +1481,13 @@ public class RootedTreeEdge {
                     + ", lmTerms=" + req.lmRigid.length
                     + ", outputTileMStates=" + req.mStateChunk
                     + ", outputTableDense=" + dpTable.isDenseArrayBacked()
+                    + ", childSlicing=" + req.childSlicing
+                    + ", childSlicingForce=" + req.forceChildSlicing
                     + ", persistentContext=" + req.persistentContext
+                    + ", estimatedFullDeviceBytes=" + req.estimatedFullDeviceBytes
+                    + ", estimatedSlicedDeviceBytes=" + req.estimatedSlicedDeviceBytes
+                    + ", estimatedOutOfCoreMinimumDeviceBytes="
+                    + req.estimatedOutOfCoreMinimumDeviceBytes
                     + ", estimatedDeviceBytes=" + req.estimatedDeviceBytes);
         }
         return DPGpuFullDP.compute(req);
@@ -1349,8 +1525,14 @@ public class RootedTreeEdge {
         req.lambdaCounts = countsForPositions(lambdaPositionsSorted);
         req.lambdaOnlyRigid = lambdaOnlyRigid;
         req.lambdaOnlyMin = lambdaOnlyMin;
+        req.childSlicing = DPGpuFullDP.defaultChildSlicingEnabled();
+        req.forceChildSlicing = DPGpuFullDP.forceChildSlicingEnabled();
+        req.childSliceMaxBytes = DPGpuFullDP.configuredChildSliceMaxBytes();
+        req.outOfCoreOutputWorkspaceMaxBytes =
+                DPGpuFullDP.configuredOutOfCoreOutputWorkspaceMaxBytes();
         // Concatenate the per-child fold plans CSR-style for full_dp_n_children.
-        int nChildren = childFoldPlans.length;
+        // Leaf edges have childFoldPlans == null (nothing to fold): treat as 0 children.
+        int nChildren = (childFoldPlans != null) ? childFoldPlans.length : 0;
         req.numChildren = nChildren;
         req.mStateChunk = resolveGpuOutputTileMStates();
         req.outTable = dpTable;
@@ -1362,17 +1544,22 @@ public class RootedTreeEdge {
                 DEFAULT_DP_GPU_MIN_MSTATES_PER_GPU);
 
         long mTermTotal = 0L, lTermTotal = 0L, tableTotal = 0L;
-        for (ChildFoldPlan plan : childFoldPlans) {
-            mTermTotal += plan.mSrcIdx.length;
-            lTermTotal += plan.lamSrcIdx.length;
-            tableTotal += plan.child.getLogZLower().length;
+        if (childFoldPlans != null) {
+            for (ChildFoldPlan plan : childFoldPlans) {
+                mTermTotal += plan.mSrcIdx.length;
+                lTermTotal += plan.lamSrcIdx.length;
+                // getMStateCount() (not getLogZLower().length) so a sharded (>2^31-element)
+                // child's size can be read without ever throwing/materializing one array.
+                tableTotal += plan.child.getMStateCount();
+            }
         }
         // The CSR index arrays ARE concatenated into single Java int[] buffers, so they
         // must each fit in an int (in practice tiny: ~#positions). The child *tables* are
-        // no longer concatenated on the Java heap -- each child keeps its own double[] and
-        // is copied straight into its device-buffer slot -- so their combined length
-        // (tableTotal) may exceed Integer.MAX_VALUE; only device VRAM bounds it (enforced
-        // at upload, where an over-budget edge fails the run instead of crawling on CPU).
+        // no longer concatenated on the Java heap -- each child's chunks (one chunk for a
+        // dense child, one per shard for a sharded child) are copied straight into their
+        // device-buffer slots -- so their combined length (tableTotal) may exceed
+        // Integer.MAX_VALUE; only device VRAM bounds it (enforced at upload, where an
+        // over-budget edge fails the run instead of crawling on CPU).
         if (mTermTotal > Integer.MAX_VALUE || lTermTotal > Integer.MAX_VALUE) {
             return null;
         }
@@ -1387,31 +1574,85 @@ public class RootedTreeEdge {
         req.childLTermCnt = new int[nChildren];
         req.childTableBase = new long[nChildren];
         req.childTableTotal = tableTotal;
-        req.childLowerParts = new double[nChildren][];
-        req.childUpperParts = new double[nChildren][];
+        req.childTables = new DPTable[nChildren];
+        req.childMCountsAll = new int[(int)mTermTotal];
+        req.childMPackedStrideAll = new long[(int)mTermTotal];
+        req.childLCountsAll = new int[(int)lTermTotal];
+        req.childLPackedStrideAll = new long[(int)lTermTotal];
+        req.childMRowStates = new long[nChildren];
+        req.childLambdaStates = new long[nChildren];
+        buildGpuChildSliceDimensions(req);
+
+        // Upload-side chunk lists: one entry per physical chunk (dense child => 1 chunk,
+        // sharded child => 1 chunk per shard), NOT one entry per logical child. Sized
+        // dynamically since the chunk count per child isn't known until we ask.
+        List<double[]> lowerChunkList = new ArrayList<>();
+        List<double[]> upperChunkList = new ArrayList<>();
+        List<Long> chunkOffsetList = new ArrayList<>();
 
         int mOff = 0, lOff = 0;
         long tBase = 0L;
         for (int c = 0; c < nChildren; c++) {
             ChildFoldPlan plan = childFoldPlans[c];
+            int childMOff = mOff;
             req.childMTermOff[c] = mOff;
             req.childMTermCnt[c] = plan.mSrcIdx.length;
             System.arraycopy(plan.mSrcIdx, 0, req.childMSrcAll, mOff, plan.mSrcIdx.length);
             System.arraycopy(plan.mStride, 0, req.childMStrideAll, mOff, plan.mStride.length);
+            long childMStates = 1L;
+            for (int t = plan.mSrcIdx.length - 1; t >= 0; t--) {
+                int dst = childMOff + t;
+                req.childMPackedStrideAll[dst] = childMStates;
+                int count = req.mCounts[plan.mSrcIdx[t]];
+                req.childMCountsAll[dst] = count;
+                childMStates = saturatingMultiply(childMStates, count);
+            }
+            req.childMRowStates[c] = childMStates;
             mOff += plan.mSrcIdx.length;
 
+            int childLOff = lOff;
             req.childLTermOff[c] = lOff;
             req.childLTermCnt[c] = plan.lamSrcIdx.length;
             System.arraycopy(plan.lamSrcIdx, 0, req.childLSrcAll, lOff, plan.lamSrcIdx.length);
             System.arraycopy(plan.lamStride, 0, req.childLStrideAll, lOff, plan.lamStride.length);
+            long childLStates = 1L;
+            for (int t = plan.lamSrcIdx.length - 1; t >= 0; t--) {
+                int dst = childLOff + t;
+                req.childLPackedStrideAll[dst] = childLStates;
+                int count = req.lambdaCounts[plan.lamSrcIdx[t]];
+                req.childLCountsAll[dst] = count;
+                childLStates = saturatingMultiply(childLStates, count);
+            }
+            req.childLambdaStates[c] = childLStates;
             lOff += plan.lamSrcIdx.length;
 
-            // Reference each child's dense table directly; copied per-child into the
-            // device buffer at childTableBase[c] (a long element offset).
+            // Each child's chunks land contiguously in the device buffer starting at
+            // childTableBase[c] (a long element offset): consecutive chunks of the same
+            // child get consecutive offsets, so the kernel's flat childTableBase[c]-based
+            // indexing is unaffected by how many host-side chunks filled that region.
             req.childTableBase[c] = tBase;
-            req.childLowerParts[c] = plan.child.getLogZLower();
-            req.childUpperParts[c] = plan.child.getLogZUpper();
-            tBase += req.childLowerParts[c].length;
+            req.childTables[c] = plan.child.dpTable;
+            if (req.childTables[c].supportsArrayChunks()) {
+                double[][] lowerChunks = plan.child.getLogZLowerChunks();
+                double[][] upperChunks = plan.child.getLogZUpperChunks();
+                long chunkBase = tBase;
+                for (int k = 0; k < lowerChunks.length; k++) {
+                    lowerChunkList.add(lowerChunks[k]);
+                    upperChunkList.add(upperChunks[k]);
+                    chunkOffsetList.add(chunkBase);
+                    chunkBase += lowerChunks[k] == null ? 0 : lowerChunks[k].length;
+                }
+            } else {
+                req.hasFileBackedChildTables = true;
+            }
+            tBase += plan.child.getMStateCount();
+        }
+
+        req.childLowerChunks = lowerChunkList.toArray(new double[0][]);
+        req.childUpperChunks = upperChunkList.toArray(new double[0][]);
+        req.childChunkOffsets = new long[chunkOffsetList.size()];
+        for (int i = 0; i < req.childChunkOffsets.length; i++) {
+            req.childChunkOffsets[i] = chunkOffsetList.get(i);
         }
 
         int nPairs = lmPairs.size();
@@ -1650,6 +1891,76 @@ public class RootedTreeEdge {
         z = (z ^ (z >>> 30)) * 0xBF58476D1CE4E5B9L;
         z = (z ^ (z >>> 27)) * 0x94D049BB133111EBL;
         return h ^ (z ^ (z >>> 31));
+    }
+
+    private void buildGpuChildSliceDimensions(DPGpuFullDP.Request req) {
+        boolean[] used = new boolean[req.mCounts.length];
+        // Leaf edges (childFoldPlans == null, nothing to fold) reference no child M
+        // slots at all, so every M position is "free": union stays empty and the
+        // whole M-state space is the parent-free dimension (no slicing needed/possible).
+        if (childFoldPlans != null) {
+            for (ChildFoldPlan plan : childFoldPlans) {
+                for (int src : plan.mSrcIdx) {
+                    used[src] = true;
+                }
+            }
+        }
+        long[] parentStrides = mixedRadixStrides(req.mCounts);
+        int unionCount = 0;
+        int freeCount = 0;
+        for (boolean u : used) {
+            if (u) {
+                unionCount++;
+            } else {
+                freeCount++;
+            }
+        }
+        req.unionMSlots = new int[unionCount];
+        req.unionMCounts = new int[unionCount];
+        req.unionMParentStrides = new long[unionCount];
+        req.freeMSlots = new int[freeCount];
+        req.freeMCounts = new int[freeCount];
+        req.freeMParentStrides = new long[freeCount];
+        req.unionStateCount = 1L;
+        req.parentFreeStateCount = 1L;
+
+        int uOff = 0;
+        int fOff = 0;
+        for (int i = 0; i < req.mCounts.length; i++) {
+            if (used[i]) {
+                req.unionMSlots[uOff] = i;
+                req.unionMCounts[uOff] = req.mCounts[i];
+                req.unionMParentStrides[uOff] = parentStrides[i];
+                req.unionStateCount = saturatingMultiply(req.unionStateCount, req.mCounts[i]);
+                uOff++;
+            } else {
+                req.freeMSlots[fOff] = i;
+                req.freeMCounts[fOff] = req.mCounts[i];
+                req.freeMParentStrides[fOff] = parentStrides[i];
+                req.parentFreeStateCount = saturatingMultiply(req.parentFreeStateCount, req.mCounts[i]);
+                fOff++;
+            }
+        }
+    }
+
+    private static long[] mixedRadixStrides(int[] counts) {
+        long[] strides = new long[counts.length];
+        long stride = 1L;
+        for (int i = counts.length - 1; i >= 0; i--) {
+            strides[i] = stride;
+            stride = saturatingMultiply(stride, counts[i]);
+        }
+        return strides;
+    }
+
+    private static long saturatingMultiply(long a, long b) {
+        if (a == 0L || b == 0L) {
+            return 0L;
+        }
+        if (a > Long.MAX_VALUE / b) {
+            return Long.MAX_VALUE;
+        }
+        return a * b;
     }
 
     private int[] countsForPositions(int[] positions) {
@@ -2148,6 +2459,16 @@ public class RootedTreeEdge {
         if (node.getChildOfEdge() != null && node.getChildOfEdge().isLambdaEdge) {
             node.getChildOfEdge().initIncrementalEnumeration(rigidEmat, minEmat, G, RT,
                     materializeFullEnergyTables);
+        }
+    }
+
+    /** Release all large edge storage in a rooted tree, children first. */
+    public static void postOrderReleaseLargeMemory(RootedTreeNode node) {
+        if (node == null) return;
+        postOrderReleaseLargeMemory(node.getLeftChild());
+        postOrderReleaseLargeMemory(node.getRightChild());
+        if (node.getChildOfEdge() != null) {
+            node.getChildOfEdge().releaseLargeMemory();
         }
     }
 

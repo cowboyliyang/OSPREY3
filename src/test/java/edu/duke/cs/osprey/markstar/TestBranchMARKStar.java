@@ -363,6 +363,12 @@ public class TestBranchMARKStar {
             case "scaling_bench_24pos":
                 new edu.duke.cs.osprey.markstar.bench.ScalingBench().benchmarkScaling24pos();
                 break;
+            case "scaling_pac":
+                // PACK* paper Table 2 ("scaling with n"): MARK* vs PACK* on
+                // ConfSpaces2RL0.buildWildTypeConfSpace(numFlexible), n in
+                // {8,10,12,16,20}. See PackStarScalingBench for property list.
+                new edu.duke.cs.osprey.markstar.bench.PackStarScalingBench().benchmarkScalingN();
+                break;
             case "flatsum": {
                 int numFlexible = Integer.getInteger("branchdp.test.numFlexible", 10);
                 double epsilon = Double.parseDouble(System.getProperty("branchdp.test.epsilon", "0.68"));

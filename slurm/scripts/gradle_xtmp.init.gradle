@@ -1,0 +1,13 @@
+// Keep Gradle build outputs and project-local caches out of the home filesystem
+// when a validation job is run under Slurm.
+def configuredBuildRoot = System.getenv('OSPREY_GRADLE_XTMP_BUILD_ROOT')
+def xtmpBuildRoot = new File(configuredBuildRoot
+        ?: '/usr/xtmp/lz280/osprey3-gradle-build')
+
+gradle.beforeProject { project ->
+    def rootName = project.rootProject.name ?: 'gradle-project'
+    def suffix = project.path == ':'
+            ? 'root'
+            : project.path.substring(1).replace(':', '_')
+    project.buildDir = new File(xtmpBuildRoot, rootName + '-' + suffix)
+}

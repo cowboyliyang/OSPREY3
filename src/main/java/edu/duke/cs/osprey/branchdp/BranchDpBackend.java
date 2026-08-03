@@ -72,6 +72,12 @@ public abstract class BranchDpBackend extends MARKStarBound {
     private static final String CERTIFY_FULL_BOUNDS_PROPERTY = "branchdp.certifyFullBounds";
     private static final String DECOMP_STRATEGY_PROPERTY = "branchdp.decomp.strategy";
     private static final String DECOMP_STRATEGY_SHORT_PROPERTY = "branchdp.decomp";
+    private static final String ADAPTIVE_GPU_WORK_THRESHOLD_PROPERTY =
+            "branchdp.decomp.adaptive.gpuWorkThreshold";
+    private static final BigInteger DEFAULT_ADAPTIVE_GPU_WORK_THRESHOLD =
+            new BigInteger("100000000000000");
+    private static final String ADMISSION_MAX_GPU_WORK_PROPERTY =
+            "branchdp.admission.maxGpuWork";
     private static final String EXACT_TREEWIDTH_PROPERTY = "branchdp.decomp.exactTreewidth";
     private static final String EXACT_TREEWIDTH_MAX_POSITIONS_PROPERTY = "branchdp.decomp.exactTreewidth.maxPositions";
     private static final String EDGE_SELECTION_PROPERTY = "branchdp.edgeSelection";
@@ -79,10 +85,14 @@ public abstract class BranchDpBackend extends MARKStarBound {
     private static final String EDGE_LOOKAHEAD_MAX_PENDING_EDGES_PROPERTY = "branchdp.edgeSelection.maxPendingEdges";
     private static final String EDGE_LOOKAHEAD_PARALLEL_PROPERTY = "branchdp.edgeSelection.parallelLookahead";
     private static final String ROOT_SPLIT_PROPERTY = "branchdp.rootSplit";
+    private static final String ROOT_SPLIT_GPU_BUDGET_PROPERTY = "branchdp.rootSplit.gpuBudgetBytes";
+    private static final String ROOT_SPLIT_HOST_BUDGET_PROPERTY = "branchdp.rootSplit.hostBudgetBytes";
+    private static final double DEFAULT_ROOT_SPLIT_HOST_HEAP_FRACTION = 0.70;
     // 0-edge (no pairwise) graphs: exact independent-position DP. Default off.
     private static final String ZERO_EDGE_DIRECT_PROPERTY = "branchdp.dp.zeroEdgeDirect";
     private static final String ROOT_SPLIT_MAX_FSET_PROPERTY = "branchdp.rootSplit.maxFset";
     private static final String DRY_RUN_PROPERTY = "branchdp.dp.dryRun";
+    private static final String DP_GPU_OUTPUT_TILE_MSTATES_PROPERTY = "branchdp.dp.gpu.outputTileMStates";
     private static final String MUTABLE_POSITIONS_PROPERTY = "branchdp.mutablePositions";
     private static final String PARALLEL_INTERNAL_PROPERTY = "branchdp.parallel.internal";
     private static final String PARALLEL_ENUMERATION_PROPERTY = "branchdp.parallel.enumeration";
@@ -103,7 +113,9 @@ public abstract class BranchDpBackend extends MARKStarBound {
     private static final long DEFAULT_DP_CACHE_MAX_TABLE_BYTES = 256L * 1024L * 1024L;
     private static final long DEFAULT_DP_CACHE_MAX_TOTAL_BYTES = 4L * 1024L * 1024L * 1024L;
     private static final long DEFAULT_DP_CACHE_SKIP_IF_M_STATES = 8_000_000L;
+    private static final long DEFAULT_DP_GPU_OUTPUT_TILE_MSTATES = 1_048_576L;
     private static final int DEFAULT_EXACT_TREEWIDTH_MAX_POSITIONS = 22;
+    private static final BigInteger SLICED_TRAFFIC_UNAVAILABLE = BigInteger.ONE.shiftLeft(1024);
 
     protected enum EdgeSelectionStrategy {
         LAMBDA_STATES,
@@ -242,6 +254,13 @@ public abstract class BranchDpBackend extends MARKStarBound {
     private final long dpCacheMaxTotalBytes;
     private final long dpCacheSkipIfMStates;
     private final boolean dryRun;
+    private final BranchDpAdmission.Hardware admissionHardware;
+    private final String admissionStateKey;
+    private final int admissionDpSweeps;
+    private BranchDpAdmission.Prediction admissionPrediction = null;
+    private boolean largeMemoryReleased = false;
+    private long selectedRootHostBudgetBytes = Long.MAX_VALUE;
+    private long selectedRootGpuBudgetBytes = Long.MAX_VALUE;
     private DPTableTooLargeException dpTooLargeException = null;
     /**
      * Energy matrices used by ALL pfunc-relevant operations under SPARSE mode:
@@ -461,7 +480,24 @@ public abstract class BranchDpBackend extends MARKStarBound {
         final long totalMStates;
         final long maxDPTableBytes;
         final long totalDPTableBytes;
+        // Estimated live Java-heap storage for DP tables plus per-edge
+        // enumeration/lambda arrays. This is the hard root-feasibility metric;
+        // DP-table bytes alone omit up to four bytes per int-addressable M state.
+        final long maxHostBytes;
+        final long totalHostBytes;
+        final long maxFileBackedBytes;
+        final long totalFileBackedBytes;
         final double logDPWork;
+        // Exact count of dominant CUDA lambda-loop iterations across all edges.
+        // BigInteger makes the comparison exact even when the total exceeds a long.
+        final BigInteger gpuWork;
+        final int gpuUnsupportedEdges;
+        // Worst full-resident device footprint across lambda edges. Unlike the final
+        // DP table metrics above, this counts child inputs and only a bounded output
+        // tile, matching DPGpuFullDP's allocation model.
+        final long maxSingleGpuBytes;
+        final boolean fitsSingleGpu;
+        final BigInteger estimatedSlicedTraffic;
 
         RootingCandidate(RootedTreeNode root, int splitEdgeIndex, double logTESS,
                          int lambdaEdges, int maxFsetSize, int branchingEdges,
@@ -469,7 +505,11 @@ public abstract class BranchDpBackend extends MARKStarBound {
                          int reusableLambdaEdges, double reusableLogWork,
                          double totalLogWork, long maxMStates, long totalMStates,
                          long maxDPTableBytes, long totalDPTableBytes,
-                         double logDPWork) {
+                         long maxHostBytes, long totalHostBytes,
+                         long maxFileBackedBytes, long totalFileBackedBytes,
+                         double logDPWork, BigInteger gpuWork, int gpuUnsupportedEdges,
+                         long maxSingleGpuBytes, boolean fitsSingleGpu,
+                         BigInteger estimatedSlicedTraffic) {
             this.root = root;
             this.splitEdgeIndex = splitEdgeIndex;
             this.logTESS = logTESS;
@@ -485,7 +525,16 @@ public abstract class BranchDpBackend extends MARKStarBound {
             this.totalMStates = totalMStates;
             this.maxDPTableBytes = maxDPTableBytes;
             this.totalDPTableBytes = totalDPTableBytes;
+            this.maxHostBytes = maxHostBytes;
+            this.totalHostBytes = totalHostBytes;
+            this.maxFileBackedBytes = maxFileBackedBytes;
+            this.totalFileBackedBytes = totalFileBackedBytes;
             this.logDPWork = logDPWork;
+            this.gpuWork = gpuWork;
+            this.gpuUnsupportedEdges = gpuUnsupportedEdges;
+            this.maxSingleGpuBytes = maxSingleGpuBytes;
+            this.fitsSingleGpu = fitsSingleGpu;
+            this.estimatedSlicedTraffic = estimatedSlicedTraffic;
         }
 
         double reusableEdgeRatio() {
@@ -515,6 +564,8 @@ public abstract class BranchDpBackend extends MARKStarBound {
             this.stateName = stateNameOverride;
         }
         this.confSpace = confSpace;
+        this.admissionHardware = BranchDpAdmission.Hardware.fromBackendConfig();
+        this.admissionStateKey = BranchDpAdmission.stateKey(this.stateName, rcs);
         this.cutoffStrategy = CutoffStrategy.fromProperty(
                 getConfigProperty(CUTOFF_STRATEGY_PROPERTY, null));
         this.distCutoff = Math.max(0.0,
@@ -562,6 +613,7 @@ public abstract class BranchDpBackend extends MARKStarBound {
         this.edgeLookaheadParallel = getEdgeLookaheadParallel();
         this.rootSplitStrategy = getConfigProperty(ROOT_SPLIT_PROPERTY, "work").trim();
         this.dryRun = getConfigBoolean(DRY_RUN_PROPERTY, false);
+        this.admissionDpSweeps = Math.max(1, getAdmissionDpSweeps());
         this.rootSplitMaxFset = Math.max(1,
                 getConfigInteger(ROOT_SPLIT_MAX_FSET_PROPERTY, 2));
         this.parallelInternal = getConfigBoolean(PARALLEL_INTERNAL_PROPERTY, true);
@@ -653,7 +705,12 @@ public abstract class BranchDpBackend extends MARKStarBound {
         }
 
         // Step 2: Compute branch decomposition
-        branchDecomposition = new BranchDecomposition(interactionGraph, decompStrategy);
+        BranchDecomposition.Strategy firstStageDecompStrategy =
+                decompStrategy == BranchDecomposition.Strategy.ADAPTIVE
+                        ? BranchDecomposition.Strategy.WEIGHTED_HICKS
+                        : decompStrategy;
+        branchDecomposition = new BranchDecomposition(
+                interactionGraph, firstStageDecompStrategy, positionStateCounts(rcs));
         branchDecomposition.compute();
         branchwidth = branchDecomposition.getBranchwidth();
 
@@ -664,13 +721,90 @@ public abstract class BranchDpBackend extends MARKStarBound {
         // Step 3: Root the tree. Legacy uses split edge 0; optional strategies
         // can choose a split that exposes multiple pending edges for lookahead.
         RootingCandidate rooting;
+        RootingCandidate firstStageRooting = null;
+        int firstStageBranchwidth = branchwidth;
+        boolean adaptiveAttempted = false;
+        boolean adaptiveAccepted = false;
+        long rootSelectionStartNanos = System.nanoTime();
         try {
             rooting = selectRooting(rcs);
+            firstStageRooting = rooting;
+
+            if (shouldRetryAdaptiveDecomposition(rooting)) {
+                BranchDecomposition firstStageDecomposition = branchDecomposition;
+                adaptiveAttempted = true;
+                long adaptiveStartNanos = System.nanoTime();
+                BranchDpAdmission.ExactPolicy exactPolicy =
+                        BranchDpAdmission.getExactPolicy(admissionStateKey);
+                BranchDecomposition.ExactImproveOptions exactOptions =
+                        exactPolicy == null
+                                ? BranchDecomposition.configuredExactImproveOptions()
+                                : new BranchDecomposition.ExactImproveOptions(
+                                exactPolicy.minDrop, exactPolicy.maxDrop,
+                                exactPolicy.maxMillis);
+                double firstStageHours = predictedSeconds(rooting) / 3600.0;
+                System.out.println(BranchDpConfig.getBackendLogPrefix()
+                        + " Adaptive decomposition retry: predictedHours="
+                        + String.format(Locale.ROOT, "%.4f", firstStageHours)
+                        + ", gpuWork=" + rooting.gpuWork
+                        + ", firstStageBranchwidth=" + firstStageBranchwidth
+                        + ", targetDrop=" + exactOptions.minDrop
+                        + ".." + exactOptions.maxDrop
+                        + ", maxMillis=" + exactOptions.maxMillis
+                        + ", source=" + (exactPolicy == null
+                        ? "state-soft-budget" : "whole-case-final-pass")
+                        + ", strategy=WEIGHTED_EXACT_IMPROVE.");
+
+                BranchDecomposition exactImproved = new BranchDecomposition(
+                        interactionGraph,
+                        BranchDecomposition.Strategy.WEIGHTED_EXACT_IMPROVE,
+                        positionStateCounts(rcs), exactOptions);
+                exactImproved.compute();
+                branchDecomposition = exactImproved;
+                branchwidth = exactImproved.getBranchwidth();
+                RootingCandidate exactRooting = selectRooting(rcs);
+
+                if (isBetterAdaptiveDecomposition(exactRooting, firstStageRooting)) {
+                    rooting = exactRooting;
+                    adaptiveAccepted = true;
+                    System.out.println(BranchDpConfig.getBackendLogPrefix()
+                            + " Adaptive decomposition accepted: branchwidth="
+                            + firstStageBranchwidth + "->" + branchwidth
+                            + ", gpuWork=" + firstStageRooting.gpuWork
+                            + "->" + exactRooting.gpuWork
+                            + ", maxDPTableBytes=" + firstStageRooting.maxDPTableBytes
+                            + "->" + exactRooting.maxDPTableBytes
+                            + ", elapsedMs=" + String.format(Locale.ROOT, "%.1f",
+                            (System.nanoTime() - adaptiveStartNanos) / 1_000_000.0));
+                } else {
+                    branchDecomposition = firstStageDecomposition;
+                    branchwidth = firstStageBranchwidth;
+                    rooting = firstStageRooting;
+                    System.out.println(BranchDpConfig.getBackendLogPrefix()
+                            + " Adaptive decomposition rejected: candidate gpuWork="
+                            + (exactRooting == null ? "unavailable" : exactRooting.gpuWork)
+                            + ", keeping first-stage gpuWork=" + firstStageRooting.gpuWork
+                            + ", elapsedMs=" + String.format(Locale.ROOT, "%.1f",
+                            (System.nanoTime() - adaptiveStartNanos) / 1_000_000.0));
+                }
+            }
+
+            admissionPrediction = makeAdmissionPrediction(rooting,
+                    firstStageRooting, firstStageBranchwidth,
+                    adaptiveAttempted, adaptiveAccepted);
+            System.out.println(BranchDpConfig.getBackendLogPrefix()
+                    + " admission preview: " + admissionPrediction.format()
+                    + ", allocationPhase=before-materialization");
+            enforcePerStateGpuWorkAdmission(rooting);
+            BranchDpAdmission.enforceRetainedPredictionCeiling(
+                    admissionPrediction, BranchDpConfig.getBackendLogPrefix());
+            rooting = materializeSelectedRoot(rcs, rooting);
         } catch (DPTableTooLargeException e) {
             dpTooLargeException = e;
             reportDPTooLarge(e);
             return;
         }
+        double rootSelectionMs = (System.nanoTime() - rootSelectionStartNanos) / 1_000_000.0;
         rootedRoot = rooting != null ? rooting.root : null;
         if (rootedRoot == null) {
             // 0-edge graph (no pairwise interactions): Z factorizes per position.
@@ -709,7 +843,19 @@ public abstract class BranchDpBackend extends MARKStarBound {
                 + ", totalMStates=" + rooting.totalMStates
                 + ", maxDPTable=" + formatBytes(rooting.maxDPTableBytes)
                 + ", totalDPTable=" + formatBytes(rooting.totalDPTableBytes)
+                + ", maxHostBytes=" + formatBytes(rooting.maxHostBytes)
+                + ", totalHostBytes=" + formatBytes(rooting.totalHostBytes)
+                + ", maxFileBackedBytes=" + formatBytes(rooting.maxFileBackedBytes)
+                + ", totalFileBackedBytes=" + formatBytes(rooting.totalFileBackedBytes)
+                + ", hostBudget=" + formatBytes(selectedRootHostBudgetBytes)
                 + ", logDPWork=" + String.format(Locale.ROOT, "%.2f", rooting.logDPWork)
+                + ", gpuWork=" + rooting.gpuWork
+                + ", gpuUnsupportedEdges=" + rooting.gpuUnsupportedEdges
+                + ", maxFullDeviceBytes=" + formatBytes(rooting.maxSingleGpuBytes)
+                + ", fitsSingleGpu=" + rooting.fitsSingleGpu
+                + ", estimatedSlicedTrafficBytes="
+                + formatSlicedTraffic(rooting.estimatedSlicedTraffic)
+                + ", rootSelectionMs=" + String.format(Locale.ROOT, "%.3f", rootSelectionMs)
                 + ")");
 
         rootedRootEdge = rootedRoot.getLeftChild().getChildOfEdge();
@@ -722,7 +868,8 @@ public abstract class BranchDpBackend extends MARKStarBound {
         System.out.println(BranchDpConfig.getBackendLogPrefix() + " Compact tree TESS: logTESS=" + String.format("%.2f", logTESS)
                 + ", logNaive=" + String.format("%.2f", logNaive)
                 + ", ratio=" + String.format("%.4f", tessRatio));
-        logDPMemoryPredictions("initial", logTESS);
+        long worstCaseSingleGpuBytes = logDPMemoryPredictions("initial", logTESS, rcs);
+        checkWorstCaseSingleGpuFits(worstCaseSingleGpuBytes);
 
         if (dryRun) {
             System.out.println(BranchDpConfig.getBackendLogPrefix() + " DRYRUN summary"
@@ -734,9 +881,23 @@ public abstract class BranchDpBackend extends MARKStarBound {
                     + " totalMStates=" + rooting.totalMStates
                     + " maxDPTableBytes=" + rooting.maxDPTableBytes
                     + " totalDPTableBytes=" + rooting.totalDPTableBytes
+                    + " maxHostBytes=" + rooting.maxHostBytes
+                    + " totalHostBytes=" + rooting.totalHostBytes
+                    + " maxFileBackedBytes=" + rooting.maxFileBackedBytes
+                    + " totalFileBackedBytes=" + rooting.totalFileBackedBytes
+                    + " hostBudgetBytes=" + selectedRootHostBudgetBytes
                     + " logDPWork=" + String.format(Locale.ROOT, "%.4f", rooting.logDPWork)
+                    + " gpuWork=" + rooting.gpuWork
+                    + " gpuUnsupportedEdges=" + rooting.gpuUnsupportedEdges
                     + " logTESS=" + String.format(Locale.ROOT, "%.4f", logTESS)
-                    + " logNaive=" + String.format(Locale.ROOT, "%.4f", logNaive));
+                    + " logNaive=" + String.format(Locale.ROOT, "%.4f", logNaive)
+                    + " maxFullDeviceBytes=" + rooting.maxSingleGpuBytes
+                    + " fitsSingleGpu=" + rooting.fitsSingleGpu
+                    + " estimatedSlicedTrafficBytes="
+                    + formatSlicedTraffic(rooting.estimatedSlicedTraffic)
+                    + " rootSelectionMs="
+                    + String.format(Locale.ROOT, "%.3f", rootSelectionMs)
+                    + " worstCaseSingleGpuBytes=" + worstCaseSingleGpuBytes);
             return;
         }
 
@@ -963,6 +1124,14 @@ public abstract class BranchDpBackend extends MARKStarBound {
         return getConfigBoolean("branchdp.useHigherOrderCorrections", false);
     }
 
+    private static int[] positionStateCounts(RCs rcs) {
+        int[] counts = new int[rcs.getNumPos()];
+        for (int pos = 0; pos < counts.length; pos++) {
+            counts[pos] = Math.max(1, rcs.getNum(pos));
+        }
+        return counts;
+    }
+
     protected void logBackendControlOverrides() {
     }
 
@@ -994,21 +1163,31 @@ public abstract class BranchDpBackend extends MARKStarBound {
         return BranchDpConfig.getBackendBoolean(key, defaultValue);
     }
 
+    /** Maximum full-tree DP sweeps used for conservative state admission. */
+    protected int getAdmissionDpSweeps() {
+        return Math.max(1, getConfigInteger(
+                BranchDpAdmission.DP_SWEEPS_PROPERTY, 1));
+    }
+
     private RootingCandidate selectRooting(RCs rcs) {
         int numEdges = branchDecomposition.getTree().getNumEdges();
         if (numEdges == 0) return null;
+
+        selectedRootHostBudgetBytes = resolveRootHostBudgetBytes();
 
         String strategy = rootSplitStrategy.toLowerCase(Locale.ROOT);
         if (strategy.isEmpty() || strategy.equals("auto")) {
             strategy = "memory";
         }
         if (strategy.equals("legacy") || strategy.equals("edge0")) {
-            return evaluateRootSplit(rcs, 0, true);
+            selectedRootGpuBudgetBytes = Long.MAX_VALUE;
+            return evaluateRootSplit(rcs, 0, false);
         }
 
         try {
             int explicitSplit = Integer.parseInt(strategy);
-            return evaluateRootSplit(rcs, explicitSplit, true);
+            selectedRootGpuBudgetBytes = Long.MAX_VALUE;
+            return evaluateRootSplit(rcs, explicitSplit, false);
         } catch (NumberFormatException ignored) {
             // fall through to named strategies
         }
@@ -1022,13 +1201,27 @@ public abstract class BranchDpBackend extends MARKStarBound {
         boolean useWorkScoring = strategy.equals("work")
                 || strategy.equals("dpwork")
                 || strategy.equals("dp_work");
+        // GPU-aware exhaustive root scoring: prefer structurally supported roots that
+        // fit the single-device budget, minimize exact DP work when resident, and use
+        // estimated child-slice traffic before work when every candidate must slice.
+        boolean useGpuBytesScoring = strategy.equals("gpubytes")
+                || strategy.equals("gpu")
+                || strategy.equals("devicebytes")
+                || strategy.equals("vram");
+        boolean usePredictedScoring = strategy.equals("predicted")
+                || strategy.equals("predictedhours")
+                || strategy.equals("predicted_hours")
+                || strategy.equals("admission")
+                || strategy.equals("sla");
 
         if (!strategy.equals("branching") && !strategy.equals("maxfset")
                 && !strategy.equals("lookahead") && !useReuseScoring
-                && !useMemoryScoring && !useWorkScoring) {
+                && !useMemoryScoring && !useWorkScoring && !useGpuBytesScoring
+                && !usePredictedScoring) {
             System.err.println(BranchDpConfig.getBackendLogPrefix() + " Unknown root split strategy '" + rootSplitStrategy
                     + "', using legacy split edge 0.");
-            return evaluateRootSplit(rcs, 0, true);
+            selectedRootGpuBudgetBytes = Long.MAX_VALUE;
+            return evaluateRootSplit(rcs, 0, false);
         }
 
         double logNaive = computeLogNaive(rcs);
@@ -1042,12 +1235,46 @@ public abstract class BranchDpBackend extends MARKStarBound {
             }
         }
         useReuseScoring = useReuseScoring && !mutablePositions.isEmpty();
+        long gpuBudgetBytes = (useGpuBytesScoring || usePredictedScoring)
+                ? resolveRootGpuBudgetBytes() : Long.MAX_VALUE;
+        selectedRootGpuBudgetBytes = gpuBudgetBytes;
         RootingCandidate best = null;
+        RootingCandidate leastHost = null;
         for (int splitIdx = 0; splitIdx < numEdges; splitIdx++) {
-            RootingCandidate candidate = evaluateRootSplit(rcs, splitIdx, false);
+            RootingCandidate candidate = evaluateRootSplit(rcs, splitIdx, false, gpuBudgetBytes);
             if (candidate == null) continue;
+            if (leastHost == null || candidate.totalHostBytes < leastHost.totalHostBytes) {
+                leastHost = candidate;
+            }
+            boolean fitsHostBudget = candidate.totalHostBytes <= selectedRootHostBudgetBytes;
+            if (useGpuBytesScoring || usePredictedScoring) {
+                System.out.println(BranchDpConfig.getBackendLogPrefix()
+                        + " rootSplit=" + (usePredictedScoring ? "predicted" : "gpubytes")
+                        + " candidate=" + splitIdx
+                        + ", maxHostBytes=" + candidate.maxHostBytes
+                        + ", totalHostBytes=" + candidate.totalHostBytes
+                        + ", maxFileBackedBytes=" + candidate.maxFileBackedBytes
+                        + ", totalFileBackedBytes=" + candidate.totalFileBackedBytes
+                        + ", fitsHostBudget=" + fitsHostBudget
+                        + ", fullDeviceBytes=" + candidate.maxSingleGpuBytes
+                        + ", fitsSingleGpu=" + candidate.fitsSingleGpu
+                        + ", estimatedSlicedTrafficBytes="
+                        + formatSlicedTraffic(candidate.estimatedSlicedTraffic)
+                        + ", logDPWork=" + String.format(Locale.ROOT, "%.4f", candidate.logDPWork)
+                        + ", gpuWork=" + candidate.gpuWork
+                        + ", predictedHours=" + String.format(Locale.ROOT, "%.4f",
+                        predictedSeconds(candidate) / 3600.0)
+                        + ", gpuUnsupportedEdges=" + candidate.gpuUnsupportedEdges);
+            }
+            if (!fitsHostBudget) {
+                continue;
+            }
             boolean better;
-            if (useMemoryScoring) {
+            if (usePredictedScoring) {
+                better = isBetterPredictedRooting(candidate, best, logNaive);
+            } else if (useGpuBytesScoring) {
+                better = isBetterGpuBytesRooting(candidate, best, logNaive);
+            } else if (useMemoryScoring) {
                 better = isBetterMemoryRooting(candidate, best, logNaive);
             } else if (useWorkScoring) {
                 better = isBetterWorkRooting(candidate, best, logNaive);
@@ -1061,11 +1288,209 @@ public abstract class BranchDpBackend extends MARKStarBound {
                 best = candidate;
             }
         }
-        return best != null ? evaluateRootSplit(rcs, best.splitEdgeIndex, true) : evaluateRootSplit(rcs, 0, true);
+        if (best == null && leastHost != null) {
+            throw new IllegalStateException(BranchDpConfig.getBackendLogPrefix()
+                    + " no root split fits the Java-heap budget "
+                    + formatBytes(selectedRootHostBudgetBytes)
+                    + "; minimum estimated live host storage is "
+                    + formatBytes(leastHost.totalHostBytes)
+                    + " at split edge " + leastHost.splitEdgeIndex
+                    + ". Raise -D" + ROOT_SPLIT_HOST_BUDGET_PROPERTY
+                    + " only if the node and -Xmx have sufficient headroom.");
+        }
+        if (best == null) {
+            return evaluateRootSplit(rcs, 0, false, gpuBudgetBytes);
+        }
+        return best;
+    }
+
+    private RootingCandidate materializeSelectedRoot(RCs rcs, RootingCandidate preview) {
+        if (preview == null) {
+            return null;
+        }
+        if (preview.totalHostBytes > selectedRootHostBudgetBytes) {
+            throw new IllegalStateException(BranchDpConfig.getBackendLogPrefix()
+                    + " requested root split edge " + preview.splitEdgeIndex
+                    + " needs an estimated " + formatBytes(preview.totalHostBytes)
+                    + " of live Java-heap storage, exceeding root host budget "
+                    + formatBytes(selectedRootHostBudgetBytes) + ".");
+        }
+        return dryRun
+                ? preview
+                : evaluateRootSplit(rcs, preview.splitEdgeIndex, true,
+                selectedRootGpuBudgetBytes);
+    }
+
+    private boolean shouldRetryAdaptiveDecomposition(RootingCandidate rooting) {
+        if (decompStrategy != BranchDecomposition.Strategy.ADAPTIVE
+                || rooting == null) {
+            return false;
+        }
+        if (BranchDpAdmission.getExactPolicy(admissionStateKey) != null) {
+            return true;
+        }
+
+        double softHours = Math.max(0.0, getConfigDouble(
+                BranchDpAdmission.SOFT_STATE_HOURS_PROPERTY, 0.0));
+        if (softHours > 0.0) {
+            double seconds = predictedSeconds(rooting);
+            // A missing rate or unavailable traffic is deliberately treated as
+            // over budget. Whole-case admission will later reject it unless the
+            // exact retry produces a finite, calibrated estimate.
+            return !Double.isFinite(seconds) || seconds > softHours * 3600.0;
+        }
+
+        // Backward-compatible fallback for callers that have not configured a
+        // hardware time model. Production case admission sets softStateHours.
+        return rooting.gpuWork.compareTo(adaptiveGpuWorkThreshold()) > 0;
+    }
+
+    private BigInteger adaptiveGpuWorkThreshold() {
+        return getConfigBigInteger(ADAPTIVE_GPU_WORK_THRESHOLD_PROPERTY,
+                DEFAULT_ADAPTIVE_GPU_WORK_THRESHOLD);
+    }
+
+    private BigInteger getConfigBigInteger(String key, BigInteger defaultValue) {
+        String value = getConfigProperty(key, null);
+        if (value == null || value.trim().isEmpty()) {
+            return defaultValue;
+        }
+        try {
+            BigInteger parsed = new BigInteger(value.trim().replace("_", ""));
+            return parsed.signum() < 0 ? BigInteger.ZERO : parsed;
+        } catch (NumberFormatException e) {
+            System.err.println(BranchDpConfig.getBackendLogPrefix()
+                    + " Invalid integer for '" + key + "': '" + value
+                    + "', using " + defaultValue + ".");
+            return defaultValue;
+        }
+    }
+
+    private boolean isBetterAdaptiveDecomposition(RootingCandidate candidate,
+                                                   RootingCandidate firstStage) {
+        if (candidate == null) return false;
+        if (firstStage == null) return true;
+
+        int unsupportedCmp = Integer.compare(candidate.gpuUnsupportedEdges,
+                firstStage.gpuUnsupportedEdges);
+        if (unsupportedCmp != 0) return unsupportedCmp < 0;
+
+        int predictedCmp = Double.compare(predictedSeconds(candidate),
+                predictedSeconds(firstStage));
+        if (predictedCmp != 0) return predictedCmp < 0;
+
+        int workCmp = candidate.gpuWork.compareTo(firstStage.gpuWork);
+        if (workCmp != 0) return workCmp < 0;
+
+        int trafficCmp = candidate.estimatedSlicedTraffic.compareTo(
+                firstStage.estimatedSlicedTraffic);
+        if (trafficCmp != 0) return trafficCmp < 0;
+
+        int maxTableCmp = Long.compare(candidate.maxDPTableBytes,
+                firstStage.maxDPTableBytes);
+        if (maxTableCmp != 0) return maxTableCmp < 0;
+
+        return candidate.totalDPTableBytes < firstStage.totalDPTableBytes;
+    }
+
+    private double predictedSeconds(RootingCandidate rooting) {
+        if (rooting == null) return 0.0;
+        boolean trafficAvailable = rooting.estimatedSlicedTraffic
+                .compareTo(SLICED_TRAFFIC_UNAVAILABLE) < 0;
+        BigInteger sweeps = BigInteger.valueOf(admissionDpSweeps);
+        return admissionHardware.totalSeconds(
+                rooting.gpuWork.multiply(sweeps),
+                trafficAvailable
+                        ? rooting.estimatedSlicedTraffic.multiply(sweeps)
+                        : BigInteger.ZERO,
+                trafficAvailable, rooting.gpuUnsupportedEdges);
+    }
+
+    private BranchDpAdmission.Prediction makeAdmissionPrediction(
+            RootingCandidate rooting,
+            RootingCandidate firstStageRooting,
+            int firstStageBranchwidth,
+            boolean adaptiveAttempted,
+            boolean adaptiveAccepted) {
+        BigInteger gpuWork = rooting == null ? BigInteger.ZERO : rooting.gpuWork;
+        BigInteger traffic = rooting == null
+                ? BigInteger.ZERO : rooting.estimatedSlicedTraffic;
+        boolean trafficAvailable = rooting == null
+                || traffic.compareTo(SLICED_TRAFFIC_UNAVAILABLE) < 0;
+        if (!trafficAvailable) traffic = BigInteger.ZERO;
+        BigInteger firstWork = firstStageRooting == null
+                ? gpuWork : firstStageRooting.gpuWork;
+        return new BranchDpAdmission.Prediction(
+                stateName, admissionStateKey, branchwidth,
+                rooting == null ? -1 : rooting.splitEdgeIndex,
+                gpuWork, traffic, trafficAvailable,
+                rooting == null ? 0 : rooting.gpuUnsupportedEdges,
+                admissionHardware, admissionDpSweeps,
+                firstStageBranchwidth, firstWork,
+                predictedSeconds(firstStageRooting),
+                adaptiveAttempted, adaptiveAccepted);
+    }
+
+    /** Allocation-free estimate exported to PACK* whole-case preflight. */
+    public BranchDpAdmission.Prediction getAdmissionPrediction() {
+        return admissionPrediction;
+    }
+
+    private void enforcePerStateGpuWorkAdmission(RootingCandidate rooting) {
+        if (rooting == null) return;
+        BigInteger maxGpuWork = getConfigBigInteger(
+                ADMISSION_MAX_GPU_WORK_PROPERTY, BigInteger.ZERO);
+        if (maxGpuWork.signum() <= 0) return;
+        if (rooting.gpuWork.compareTo(maxGpuWork) > 0) {
+            throw new IllegalStateException(BranchDpConfig.getBackendLogPrefix()
+                    + " GPU-work admission rejected state=" + stateName
+                    + ": predicted gpuWork=" + rooting.gpuWork
+                    + " exceeds configured maximum=" + maxGpuWork
+                    + ". This check ran before DP-table materialization. Raise -D"
+                    + ADMISSION_MAX_GPU_WORK_PROPERTY
+                    + " or set it to 0 only for an intentional override.");
+        }
+    }
+
+    private long resolveRootHostBudgetBytes() {
+        long configured = getConfigBytes(ROOT_SPLIT_HOST_BUDGET_PROPERTY, 0L);
+        long maxHeap = Runtime.getRuntime().maxMemory();
+        long budget = configured > 0L
+                ? configured
+                : Math.max(1L, (long) Math.floor(maxHeap * DEFAULT_ROOT_SPLIT_HOST_HEAP_FRACTION));
+        System.out.println(BranchDpConfig.getBackendLogPrefix()
+                + " rootSplit Java-heap budget=" + formatBytes(budget)
+                + (configured > 0L
+                ? " (configured)"
+                : " (auto=" + String.format(Locale.ROOT, "%.0f%%", 100.0 * DEFAULT_ROOT_SPLIT_HOST_HEAP_FRACTION)
+                    + " of maxHeap " + formatBytes(maxHeap) + ")"));
+        return budget;
+    }
+
+    private long resolveRootGpuBudgetBytes() {
+        long configured = getConfigBytes(ROOT_SPLIT_GPU_BUDGET_PROPERTY, 0L);
+        long budget = configured > 0L ? configured : DPGpuFullDP.queryMinUsableVramBytes();
+        if (budget < 0L) {
+            budget = 0L;
+            System.out.println(BranchDpConfig.getBackendLogPrefix()
+                    + " rootSplit=gpubytes could not query GPU VRAM; treating every candidate as sliced. "
+                    + "Set -D" + ROOT_SPLIT_GPU_BUDGET_PROPERTY + "=<bytes> for offline/dry-run scoring.");
+        } else {
+            System.out.println(BranchDpConfig.getBackendLogPrefix()
+                    + " rootSplit=gpubytes single-GPU budget=" + formatBytes(budget)
+                    + (configured > 0L ? " (configured)" : " (queried)"));
+        }
+        return budget;
     }
 
     private RootingCandidate evaluateRootSplit(RCs rcs, int splitEdgeIndex,
                                                boolean initEnumerationArrays) {
+        return evaluateRootSplit(rcs, splitEdgeIndex, initEnumerationArrays, Long.MAX_VALUE);
+    }
+
+    private RootingCandidate evaluateRootSplit(RCs rcs, int splitEdgeIndex,
+                                               boolean initEnumerationArrays,
+                                               long gpuBudgetBytes) {
         RootedTreeNode root = branchDecomposition.rootBranchTree(rcs, splitEdgeIndex);
         if (root == null) return null;
 
@@ -1092,7 +1517,15 @@ public abstract class BranchDpBackend extends MARKStarBound {
         long totalMStates = 0L;
         long maxDPTableBytes = 0L;
         long totalDPTableBytes = 0L;
+        long maxHostBytes = 0L;
+        long totalHostBytes = 0L;
+        long maxFileBackedBytes = 0L;
+        long totalFileBackedBytes = 0L;
         double logDPWork = Double.NEGATIVE_INFINITY;
+        BigInteger gpuWork = BigInteger.ZERO;
+        int gpuUnsupportedEdges = 0;
+        long maxSingleGpuBytes = 0L;
+        BigInteger estimatedSlicedTraffic = BigInteger.ZERO;
         for (RootedTreeEdge edge : lambdaEdges) {
             int fsetSize = edge.getFset() == null ? 0 : edge.getFset().size();
             maxFsetSize = Math.max(maxFsetSize, fsetSize);
@@ -1104,12 +1537,33 @@ public abstract class BranchDpBackend extends MARKStarBound {
             long mStates = Math.max(1L, edge.getMStateCount());
             long lambdaStates = Math.max(1, edge.getTotalLambdaStates());
             long tableBytes = estimateDPTableBytes(edge.getMStateCount());
+            boolean fileBacked = RootedTreeEdge.shouldUseFileBackedDPTable(edge.getMStateCount());
+            long hostBytes = fileBacked
+                    ? estimateDPAuxHostBytes(edge.getMStateCount(), edge.getTotalLambdaStates())
+                    : estimateDPHostBytes(edge.getMStateCount(), edge.getTotalLambdaStates());
             maxMStates = Math.max(maxMStates, mStates);
             totalMStates = saturatingAdd(totalMStates, mStates);
             maxDPTableBytes = Math.max(maxDPTableBytes, tableBytes);
             totalDPTableBytes = saturatingAdd(totalDPTableBytes, tableBytes);
+            maxHostBytes = Math.max(maxHostBytes, hostBytes);
+            totalHostBytes = saturatingAdd(totalHostBytes, hostBytes);
+            if (fileBacked) {
+                maxFileBackedBytes = Math.max(maxFileBackedBytes, tableBytes);
+                totalFileBackedBytes = saturatingAdd(totalFileBackedBytes, tableBytes);
+            }
             logDPWork = RootedTreeEdge.logSumExp(logDPWork,
                     Math.log((double) mStates) + Math.log((double) lambdaStates));
+            gpuWork = gpuWork.add(BigInteger.valueOf(mStates)
+                    .multiply(BigInteger.valueOf(lambdaStates)));
+            GpuEdgeShape gpuShape = estimateGpuEdgeShape(edge, rcs);
+            if (!gpuShape.supported) {
+                gpuUnsupportedEdges++;
+            }
+            maxSingleGpuBytes = Math.max(maxSingleGpuBytes, gpuShape.fullDeviceBytes);
+            if (gpuShape.fullDeviceBytes > gpuBudgetBytes) {
+                estimatedSlicedTraffic = estimatedSlicedTraffic.add(
+                        gpuShape.estimateSlicedTraffic(gpuBudgetBytes));
+            }
         }
 
         int rootFsetSize = rootEdge.getFset() == null ? 0 : rootEdge.getFset().size();
@@ -1118,7 +1572,308 @@ public abstract class BranchDpBackend extends MARKStarBound {
         return new RootingCandidate(root, splitEdgeIndex, rootEdge.computeLogTESS(),
                 lambdaEdges.size(), maxFsetSize, branchingEdges, totalFsetEdges, rootFsetSize,
                 reuseStats.reusableEdges, reuseStats.reusableLogWork, reuseStats.totalLogWork,
-                maxMStates, totalMStates, maxDPTableBytes, totalDPTableBytes, logDPWork);
+                maxMStates, totalMStates, maxDPTableBytes, totalDPTableBytes,
+                maxHostBytes, totalHostBytes, maxFileBackedBytes, totalFileBackedBytes,
+                logDPWork,
+                gpuWork, gpuUnsupportedEdges, maxSingleGpuBytes,
+                maxSingleGpuBytes <= gpuBudgetBytes, estimatedSlicedTraffic);
+    }
+
+    private static final class GpuEdgeShape {
+        final int mPositionCount;
+        final int lambdaPositionCount;
+        final long totalLambdaStates;
+        final long lmTermCount;
+        final int lmPairCount;
+        final long childMTermTotal;
+        final long childLTermTotal;
+        final int numChildren;
+        final long childTableTotalStates;
+        final long outputTileMStates;
+        final long fixedSlicedDeviceBytes;
+        final long unionStateCount;
+        final long[] childRowStates;
+        final long[] childLambdaStates;
+        final long childSliceMaxBytes;
+        final DPGpuOutOfCore.PlanningInput outOfCoreInput;
+        final boolean childFoldMapped;
+        final boolean supported;
+        final long fullDeviceBytes;
+
+        GpuEdgeShape(int mPositionCount, int lambdaPositionCount, long totalLambdaStates,
+                     long lmTermCount, int lmPairCount, long childMTermTotal,
+                     long childLTermTotal, int numChildren, long childTableTotalStates,
+                     long outputTileMStates, long fixedSlicedDeviceBytes,
+                     long unionStateCount, long[] childRowStates, long[] childLambdaStates,
+                     long childSliceMaxBytes,
+                     DPGpuOutOfCore.PlanningInput outOfCoreInput,
+                     boolean childFoldMapped, boolean supported, long fullDeviceBytes) {
+            this.mPositionCount = mPositionCount;
+            this.lambdaPositionCount = lambdaPositionCount;
+            this.totalLambdaStates = totalLambdaStates;
+            this.lmTermCount = lmTermCount;
+            this.lmPairCount = lmPairCount;
+            this.childMTermTotal = childMTermTotal;
+            this.childLTermTotal = childLTermTotal;
+            this.numChildren = numChildren;
+            this.childTableTotalStates = childTableTotalStates;
+            this.outputTileMStates = outputTileMStates;
+            this.fixedSlicedDeviceBytes = fixedSlicedDeviceBytes;
+            this.unionStateCount = unionStateCount;
+            this.childRowStates = childRowStates;
+            this.childLambdaStates = childLambdaStates;
+            this.childSliceMaxBytes = childSliceMaxBytes;
+            this.outOfCoreInput = outOfCoreInput;
+            this.childFoldMapped = childFoldMapped;
+            this.supported = supported;
+            this.fullDeviceBytes = fullDeviceBytes;
+        }
+
+        BigInteger estimateSlicedTraffic(long gpuBudgetBytes) {
+            if (!childFoldMapped) {
+                return SLICED_TRAFFIC_UNAVAILABLE;
+            }
+            BigInteger best = SLICED_TRAFFIC_UNAVAILABLE;
+
+            if (gpuBudgetBytes > fixedSlicedDeviceBytes) {
+                long available = gpuBudgetBytes - fixedSlicedDeviceBytes;
+                long sliceBytes = Math.min(childSliceMaxBytes, available);
+                long lambdaStatesPerUnion = 0L;
+                for (long states : childLambdaStates) {
+                    lambdaStatesPerUnion = saturatingAdd(lambdaStatesPerUnion, states);
+                }
+                long bytesPerUnion = saturatingMultiply(2L * Double.BYTES,
+                        Math.max(1L, lambdaStatesPerUnion));
+                if (bytesPerUnion <= sliceBytes) {
+                    long unionStatesPerSlice = Math.max(1L, sliceBytes / bytesPerUnion);
+                    unionStatesPerSlice = Math.min(unionStatesPerSlice, unionStateCount);
+                    long fullSlices = unionStateCount / unionStatesPerSlice;
+                    long remainder = unionStateCount % unionStatesPerSlice;
+
+                    BigInteger packedStates = BigInteger.ZERO;
+                    for (int c = 0; c < childRowStates.length; c++) {
+                        long rowsPerFullSlice = Math.min(childRowStates[c], unionStatesPerSlice);
+                        BigInteger rows = BigInteger.valueOf(fullSlices)
+                                .multiply(BigInteger.valueOf(rowsPerFullSlice));
+                        if (remainder > 0L) {
+                            rows = rows.add(BigInteger.valueOf(
+                                    Math.min(childRowStates[c], remainder)));
+                        }
+                        packedStates = packedStates.add(rows.multiply(
+                                BigInteger.valueOf(childLambdaStates[c])));
+                    }
+                    best = packedStates.multiply(BigInteger.valueOf(2L * Double.BYTES));
+                }
+            }
+
+            if (numChildren >= 2) {
+                for (int streamed = 0; streamed < numChildren; streamed++) {
+                    long streamedStates = saturatingMultiply(childRowStates[streamed],
+                            childLambdaStates[streamed]);
+                    if (streamedStates > childTableTotalStates) {
+                        continue;
+                    }
+                    long residentStates = childTableTotalStates - streamedStates;
+                    long fixed = DPGpuFullDP.estimateDeviceBytesForShape(
+                            mPositionCount,
+                            lambdaPositionCount,
+                            totalLambdaStates,
+                            lmTermCount,
+                            lmPairCount,
+                            childMTermTotal,
+                            childLTermTotal,
+                            numChildren,
+                            residentStates,
+                            outputTileMStates);
+                    fixed = saturatingAdd(fixed,
+                            saturatingMultiply(outputTileMStates, Long.BYTES));
+                    fixed = saturatingAdd(fixed,
+                            saturatingMultiply(2L * numChildren, Long.BYTES));
+                    if (fixed >= gpuBudgetBytes) {
+                        continue;
+                    }
+                    long rowBytes = saturatingMultiply(2L * Double.BYTES,
+                            childLambdaStates[streamed]);
+                    long streamBudget = Math.min(childSliceMaxBytes,
+                            (gpuBudgetBytes - fixed) / 2L);
+                    if (rowBytes <= 0L || rowBytes > streamBudget
+                            || childLambdaStates[streamed]
+                            > Integer.MAX_VALUE / (long)Double.BYTES) {
+                        continue;
+                    }
+                    BigInteger hybridTraffic = BigInteger.valueOf(childTableTotalStates)
+                            .multiply(BigInteger.valueOf(2L * Double.BYTES));
+                    if (hybridTraffic.compareTo(best) < 0) {
+                        best = hybridTraffic;
+                    }
+                }
+            }
+
+            DPGpuOutOfCore.Plan outOfCorePlan = DPGpuOutOfCore.choosePlan(
+                    outOfCoreInput, gpuBudgetBytes);
+            BigInteger outOfCoreTraffic = DPGpuOutOfCore.estimateTrafficBytes(
+                    outOfCoreInput, outOfCorePlan);
+            if (outOfCoreTraffic != null && outOfCoreTraffic.compareTo(best) < 0) {
+                best = outOfCoreTraffic;
+            }
+            return best;
+        }
+    }
+
+    private GpuEdgeShape estimateGpuEdgeShape(RootedTreeEdge edge, RCs rcs) {
+        int[] mPos = edge.getMPositionsSorted();
+        int[] lambdaPos = edge.getLambdaPositionsSorted();
+        long childTableTotalStates = 0L;
+        long childMTermTotal = 0L;
+        long childLTermTotal = 0L;
+        int numChildren = 0;
+        boolean childFoldMapped = true;
+        LinkedHashSet<RootedTreeEdge> children = edge.getFset();
+        int childCount = children == null ? 0 : children.size();
+        long[] childRowStates = new long[childCount];
+        long[] childLambdaStates = new long[childCount];
+        int[][] childMParentDims = new int[childCount][];
+        int[][] childLambdaDims = new int[childCount][];
+        boolean[] unionMPositions = new boolean[mPos.length];
+        if (children != null) {
+            int childIndex = 0;
+            for (RootedTreeEdge child : children) {
+                numChildren++;
+                childTableTotalStates = saturatingAdd(childTableTotalStates,
+                        child.getMStateCount());
+                long rowStates = 1L;
+                long lambdaStates = 1L;
+                int[] childMParentDimsTmp = new int[child.getMPositionsSorted().length];
+                int[] childLambdaDimsTmp = new int[child.getMPositionsSorted().length];
+                int childMCount = 0;
+                int childLambdaCount = 0;
+                for (int childMPos : child.getMPositionsSorted()) {
+                    int parentMIndex = indexOfPosition(mPos, childMPos);
+                    if (parentMIndex >= 0) {
+                        childMTermTotal = saturatingAdd(childMTermTotal, 1L);
+                        unionMPositions[parentMIndex] = true;
+                        childMParentDimsTmp[childMCount++] = parentMIndex;
+                        rowStates = saturatingMultiply(rowStates, rcs.getNum(childMPos));
+                    } else {
+                        int parentLambdaIndex = indexOfPosition(lambdaPos, childMPos);
+                        if (parentLambdaIndex >= 0) {
+                            childLTermTotal = saturatingAdd(childLTermTotal, 1L);
+                            childLambdaDimsTmp[childLambdaCount++] = parentLambdaIndex;
+                            lambdaStates = saturatingMultiply(lambdaStates,
+                                    rcs.getNum(childMPos));
+                        } else {
+                            childFoldMapped = false;
+                        }
+                    }
+                }
+                childMParentDims[childIndex] = Arrays.copyOf(
+                        childMParentDimsTmp, childMCount);
+                childLambdaDims[childIndex] = Arrays.copyOf(
+                        childLambdaDimsTmp, childLambdaCount);
+                childRowStates[childIndex] = rowStates;
+                childLambdaStates[childIndex] = lambdaStates;
+                childIndex++;
+            }
+        }
+        long unionStateCount = 1L;
+        long parentFreeStateCount = 1L;
+        int[] parentMToUnion = new int[mPos.length];
+        Arrays.fill(parentMToUnion, -1);
+        int unionDimensionCount = 0;
+        for (int i = 0; i < unionMPositions.length; i++) {
+            if (unionMPositions[i]) {
+                parentMToUnion[i] = unionDimensionCount++;
+                unionStateCount = saturatingMultiply(unionStateCount, rcs.getNum(mPos[i]));
+            } else {
+                parentFreeStateCount = saturatingMultiply(parentFreeStateCount,
+                        rcs.getNum(mPos[i]));
+            }
+        }
+        int[] unionMCounts = new int[unionDimensionCount];
+        for (int i = 0; i < mPos.length; i++) {
+            int unionDimension = parentMToUnion[i];
+            if (unionDimension >= 0) {
+                unionMCounts[unionDimension] = rcs.getNum(mPos[i]);
+            }
+        }
+        int[][] childMUnionDims = new int[childCount][];
+        for (int c = 0; c < childCount; c++) {
+            childMUnionDims[c] = new int[childMParentDims[c].length];
+            for (int t = 0; t < childMParentDims[c].length; t++) {
+                childMUnionDims[c][t] = parentMToUnion[childMParentDims[c][t]];
+            }
+        }
+
+        int[] lambdaCounts = new int[lambdaPos.length];
+        for (int i = 0; i < lambdaPos.length; i++) {
+            lambdaCounts[i] = rcs.getNum(lambdaPos[i]);
+        }
+
+        long lmTermCount = 0L;
+        int lmPairCount = 0;
+        for (int lp : lambdaPos) {
+            long lambdaCount = rcs.getNum(lp);
+            for (int mp : mPos) {
+                if (!interactionGraph.hasEdge(lp, mp)) {
+                    continue;
+                }
+                lmPairCount++;
+                lmTermCount = saturatingAdd(lmTermCount,
+                        saturatingMultiply(lambdaCount, rcs.getNum(mp)));
+            }
+        }
+
+        long outputTileMStates = resolveGpuOutputTileMStates(edge.getMStateCount());
+        long childSliceMaxBytes = DPGpuFullDP.configuredChildSliceMaxBytes();
+        long outOfCoreOutputWorkspaceMaxBytes =
+                DPGpuFullDP.configuredOutOfCoreOutputWorkspaceMaxBytes();
+        boolean supported = childFoldMapped
+                && mPos.length <= DPGpuFullDP.MAX_EDGE_POSITIONS
+                && lambdaPos.length <= DPGpuFullDP.MAX_EDGE_POSITIONS
+                && numChildren <= 64
+                && lmTermCount <= Integer.MAX_VALUE
+                && childMTermTotal <= Integer.MAX_VALUE
+                && childLTermTotal <= Integer.MAX_VALUE;
+        DPGpuOutOfCore.PlanningInput outOfCoreInput = supported
+                ? new DPGpuOutOfCore.PlanningInput(mPos.length, lambdaCounts,
+                        unionMCounts, childMUnionDims, childLambdaDims,
+                        parentFreeStateCount, childSliceMaxBytes,
+                        outOfCoreOutputWorkspaceMaxBytes,
+                        lmTermCount, lmPairCount,
+                        childMTermTotal, childLTermTotal)
+                : null;
+        long fullDeviceBytes = childFoldMapped
+                ? DPGpuFullDP.estimateDeviceBytesForShape(
+                        mPos.length,
+                        lambdaPos.length,
+                        edge.getTotalLambdaStates(),
+                        lmTermCount,
+                        lmPairCount,
+                        childMTermTotal,
+                        childLTermTotal,
+                        numChildren,
+                        childTableTotalStates,
+                        outputTileMStates)
+                : Long.MAX_VALUE;
+        long fixedSlicedDeviceBytes = DPGpuFullDP.estimateDeviceBytesForShape(
+                mPos.length,
+                lambdaPos.length,
+                edge.getTotalLambdaStates(),
+                lmTermCount,
+                lmPairCount,
+                childMTermTotal,
+                childLTermTotal,
+                numChildren,
+                0L,
+                outputTileMStates);
+        fixedSlicedDeviceBytes = saturatingAdd(fixedSlicedDeviceBytes,
+                saturatingMultiply(outputTileMStates, Long.BYTES));
+        return new GpuEdgeShape(mPos.length, lambdaPos.length, edge.getTotalLambdaStates(),
+                lmTermCount, lmPairCount, childMTermTotal, childLTermTotal, numChildren,
+                childTableTotalStates, outputTileMStates, fixedSlicedDeviceBytes,
+                unionStateCount, childRowStates, childLambdaStates,
+                childSliceMaxBytes, outOfCoreInput, childFoldMapped, supported,
+                fullDeviceBytes);
     }
 
     private static class ReuseStats {
@@ -1306,6 +2061,74 @@ public abstract class BranchDpBackend extends MARKStarBound {
         return isBetterRooting(candidate, best, logNaive);
     }
 
+    private boolean isBetterGpuBytesRooting(RootingCandidate candidate, RootingCandidate best,
+                                            double logNaive) {
+        if (best == null) return true;
+
+        boolean candidateValid = Math.exp(candidate.logTESS - logNaive) <= TESS_FALLBACK_THRESHOLD;
+        boolean bestValid = Math.exp(best.logTESS - logNaive) <= TESS_FALLBACK_THRESHOLD;
+        if (candidateValid != bestValid) return candidateValid;
+
+        boolean candidateSupported = candidate.gpuUnsupportedEdges == 0;
+        boolean bestSupported = best.gpuUnsupportedEdges == 0;
+        if (candidateSupported != bestSupported) return candidateSupported;
+        int unsupportedCmp = Integer.compare(candidate.gpuUnsupportedEdges, best.gpuUnsupportedEdges);
+        if (unsupportedCmp != 0) return unsupportedCmp < 0;
+
+        // Avoid child slicing when any enumerated root can keep every edge resident.
+        // Within the same residency class, optimize the exact dominant CUDA work;
+        // minimizing bytes further is only a tie-breaker.
+        boolean candidateResident = candidate.fitsSingleGpu;
+        boolean bestResident = best.fitsSingleGpu;
+        if (candidateResident != bestResident) return candidateResident;
+
+        if (!candidateResident) {
+            int trafficCmp = candidate.estimatedSlicedTraffic.compareTo(best.estimatedSlicedTraffic);
+            if (trafficCmp != 0) return trafficCmp < 0;
+        }
+
+        int gpuWorkCmp = candidate.gpuWork.compareTo(best.gpuWork);
+        if (gpuWorkCmp != 0) return gpuWorkCmp < 0;
+
+        int gpuBytesCmp = Long.compare(candidate.maxSingleGpuBytes, best.maxSingleGpuBytes);
+        if (gpuBytesCmp != 0) return gpuBytesCmp < 0;
+
+        int maxTableCmp = Long.compare(candidate.maxDPTableBytes, best.maxDPTableBytes);
+        if (maxTableCmp != 0) return maxTableCmp < 0;
+
+        boolean candidateCapped = candidate.maxFsetSize <= rootSplitMaxFset;
+        boolean bestCapped = best.maxFsetSize <= rootSplitMaxFset;
+        if (candidateCapped != bestCapped) return candidateCapped;
+
+        return isBetterRooting(candidate, best, logNaive);
+    }
+
+    private boolean isBetterPredictedRooting(RootingCandidate candidate,
+                                             RootingCandidate best,
+                                             double logNaive) {
+        if (best == null) return true;
+
+        boolean candidateValid = Math.exp(candidate.logTESS - logNaive)
+                <= TESS_FALLBACK_THRESHOLD;
+        boolean bestValid = Math.exp(best.logTESS - logNaive)
+                <= TESS_FALLBACK_THRESHOLD;
+        if (candidateValid != bestValid) return candidateValid;
+
+        int unsupportedCmp = Integer.compare(candidate.gpuUnsupportedEdges,
+                best.gpuUnsupportedEdges);
+        if (unsupportedCmp != 0) return unsupportedCmp < 0;
+
+        double candidateSeconds = predictedSeconds(candidate);
+        double bestSeconds = predictedSeconds(best);
+        int predictedCmp = Double.compare(candidateSeconds, bestSeconds);
+        if (predictedCmp != 0) return predictedCmp < 0;
+
+        // If the hardware model is incomplete, or two roots have the same
+        // modeled duration, retain the established GPU-aware deterministic
+        // ordering as a tie-breaker.
+        return isBetterGpuBytesRooting(candidate, best, logNaive);
+    }
+
     private boolean isBetterWorkRooting(RootingCandidate candidate, RootingCandidate best,
                                         double logNaive) {
         if (best == null) return true;
@@ -1351,18 +2174,48 @@ public abstract class BranchDpBackend extends MARKStarBound {
                 + "-Dbranchdp.dp.cache=false for dense-only runs, or enable the shard-backed DP table once available.");
     }
 
-    private void logDPMemoryPredictions(String context, double logTESS) {
+    /** Returns the worst-case single-GPU VRAM requirement (bytes) across GPU full-DP
+     *  lambda edges, using the same device-buffer accounting as DPGpuFullDP. The
+     *  parent output table is still not counted as a full table because the GPU
+     *  path writes it through a bounded output tile. */
+    private long logDPMemoryPredictions(String context, double logTESS, RCs rcs) {
         List<RootedTreeEdge> lambdaEdges = new ArrayList<>();
         RootedTreeEdge.collectLambdaEdges(rootedRoot, lambdaEdges);
 
         long totalFinalBytes = 0L;
         long totalCacheBytes = 0L;
+        // The single-GPU VRAM budget for the GPU full-DP path is the complete set
+        // of device buffers allocated by DPGpuFullDP for one edge on one GPU. The
+        // dominant resident inputs are the child lower/upper tables, lambda-only
+        // arrays, and lambda-M cross-term arrays; metadata/index buffers and the
+        // bounded output tile are included too so this preflight matches the
+        // runtime estimateDeviceBytes gate.
+        long worstCaseSingleGpuBytes = 0L;
+        int worstCaseEdgeId = -1;
         for (int edgeId = 0; edgeId < lambdaEdges.size(); edgeId++) {
             RootedTreeEdge edge = lambdaEdges.get(edgeId);
             long finalBytes = estimateDPTableBytes(edge.getMStateCount());
             long cacheBytes = (dpCacheEnabled && dpCacheMaxEntries > 0) ? finalBytes : 0L;
             totalFinalBytes = saturatingAdd(totalFinalBytes, finalBytes);
             totalCacheBytes = saturatingAdd(totalCacheBytes, cacheBytes);
+
+            GpuEdgeShape gpuShape = estimateGpuEdgeShape(edge, rcs);
+            long childTableTotalBytes = saturatingMultiply(2L * Double.BYTES,
+                    gpuShape.childTableTotalStates);
+            long lambdaOnlyBytes = saturatingMultiply(2L * Double.BYTES,
+                    gpuShape.totalLambdaStates);
+            long lmCrossBytes = saturatingMultiply(2L * Double.BYTES,
+                    gpuShape.lmTermCount);
+            long residentInputBytes = saturatingAdd(saturatingAdd(childTableTotalBytes, lambdaOnlyBytes), lmCrossBytes);
+            long gpuDeviceBytes = gpuShape.fullDeviceBytes;
+            long metadataAndTileBytes = gpuDeviceBytes > residentInputBytes
+                    ? gpuDeviceBytes - residentInputBytes
+                    : 0L;
+            long singleGpuBytes = gpuDeviceBytes;
+            if (singleGpuBytes > worstCaseSingleGpuBytes) {
+                worstCaseSingleGpuBytes = singleGpuBytes;
+                worstCaseEdgeId = edgeId;
+            }
 
             System.out.println(BranchDpConfig.getBackendLogPrefix() + " DP memory prediction"
                     + " context=" + context
@@ -1374,6 +2227,15 @@ public abstract class BranchDpBackend extends MARKStarBound {
                     + ", totalLambdaStates=" + edge.getTotalLambdaStates()
                     + ", finalTableBytes=" + formatBytes(finalBytes)
                     + ", cacheCopyBytes=" + formatBytes(cacheBytes)
+                    + ", childTableTotalBytes=" + formatBytes(childTableTotalBytes)
+                    + ", lambdaOnlyBytes=" + formatBytes(lambdaOnlyBytes)
+                    + ", lmCrossBytes=" + formatBytes(lmCrossBytes)
+                    + ", metadataAndTileBytes=" + formatBytes(metadataAndTileBytes)
+                    + ", outputTileMStates=" + gpuShape.outputTileMStates
+                    + ", childFoldMapped=" + gpuShape.childFoldMapped
+                    + ", gpuSupported=" + gpuShape.supported
+                    + ", gpuDeviceBytes=" + formatBytes(gpuDeviceBytes)
+                    + ", singleGpuBytes=" + formatBytes(singleGpuBytes)
                     + ", branchwidth=" + branchwidth
                     + ", logTESS=" + String.format(Locale.ROOT, "%.2f", logTESS));
         }
@@ -1384,11 +2246,74 @@ public abstract class BranchDpBackend extends MARKStarBound {
                 + ", lambdaEdges=" + lambdaEdges.size()
                 + ", totalFinalTableBytes=" + formatBytes(totalFinalBytes)
                 + ", totalCacheCopyBytes=" + formatBytes(totalCacheBytes)
+                + ", worstCaseSingleGpuBytes=" + formatBytes(worstCaseSingleGpuBytes)
+                + " (edgeId=" + worstCaseEdgeId + ")"
                 + ", dpCache=" + (dpCacheEnabled && dpCacheMaxEntries > 0)
                 + ", dpCacheMaxTable=" + formatBytes(dpCacheMaxTableBytes)
                 + ", dpCacheMaxTotal=" + formatBytes(dpCacheMaxTotalBytes)
                 + ", branchwidth=" + branchwidth
                 + ", logTESS=" + String.format(Locale.ROOT, "%.2f", logTESS));
+
+        return worstCaseSingleGpuBytes;
+    }
+
+    private long resolveGpuOutputTileMStates(long mStateCount) {
+        long requested = getConfigLong(DP_GPU_OUTPUT_TILE_MSTATES_PROPERTY,
+                DEFAULT_DP_GPU_OUTPUT_TILE_MSTATES);
+        long tile = Math.max(1L, requested);
+        tile = Math.min(tile, (long) Integer.MAX_VALUE);
+        return Math.min(tile, Math.max(1L, mStateCount));
+    }
+
+    private static int indexOfPosition(int[] positions, int target) {
+        for (int i = 0; i < positions.length; i++) {
+            if (positions[i] == target) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Sanity-check the worst-case single-GPU VRAM requirement (see
+     * logDPMemoryPredictions) against the actually-available VRAM on this hardware,
+     * BEFORE any expensive work (CCD, sampling, DP) begins. If it clearly will not fit,
+     * abort now rather than burn GPU-hours only to hit the same wall hours or days later
+     * (per-edge GPU OOM already fails fast once reached; this just moves that fast-fail
+     * to the front of the run instead of wherever the offending edge happens to sit in
+     * the tree). Only runs when GPU DP is actually requested; silently skipped if VRAM
+     * could not be queried (e.g. no GPU visible) rather than false-aborting.
+     */
+    private void checkWorstCaseSingleGpuFits(long worstCaseSingleGpuBytes) {
+        if (!getConfigBoolean("branchdp.dp.gpu", false)) {
+            return; // GPU DP not requested: this VRAM concern doesn't apply
+        }
+        long usableVramBytes = DPGpuFullDP.queryMinUsableVramBytes();
+        if (usableVramBytes < 0) {
+            System.out.println(BranchDpConfig.getBackendLogPrefix()
+                    + " worst-case single-GPU VRAM check skipped (could not query GPU memory)");
+            return;
+        }
+        System.out.println(BranchDpConfig.getBackendLogPrefix()
+                + " worst-case single-GPU VRAM check: need=" + formatBytes(worstCaseSingleGpuBytes)
+                + ", usable=" + formatBytes(usableVramBytes));
+        if (worstCaseSingleGpuBytes > usableVramBytes) {
+            if (DPGpuFullDP.defaultChildSlicingEnabled()) {
+                System.out.println(BranchDpConfig.getBackendLogPrefix()
+                        + " worst-case full-resident GPU footprint exceeds single-GPU VRAM; "
+                        + "child table slicing is enabled, so oversized child tables will be sliced at runtime");
+                return;
+            }
+            throw new DPGpuFullDP.GpuMemoryExceededException(
+                    "Preflight abort: worst-case single-GPU full-DP device-buffer requirement "
+                    + worstCaseSingleGpuBytes + " B exceeds usable VRAM " + usableVramBytes + " B"
+                    + " on this hardware. This includes child tables, lambda/lambda-M energy buffers,"
+                    + " metadata, and the output tile for one GPU. Child tables are fully replicated"
+                    + " onto every GPU used for an edge (multi-GPU only shards the OUTPUT range, not"
+                    + " child tables), so more GPUs does not help this per-device footprint. Aborting"
+                    + " before CCD/sampling/DP work begins instead of burning GPU-hours on a run that"
+                    + " would fail (or silently crawl on CPU) once it reaches this edge.");
+        }
     }
 
     private static long saturatingDPTableBytes(long mStates) {
@@ -1403,6 +2328,16 @@ public abstract class BranchDpBackend extends MARKStarBound {
             return Long.MAX_VALUE;
         }
         return a + b;
+    }
+
+    private static long saturatingMultiply(long a, long b) {
+        if (a == 0L || b == 0L) {
+            return 0L;
+        }
+        if (a > Long.MAX_VALUE / b) {
+            return Long.MAX_VALUE;
+        }
+        return a * b;
     }
 
     private DPCacheStats computeFullDPTables(String context, boolean allowCache) {
@@ -1486,10 +2421,13 @@ public abstract class BranchDpBackend extends MARKStarBound {
 
             while (DP_TABLE_CACHE.size() > dpCacheMaxEntries
                     || dpTableCacheBytes > dpCacheMaxTotalBytes) {
-                Iterator<String> it = DP_TABLE_CACHE.keySet().iterator();
+                Iterator<Map.Entry<String, CachedDPTable>> it = DP_TABLE_CACHE.entrySet().iterator();
                 if (!it.hasNext()) break;
-                String evictKey = it.next();
-                CachedDPTable evicted = DP_TABLE_CACHE.get(evictKey);
+                // Read the value straight off the entry (not via a second DP_TABLE_CACHE.get()
+                // call): DP_TABLE_CACHE is access-order, so a get() here would touch
+                // afterNodeAccess() and bump modCount out from under this same iterator,
+                // throwing ConcurrentModificationException on the following it.remove().
+                CachedDPTable evicted = it.next().getValue();
                 it.remove();
                 if (evicted != null) {
                     dpTableCacheBytes -= evicted.bytes;
@@ -1510,6 +2448,29 @@ public abstract class BranchDpBackend extends MARKStarBound {
             return Long.MAX_VALUE;
         }
         return 2L * (long) mStates * (long) Double.BYTES;
+    }
+
+    /**
+     * Estimate live Java-heap storage for one initialized lambda edge.
+     * Besides the lower/upper DP table, int-addressable edges allocate one
+     * {@code int} enumeration counter per M state and every edge owns two
+     * lambda-only energy arrays. Object/shard headers are intentionally left to
+     * the root budget's 30% heap headroom.
+     */
+    public static long estimateDPHostBytes(long mStates, long lambdaStates) {
+        long tableBytes = estimateDPTableBytes(mStates);
+        return saturatingAdd(tableBytes, estimateDPAuxHostBytes(mStates, lambdaStates));
+    }
+
+    /** Heap-only arrays retained beside a heap- or file-backed DP table. */
+    public static long estimateDPAuxHostBytes(long mStates, long lambdaStates) {
+        long enumerationBytes = mStates >= 0L && mStates <= Integer.MAX_VALUE
+                ? saturatingMultiply(mStates, Integer.BYTES)
+                : 0L;
+        long lambdaBytes = lambdaStates <= 0L
+                ? 0L
+                : saturatingMultiply(lambdaStates, 2L * Double.BYTES);
+        return saturatingAdd(enumerationBytes, lambdaBytes);
     }
 
     /**
@@ -1537,6 +2498,12 @@ public abstract class BranchDpBackend extends MARKStarBound {
             unit++;
         }
         return String.format(Locale.ROOT, "%.1f %s", value, units[unit]);
+    }
+
+    private static String formatSlicedTraffic(BigInteger bytes) {
+        return bytes.compareTo(SLICED_TRAFFIC_UNAVAILABLE) >= 0
+                ? "unavailable"
+                : bytes.toString();
     }
 
     private String formatDPCacheStats(DPCacheStats stats) {
@@ -3215,6 +4182,47 @@ public abstract class BranchDpBackend extends MARKStarBound {
 
     protected boolean beforeBranchDecompositionSearch(int maxNumConfs) {
         return false;
+    }
+
+    /**
+     * Deterministically detach the rooted DP/search structures after a caller
+     * has copied out the scalar partition-function result.
+     *
+     * <p>This is deliberately separate from {@link #compute(int)}: callers may
+     * inspect values and status after computation, but none of those values
+     * depend on the rooted tree.  Production PACK* tables can occupy hundreds
+     * of GiB, so relying on a best-effort {@code System.gc()} while the facade
+     * still references this backend can exhaust the heap across K* sequences.</p>
+     */
+    public synchronized void releaseLargeMemory() {
+        if (largeMemoryReleased) {
+            return;
+        }
+        largeMemoryReleased = true;
+
+        edgeLookaheadCache.clear();
+        minimizedConfs.clear();
+        if (decompQueue != null) {
+            decompQueue.clear();
+            decompQueue = null;
+        }
+        queue.clear();
+        rootNode = null;
+
+        if (rootedRoot != null) {
+            RootedTreeEdge.postOrderReleaseLargeMemory(rootedRoot);
+        }
+        rootedRootEdge = null;
+        rootedRoot = null;
+        dpTablesReady = false;
+
+        gScorerMin = null;
+        hScorerMin = null;
+        gScorerRigid = null;
+        hScorerNegRigid = null;
+        searchRCs = null;
+        branchRigidEmat = null;
+        branchMinimizingEmat = null;
     }
 
     /**

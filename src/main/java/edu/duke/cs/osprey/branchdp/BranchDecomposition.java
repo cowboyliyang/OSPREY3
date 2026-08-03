@@ -19,6 +19,7 @@ import org.apache.commons.math3.linear.Array2DRowRealMatrix;
 import org.apache.commons.math3.linear.EigenDecomposition;
 import org.apache.commons.math3.linear.RealMatrix;
 
+import java.math.BigInteger;
 import java.util.*;
 
 /**
@@ -34,9 +35,13 @@ public class BranchDecomposition {
 
     public enum Strategy {
         HICKS,
+        WEIGHTED_HICKS,
         GREEDY_MERGE,
+        WEIGHTED_GREEDY_MERGE,
         EXACT,
         EXACT_IMPROVE,
+        WEIGHTED_EXACT_IMPROVE,
+        ADAPTIVE,
         AUTO;
 
         public static Strategy fromProperty(String value) {
@@ -48,12 +53,29 @@ public class BranchDecomposition {
                 case "hicks2005":
                 case "legacy":
                     return HICKS;
+                case "weightedhicks":
+                case "weighted_hicks":
+                case "stateweightedhicks":
+                case "state_weighted_hicks":
+                case "rcweightedhicks":
+                case "rc_weighted_hicks":
+                    return WEIGHTED_HICKS;
                 case "greedy":
                 case "greedymerge":
                 case "greedy_merge":
                 case "edgegreedy":
                 case "edge_greedy":
                     return GREEDY_MERGE;
+                case "weighted":
+                case "weightedgreedy":
+                case "weighted_greedy":
+                case "weightedgreedymerge":
+                case "weighted_greedy_merge":
+                case "stateweighted":
+                case "state_weighted":
+                case "rcweighted":
+                case "rc_weighted":
+                    return WEIGHTED_GREEDY_MERGE;
                 case "exact":
                 case "exactbranchwidth":
                 case "exact_branchwidth":
@@ -67,6 +89,16 @@ public class BranchDecomposition {
                 case "exactfast":
                 case "exact_fast":
                     return EXACT_IMPROVE;
+                case "weightedexactimprove":
+                case "weighted_exact_improve":
+                case "exactimproveweighted":
+                case "exact_improve_weighted":
+                    return WEIGHTED_EXACT_IMPROVE;
+                case "adaptive":
+                case "adaptiveexact":
+                case "adaptive_exact":
+                case "production":
+                    return ADAPTIVE;
                 case "auto":
                 case "best":
                     return AUTO;
@@ -83,25 +115,68 @@ public class BranchDecomposition {
     private int numPositions;
     private InteractionGraph interactionGraph;
     private final Strategy strategy;
+    private final int[] positionStateCounts;
+    private final ExactImproveOptions exactImproveOptions;
     private boolean computed = false;
     private static final int DEFAULT_EXACT_MAX_POSITIONS = 20;
     private static final int DEFAULT_EXACT_IMPROVE_MAX_DROP = 1;
     private static final long DEFAULT_EXACT_IMPROVE_MAX_MILLIS = 120_000L;
+    private static final int DEFAULT_WEIGHTED_HICKS_RESTARTS = 24;
+    private static final int DEFAULT_WEIGHTED_HICKS_RANDOM_MOVES = 32;
+
+    /** Bounded target range for EXACT_IMPROVE/WEIGHTED_EXACT_IMPROVE. */
+    public static final class ExactImproveOptions {
+
+        public final int minDrop;
+        public final int maxDrop;
+        public final long maxMillis;
+
+        public ExactImproveOptions(int minDrop, int maxDrop, long maxMillis) {
+            this.minDrop = Math.max(1, minDrop);
+            this.maxDrop = Math.max(this.minDrop, maxDrop);
+            this.maxMillis = Math.max(1L, maxMillis);
+        }
+    }
 
     /**
      * Build a branch decomposition from an interaction graph.
      * Call compute() to run the algorithm.
      */
     public BranchDecomposition(InteractionGraph graph) {
-        this(graph, Strategy.HICKS);
+        this(graph, Strategy.HICKS, null, null);
     }
 
     public BranchDecomposition(InteractionGraph graph, Strategy strategy) {
+        this(graph, strategy, null, null);
+    }
+
+    /**
+     * Build a decomposition with optional per-position RC state counts.
+     * Counts affect only {@link Strategy#WEIGHTED_GREEDY_MERGE}; legacy
+     * strategies remain bit-for-bit independent of them.
+     */
+    public BranchDecomposition(InteractionGraph graph, Strategy strategy,
+                               int[] positionStateCounts) {
+        this(graph, strategy, positionStateCounts, null);
+    }
+
+    /**
+     * Build a decomposition with an optional per-invocation exact-improve
+     * target. This lets whole-case preflight retry only selected expensive
+     * states without mutating process-wide system properties.
+     */
+    public BranchDecomposition(InteractionGraph graph, Strategy strategy,
+                               int[] positionStateCounts,
+                               ExactImproveOptions exactImproveOptions) {
         this.interactionGraph = graph;
         this.strategy = strategy == null ? Strategy.HICKS : strategy;
         this.numPositions = graph.getNumPositions();
+        this.positionStateCounts = normalizePositionStateCounts(positionStateCounts, numPositions);
+        this.exactImproveOptions = exactImproveOptions;
         resetTree();
-        if (this.strategy == Strategy.HICKS) {
+        if (this.strategy == Strategy.HICKS
+                || this.strategy == Strategy.WEIGHTED_HICKS
+                || this.strategy == Strategy.ADAPTIVE) {
             initializeHicksTree();
         }
     }
@@ -139,16 +214,32 @@ public class BranchDecomposition {
 
         switch (strategy) {
             case HICKS:
-                computeHicks();
+                computeHicks(false);
+                break;
+            case WEIGHTED_HICKS:
+                computeHicks(true);
                 break;
             case GREEDY_MERGE:
-                computeGreedyMerge();
+                computeGreedyMerge(false);
+                break;
+            case WEIGHTED_GREEDY_MERGE:
+                computeGreedyMerge(true);
                 break;
             case EXACT:
                 computeExact();
                 break;
             case EXACT_IMPROVE:
                 computeExactImprove();
+                break;
+            case WEIGHTED_EXACT_IMPROVE:
+                computeExactImprove();
+                refineCompletedTreeByStateCount("weighted_exact_improve");
+                break;
+            case ADAPTIVE:
+                // Root-aware work admission and the optional exact retry live in
+                // BranchDpBackend, where the complete rooted-tree work estimate is
+                // available.  Standalone users still get the cheap first-stage tree.
+                computeHicks(true);
                 break;
             case AUTO:
                 computeAuto();
@@ -159,7 +250,7 @@ public class BranchDecomposition {
         computed = true;
     }
 
-    private void computeHicks() {
+    private void computeHicks(boolean weightedPush) {
         boolean done = false;
         boolean done2sep = false;
         boolean done3sep = false;
@@ -171,10 +262,18 @@ public class BranchDecomposition {
                 LinkedHashSet<BranchEdge> sx = new LinkedHashSet<>();
                 LinkedHashSet<BranchEdge> sy = new LinkedHashSet<>();
 
-                BranchNode pn = findPushNode(bigNodes);
+                BranchNode pn;
+
+                if (weightedPush) {
+                    pn = pushBestWeighted(bigNodes, sx, sy);
+                } else {
+                    pn = findPushNode(bigNodes);
+                }
 
                 if (pn != null) {
+                    if (!weightedPush) {
                     pushNode(pn, sx, sy);
+                    }
                 } else if (!done2sep) {
                     boolean found = false;
                     for (BranchNode bn : bigNodes) {
@@ -207,17 +306,42 @@ public class BranchDecomposition {
                 done = true;
             }
         }
+
+        if (weightedPush) {
+            refineCompletedTreeByStateCount("weighted_hicks");
+        }
+    }
+
+    private void refineCompletedTreeByStateCount(String label) {
+        int swaps = refineWeightedNearestNeighborInterchanges();
+        int improvements = refineWeightedNniRestarts();
+        System.out.println("BranchDecomposition " + label + ": weighted NNI swaps=" + swaps
+                + ", restartImprovements=" + improvements);
+        logWeightedCost(label);
     }
 
     public BranchTree getTree() { return bt; }
     public int getBranchwidth() { return bt.getBranchwidth(); }
     public Strategy getStrategy() { return strategy; }
 
+    private static int[] normalizePositionStateCounts(int[] counts, int numPositions) {
+        int[] normalized = new int[numPositions];
+        Arrays.fill(normalized, 1);
+        if (counts != null) {
+            for (int i = 0; i < Math.min(counts.length, numPositions); i++) {
+                normalized[i] = Math.max(1, counts[i]);
+            }
+        }
+        return normalized;
+    }
+
     private void computeAuto() {
-        BranchDecomposition hicks = new BranchDecomposition(interactionGraph, Strategy.HICKS);
+        BranchDecomposition hicks = new BranchDecomposition(
+                interactionGraph, Strategy.HICKS, positionStateCounts);
         hicks.compute();
 
-        BranchDecomposition greedy = new BranchDecomposition(interactionGraph, Strategy.GREEDY_MERGE);
+        BranchDecomposition greedy = new BranchDecomposition(
+                interactionGraph, Strategy.GREEDY_MERGE, positionStateCounts);
         greedy.compute();
 
         BranchDecomposition selected = greedy.getBranchwidth() < hicks.getBranchwidth() ? greedy : hicks;
@@ -238,7 +362,8 @@ public class BranchDecomposition {
             return;
         }
 
-        BranchDecomposition hicks = new BranchDecomposition(interactionGraph, Strategy.HICKS);
+        BranchDecomposition hicks = new BranchDecomposition(
+                interactionGraph, Strategy.HICKS, positionStateCounts);
         hicks.compute();
         int hicksWidth = hicks.getBranchwidth();
         if (interactionGraph.getEdgeList().isEmpty()) {
@@ -277,7 +402,8 @@ public class BranchDecomposition {
     private void computeExactImprove() {
         int activePositions = countActiveGraphPositions();
         int maxPositions = getExactMaxPositions();
-        BranchDecomposition hicks = new BranchDecomposition(interactionGraph, Strategy.HICKS);
+        BranchDecomposition hicks = new BranchDecomposition(
+                interactionGraph, Strategy.HICKS, positionStateCounts);
         hicks.compute();
         int hicksWidth = hicks.getBranchwidth();
 
@@ -302,11 +428,15 @@ public class BranchDecomposition {
                     + e.getMessage() + ". Using lowerBound=0.");
         }
 
-        int maxDrop = getExactImproveMaxDrop();
+        ExactImproveOptions options = exactImproveOptions != null
+                ? exactImproveOptions : configuredExactImproveOptions();
+        int maxDrop = options.maxDrop;
+        int minDrop = Math.min(options.minDrop, maxDrop);
         int minTarget = Math.max(lowerBound, hicksWidth - maxDrop);
-        long targetTimeoutNanos = getExactImproveMaxMillis() * 1_000_000L;
+        int firstTarget = Math.max(minTarget, hicksWidth - minDrop);
+        long targetTimeoutNanos = options.maxMillis * 1_000_000L;
 
-        for (int targetWidth = hicksWidth - 1; targetWidth >= minTarget; targetWidth--) {
+        for (int targetWidth = firstTarget; targetWidth >= minTarget; targetWidth--) {
             long started = System.nanoTime();
             try {
                 ExactBranchwidth.Result exact = ExactBranchwidth.computeAtMost(
@@ -331,7 +461,7 @@ public class BranchDecomposition {
                 return;
             } catch (ExactBranchwidth.SearchTimeoutException e) {
                 System.out.println("BranchDecomposition exact_improve: targetBw=" + targetWidth
-                        + " timed out after " + getExactImproveMaxMillis()
+                        + " timed out after " + options.maxMillis
                         + " ms (hicksBw=" + hicksWidth + "), using hicks.");
                 break;
             }
@@ -342,7 +472,8 @@ public class BranchDecomposition {
     }
 
     private void computeHicksFallback() {
-        BranchDecomposition hicks = new BranchDecomposition(interactionGraph, Strategy.HICKS);
+        BranchDecomposition hicks = new BranchDecomposition(
+                interactionGraph, Strategy.HICKS, positionStateCounts);
         hicks.compute();
         this.bt = hicks.bt;
         this.graphVertices = hicks.graphVertices;
@@ -423,6 +554,11 @@ public class BranchDecomposition {
         }
     }
 
+    public static ExactImproveOptions configuredExactImproveOptions() {
+        return new ExactImproveOptions(1, getExactImproveMaxDrop(),
+                getExactImproveMaxMillis());
+    }
+
     // ========== Star graph construction ==========
 
     private void constructStarGraph(Set<Integer> gvDup) {
@@ -451,14 +587,16 @@ public class BranchDecomposition {
         final BitSet edgeSet;
         final int leafCount;
         final int boundarySize;
+        final BigInteger boundaryStates;
         final long serial;
 
         GreedyCluster(BranchNode rootNode, BitSet edgeSet, int leafCount,
-                      int boundarySize, long serial) {
+                      int boundarySize, BigInteger boundaryStates, long serial) {
             this.rootNode = rootNode;
             this.edgeSet = edgeSet;
             this.leafCount = leafCount;
             this.boundarySize = boundarySize;
+            this.boundaryStates = boundaryStates;
             this.serial = serial;
         }
     }
@@ -471,9 +609,14 @@ public class BranchDecomposition {
         final int balance;
         final int unionLeafCount;
         final long serialSum;
+        final BigInteger mergeStates;
+        final BigInteger unionBoundaryStates;
+        final boolean weighted;
 
         GreedyPair(int i, int j, int mergeWidth, int unionBoundarySize,
-                   int balance, int unionLeafCount, long serialSum) {
+                   int balance, int unionLeafCount, long serialSum,
+                   BigInteger mergeStates, BigInteger unionBoundaryStates,
+                   boolean weighted) {
             this.i = i;
             this.j = j;
             this.mergeWidth = mergeWidth;
@@ -481,10 +624,19 @@ public class BranchDecomposition {
             this.balance = balance;
             this.unionLeafCount = unionLeafCount;
             this.serialSum = serialSum;
+            this.mergeStates = mergeStates;
+            this.unionBoundaryStates = unionBoundaryStates;
+            this.weighted = weighted;
         }
 
         boolean isBetterThan(GreedyPair other) {
             if (other == null) return true;
+            if (weighted) {
+                int cmp = mergeStates.compareTo(other.mergeStates);
+                if (cmp != 0) return cmp < 0;
+                cmp = unionBoundaryStates.compareTo(other.unionBoundaryStates);
+                if (cmp != 0) return cmp < 0;
+            }
             if (mergeWidth != other.mergeWidth) return mergeWidth < other.mergeWidth;
             if (unionBoundarySize != other.unionBoundarySize) return unionBoundarySize < other.unionBoundarySize;
             if (balance != other.balance) return balance < other.balance;
@@ -493,7 +645,7 @@ public class BranchDecomposition {
         }
     }
 
-    private void computeGreedyMerge() {
+    private void computeGreedyMerge(boolean weighted) {
         resetTree();
 
         List<int[]> graphEdges = interactionGraph.getEdgeList();
@@ -513,12 +665,14 @@ public class BranchDecomposition {
 
             BitSet edgeSet = new BitSet(numGraphEdges);
             edgeSet.set(edgeIndex);
-            clusters.add(new GreedyCluster(leaf, edgeSet, 1,
-                    middleSetSize(edgeSet, graphEdges), nextSerial++));
+            LinkedHashSet<Integer> boundary = middleSet(edgeSet, graphEdges);
+            clusters.add(new GreedyCluster(leaf, edgeSet, 1, boundary.size(),
+                    stateCount(boundary), nextSerial++));
         }
 
         while (clusters.size() > 2) {
-            GreedyPair pair = findGreedyPair(clusters, graphEdges, numGraphEdges);
+            GreedyPair pair = findGreedyPair(
+                    clusters, graphEdges, numGraphEdges, weighted);
             GreedyCluster merged = mergeGreedyClusters(
                     clusters.get(pair.i), clusters.get(pair.j), graphEdges, nextSerial++);
 
@@ -542,22 +696,31 @@ public class BranchDecomposition {
                 bt.getEdge(edgeIndex).setM(middleSet(left.edgeSet, graphEdges));
             }
         }
+
+        if (weighted) {
+            logWeightedCost("weighted_greedy");
+        }
     }
 
     private GreedyPair findGreedyPair(List<GreedyCluster> clusters, List<int[]> graphEdges,
-                                      int numGraphEdges) {
+                                      int numGraphEdges, boolean weighted) {
         GreedyPair best = null;
         for (int i = 0; i < clusters.size(); i++) {
             GreedyCluster a = clusters.get(i);
             for (int j = i + 1; j < clusters.size(); j++) {
                 GreedyCluster b = clusters.get(j);
                 BitSet union = unionEdgeSets(a.edgeSet, b.edgeSet);
-                int unionBoundarySize = middleSetSize(union, graphEdges);
+                LinkedHashSet<Integer> unionBoundary = middleSet(union, graphEdges);
+                int unionBoundarySize = unionBoundary.size();
+                BigInteger unionBoundaryStates = stateCount(unionBoundary);
                 int mergeWidth = Math.max(Math.max(a.boundarySize, b.boundarySize), unionBoundarySize);
+                BigInteger mergeStates = a.boundaryStates.max(b.boundaryStates)
+                        .max(unionBoundaryStates);
                 int unionLeafCount = a.leafCount + b.leafCount;
                 int balance = Math.abs(numGraphEdges - 2 * unionLeafCount);
                 GreedyPair candidate = new GreedyPair(i, j, mergeWidth, unionBoundarySize,
-                        balance, unionLeafCount, a.serial + b.serial);
+                        balance, unionLeafCount, a.serial + b.serial,
+                        mergeStates, unionBoundaryStates, weighted);
                 if (candidate.isBetterThan(best)) {
                     best = candidate;
                 }
@@ -582,8 +745,9 @@ public class BranchDecomposition {
         }
 
         BitSet union = unionEdgeSets(left.edgeSet, right.edgeSet);
+        LinkedHashSet<Integer> boundary = middleSet(union, graphEdges);
         return new GreedyCluster(parent, union, left.leafCount + right.leafCount,
-                middleSetSize(union, graphEdges), serial);
+                boundary.size(), stateCount(boundary), serial);
     }
 
     private BitSet unionEdgeSets(BitSet a, BitSet b) {
@@ -592,8 +756,317 @@ public class BranchDecomposition {
         return union;
     }
 
-    private int middleSetSize(BitSet edgeSet, List<int[]> graphEdges) {
-        return middleSet(edgeSet, graphEdges).size();
+    private BigInteger stateCount(Collection<Integer> positions) {
+        BigInteger count = BigInteger.ONE;
+        for (int pos : positions) {
+            count = count.multiply(BigInteger.valueOf(positionStateCounts[pos]));
+        }
+        return count;
+    }
+
+    private void logWeightedCost(String label) {
+        BigInteger maxStates = BigInteger.ZERO;
+        BigInteger totalStates = BigInteger.ZERO;
+        for (int edgeIndex = 0; edgeIndex < bt.getNumEdges(); edgeIndex++) {
+            BigInteger states = stateCount(bt.getEdge(edgeIndex).getM());
+            maxStates = maxStates.max(states);
+            totalStates = totalStates.add(states);
+        }
+        System.out.println("BranchDecomposition " + label + ": bw=" + bt.getBranchwidth()
+                + ", maxBoundaryStates=" + maxStates
+                + ", totalBoundaryStates=" + totalStates);
+    }
+
+    private static final class WeightedNniChoice {
+        final BranchEdge central;
+        final BranchNode leftNode;
+        final BranchNode rightNode;
+        final BranchEdge leftSwap;
+        final BranchEdge rightSwap;
+        final LinkedHashSet<Integer> newMiddle;
+        final BigInteger stateReduction;
+        final int sizeReduction;
+
+        WeightedNniChoice(BranchEdge central,
+                          BranchNode leftNode, BranchNode rightNode,
+                          BranchEdge leftSwap, BranchEdge rightSwap,
+                          LinkedHashSet<Integer> newMiddle,
+                          BigInteger stateReduction, int sizeReduction) {
+            this.central = central;
+            this.leftNode = leftNode;
+            this.rightNode = rightNode;
+            this.leftSwap = leftSwap;
+            this.rightSwap = rightSwap;
+            this.newMiddle = newMiddle;
+            this.stateReduction = stateReduction;
+            this.sizeReduction = sizeReduction;
+        }
+
+        boolean isBetterThan(WeightedNniChoice other) {
+            if (other == null) return true;
+            int cmp = stateReduction.compareTo(other.stateReduction);
+            if (cmp != 0) return cmp > 0;
+            if (sizeReduction != other.sizeReduction) {
+                return sizeReduction > other.sizeReduction;
+            }
+            return newMiddle.size() < other.newMiddle.size();
+        }
+    }
+
+    /**
+     * Refine a completed cubic branch tree with nearest-neighbor interchanges.
+     * An NNI changes only one internal edge's leaf bipartition; the four outer
+     * cuts (and their M sets) are preserved. Accepting only a strictly smaller
+     * RC-state product therefore monotonically lowers total table pressure and
+     * never increases the original branchwidth.
+     */
+    private int refineWeightedNearestNeighborInterchanges() {
+        int branchwidthCap = bt.getBranchwidth();
+        int swaps = 0;
+        int maxSwaps = Math.max(1, 20 * bt.getNumEdges());
+
+        while (swaps < maxSwaps) {
+            WeightedNniChoice best = null;
+            for (int edgeIndex = 0; edgeIndex < bt.getNumEdges(); edgeIndex++) {
+                BranchEdge central = bt.getEdge(edgeIndex);
+                BranchNode leftNode = central.getn1();
+                BranchNode rightNode = central.getn2();
+                if (leftNode.getIsLeaf() || rightNode.getIsLeaf()
+                        || leftNode.getNumEdges() != 3 || rightNode.getNumEdges() != 3) {
+                    continue;
+                }
+
+                BranchEdge[] leftOuter = outerEdges(leftNode, central);
+                BranchEdge[] rightOuter = outerEdges(rightNode, central);
+                if (leftOuter.length != 2 || rightOuter.length != 2) continue;
+
+                // AB|CD -> AC|BD and AD|BC. Swapping leftOuter[1] with either
+                // right edge enumerates both non-equivalent NNI alternatives.
+                best = betterNni(best, central, leftNode, rightNode,
+                        leftOuter[0], leftOuter[1], rightOuter[0], rightOuter[1],
+                        branchwidthCap);
+                best = betterNni(best, central, leftNode, rightNode,
+                        leftOuter[0], leftOuter[1], rightOuter[1], rightOuter[0],
+                        branchwidthCap);
+            }
+
+            if (best == null) break;
+            applyWeightedNni(best);
+            swaps++;
+        }
+        return swaps;
+    }
+
+    private static final class WeightedTreeCost {
+        final BigInteger maxStates;
+        final BigInteger totalStates;
+        final int branchwidth;
+
+        WeightedTreeCost(BigInteger maxStates, BigInteger totalStates, int branchwidth) {
+            this.maxStates = maxStates;
+            this.totalStates = totalStates;
+            this.branchwidth = branchwidth;
+        }
+
+        boolean isBetterThan(WeightedTreeCost other) {
+            int cmp = maxStates.compareTo(other.maxStates);
+            if (cmp != 0) return cmp < 0;
+            cmp = totalStates.compareTo(other.totalStates);
+            if (cmp != 0) return cmp < 0;
+            return branchwidth < other.branchwidth;
+        }
+    }
+
+    /** Deterministic random-restart NNI search to escape one-swap local minima. */
+    private int refineWeightedNniRestarts() {
+        int restarts = getWeightedHicksInteger(
+                "restarts", DEFAULT_WEIGHTED_HICKS_RESTARTS);
+        int randomMoves = getWeightedHicksInteger(
+                "randomMoves", DEFAULT_WEIGHTED_HICKS_RANDOM_MOVES);
+        if (restarts <= 0 || randomMoves <= 0 || bt.getNumEdges() < 5) return 0;
+
+        int branchwidthCap = bt.getBranchwidth();
+        BranchTree bestTree = bt.deepCopy();
+        WeightedTreeCost bestCost = weightedTreeCost();
+        Random random = new Random(weightedHicksSeed());
+        int improvements = 0;
+
+        for (int restart = 0; restart < restarts; restart++) {
+            bt = bestTree.deepCopy();
+            for (int move = 0; move < randomMoves; move++) {
+                List<WeightedNniChoice> choices = legalNniChoices(branchwidthCap, false);
+                if (choices.isEmpty()) break;
+                applyWeightedNni(choices.get(random.nextInt(choices.size())));
+            }
+            refineWeightedNearestNeighborInterchanges();
+            WeightedTreeCost cost = weightedTreeCost();
+            if (cost.isBetterThan(bestCost)) {
+                bestCost = cost;
+                bestTree = bt.deepCopy();
+                improvements++;
+            }
+        }
+        bt = bestTree;
+        return improvements;
+    }
+
+    private List<WeightedNniChoice> legalNniChoices(int branchwidthCap,
+                                                     boolean requireImprovement) {
+        List<WeightedNniChoice> choices = new ArrayList<>();
+        for (int edgeIndex = 0; edgeIndex < bt.getNumEdges(); edgeIndex++) {
+            BranchEdge central = bt.getEdge(edgeIndex);
+            BranchNode leftNode = central.getn1();
+            BranchNode rightNode = central.getn2();
+            if (leftNode.getIsLeaf() || rightNode.getIsLeaf()
+                    || leftNode.getNumEdges() != 3 || rightNode.getNumEdges() != 3) {
+                continue;
+            }
+            BranchEdge[] leftOuter = outerEdges(leftNode, central);
+            BranchEdge[] rightOuter = outerEdges(rightNode, central);
+            if (leftOuter.length != 2 || rightOuter.length != 2) continue;
+
+            WeightedNniChoice first = makeNniChoice(
+                    central, leftNode, rightNode,
+                    leftOuter[0], leftOuter[1], rightOuter[0], rightOuter[1],
+                    branchwidthCap, requireImprovement);
+            WeightedNniChoice second = makeNniChoice(
+                    central, leftNode, rightNode,
+                    leftOuter[0], leftOuter[1], rightOuter[1], rightOuter[0],
+                    branchwidthCap, requireImprovement);
+            if (first != null) choices.add(first);
+            if (second != null) choices.add(second);
+        }
+        return choices;
+    }
+
+    private WeightedTreeCost weightedTreeCost() {
+        BigInteger max = BigInteger.ZERO;
+        BigInteger total = BigInteger.ZERO;
+        for (int edgeIndex = 0; edgeIndex < bt.getNumEdges(); edgeIndex++) {
+            BigInteger states = stateCount(bt.getEdge(edgeIndex).getM());
+            max = max.max(states);
+            total = total.add(states);
+        }
+        return new WeightedTreeCost(max, total, bt.getBranchwidth());
+    }
+
+    private long weightedHicksSeed() {
+        long seed = 0x9E3779B97F4A7C15L;
+        for (int count : positionStateCounts) {
+            seed ^= count + 0x9E3779B9L + (seed << 6) + (seed >>> 2);
+        }
+        for (int[] edge : interactionGraph.getEdgeList()) {
+            seed ^= (long) edge[0] * 0xBF58476D1CE4E5B9L;
+            seed = Long.rotateLeft(seed, 17) ^ edge[1];
+        }
+        return seed;
+    }
+
+    private static int getWeightedHicksInteger(String suffix, int defaultValue) {
+        String neutral = "branchdp.decomp.weightedHicks." + suffix;
+        String value = System.getProperty(neutral);
+        if (value == null || value.trim().isEmpty()) {
+            value = System.getProperty("packstar.decomp.weightedHicks." + suffix);
+        }
+        if (value == null || value.trim().isEmpty()) return defaultValue;
+        try {
+            return Math.max(0, Integer.parseInt(value.trim()));
+        } catch (NumberFormatException ex) {
+            System.err.println("BranchDecomposition weighted_hicks: invalid "
+                    + neutral + "='" + value + "', using " + defaultValue + ".");
+            return defaultValue;
+        }
+    }
+
+    private WeightedNniChoice betterNni(WeightedNniChoice best,
+                                         BranchEdge central,
+                                         BranchNode leftNode, BranchNode rightNode,
+                                         BranchEdge leftKeep, BranchEdge leftSwap,
+                                         BranchEdge rightSwap, BranchEdge rightKeep,
+                                         int branchwidthCap) {
+        WeightedNniChoice candidate = makeNniChoice(
+                central, leftNode, rightNode,
+                leftKeep, leftSwap, rightSwap, rightKeep,
+                branchwidthCap, true);
+        return candidate != null && candidate.isBetterThan(best) ? candidate : best;
+    }
+
+    private WeightedNniChoice makeNniChoice(BranchEdge central,
+                                             BranchNode leftNode, BranchNode rightNode,
+                                             BranchEdge leftKeep, BranchEdge leftSwap,
+                                             BranchEdge rightSwap, BranchEdge rightKeep,
+                                             int branchwidthCap,
+                                             boolean requireImprovement) {
+        LinkedHashSet<Integer> newMiddle = new LinkedHashSet<>(leftKeep.getM());
+        newMiddle.addAll(rightSwap.getM());
+        LinkedHashSet<Integer> otherSide = new LinkedHashSet<>(leftSwap.getM());
+        otherSide.addAll(rightKeep.getM());
+        newMiddle.retainAll(otherSide);
+        if (newMiddle.size() > branchwidthCap) return null;
+
+        BigInteger currentStates = stateCount(central.getM());
+        BigInteger newStates = stateCount(newMiddle);
+        BigInteger reduction = currentStates.subtract(newStates);
+        int sizeReduction = central.getM().size() - newMiddle.size();
+        if (requireImprovement
+                && (reduction.signum() < 0
+                || (reduction.signum() == 0 && sizeReduction <= 0))) {
+            return null;
+        }
+
+        return new WeightedNniChoice(
+                central, leftNode, rightNode, leftSwap, rightSwap,
+                newMiddle, reduction, sizeReduction);
+    }
+
+    private BranchEdge[] outerEdges(BranchNode node, BranchEdge central) {
+        BranchEdge[] incident = bt.getEdgesForNode(node.getIndex());
+        BranchEdge[] outer = new BranchEdge[Math.max(0, incident.length - 1)];
+        int offset = 0;
+        for (BranchEdge edge : incident) {
+            if (edge != central) outer[offset++] = edge;
+        }
+        return offset == outer.length ? outer : Arrays.copyOf(outer, offset);
+    }
+
+    private void applyWeightedNni(WeightedNniChoice choice) {
+        BranchNode leftOther = otherEndpoint(choice.leftSwap, choice.leftNode);
+        BranchNode rightOther = otherEndpoint(choice.rightSwap, choice.rightNode);
+        LinkedHashSet<Integer> leftMiddle = new LinkedHashSet<>(choice.leftSwap.getM());
+        LinkedHashSet<Integer> rightMiddle = new LinkedHashSet<>(choice.rightSwap.getM());
+
+        int leftIndex = edgeIndex(choice.leftSwap);
+        int rightIndex = edgeIndex(choice.rightSwap);
+        if (leftIndex < 0 || rightIndex < 0) {
+            throw new IllegalStateException("weighted NNI edge disappeared during refinement");
+        }
+        if (leftIndex > rightIndex) {
+            bt.deleteEdge(leftIndex);
+            bt.deleteEdge(rightIndex);
+        } else {
+            bt.deleteEdge(rightIndex);
+            bt.deleteEdge(leftIndex);
+        }
+
+        int newLeft = bt.addEdge(choice.leftNode.getIndex(), rightOther.getIndex());
+        int newRight = bt.addEdge(choice.rightNode.getIndex(), leftOther.getIndex());
+        if (newLeft < 0 || newRight < 0) {
+            throw new IllegalStateException("weighted NNI produced a duplicate tree edge");
+        }
+        bt.getEdge(newLeft).setM(rightMiddle);
+        bt.getEdge(newRight).setM(leftMiddle);
+        choice.central.setM(choice.newMiddle);
+    }
+
+    private int edgeIndex(BranchEdge target) {
+        for (int edgeIndex = 0; edgeIndex < bt.getNumEdges(); edgeIndex++) {
+            if (bt.getEdge(edgeIndex) == target) return edgeIndex;
+        }
+        return -1;
+    }
+
+    private static BranchNode otherEndpoint(BranchEdge edge, BranchNode node) {
+        return edge.getn1() == node ? edge.getn2() : edge.getn1();
     }
 
     private LinkedHashSet<Integer> middleSet(BitSet edgeSet, List<int[]> graphEdges) {
@@ -637,6 +1110,121 @@ public class BranchDecomposition {
             }
         }
         return null;
+    }
+
+    private static final class WeightedPushChoice {
+        final BranchNode node;
+        final BranchEdge[] edges;
+        final int left;
+        final int right;
+        final LinkedHashSet<Integer> boundary;
+        final BigInteger boundaryStates;
+
+        WeightedPushChoice(BranchNode node, BranchEdge[] edges, int left, int right,
+                           LinkedHashSet<Integer> boundary,
+                           BigInteger boundaryStates) {
+            this.node = node;
+            this.edges = edges;
+            this.left = left;
+            this.right = right;
+            this.boundary = boundary;
+            this.boundaryStates = boundaryStates;
+        }
+
+        boolean isBetterThan(WeightedPushChoice other) {
+            if (other == null) return true;
+            int cmp = boundaryStates.compareTo(other.boundaryStates);
+            if (cmp != 0) return cmp < 0;
+            if (boundary.size() != other.boundary.size()) {
+                return boundary.size() < other.boundary.size();
+            }
+            if (node.getIndex() != other.node.getIndex()) {
+                return node.getIndex() < other.node.getIndex();
+            }
+            if (left != other.left) return left < other.left;
+            return right < other.right;
+        }
+    }
+
+    /**
+     * Hicks' push inequality controls separator cardinality but the historical
+     * implementation accepts the first valid pair.  Evaluate every valid push
+     * and choose the new separator with the smallest RC Cartesian product.
+     * Every accepted choice still satisfies the original inequality, so this
+     * changes tie-breaking/shape rather than relaxing branchwidth safety.
+     */
+    private BranchNode pushBestWeighted(LinkedHashSet<BranchNode> bigNodes,
+                                        LinkedHashSet<BranchEdge> sx,
+                                        LinkedHashSet<BranchEdge> sy) {
+        WeightedPushChoice best = null;
+        for (BranchNode node : bigNodes) {
+            BranchEdge[] edges = bt.getEdgesForNode(node.getIndex());
+            boolean[][] positionInEdge = new boolean[numPositions][edges.length];
+            for (int edgeIndex = 0; edgeIndex < edges.length; edgeIndex++) {
+                for (int pos : edges[edgeIndex].getM()) {
+                    if (pos >= 0 && pos < numPositions) {
+                        positionInEdge[pos][edgeIndex] = true;
+                    }
+                }
+            }
+
+            for (int i = 0; i < edges.length; i++) {
+                if (edges[i].isChecked(node)) continue;
+                for (int j = 0; j < edges.length; j++) {
+                    if (i == j) continue;
+                    LinkedHashSet<Integer> boundary = pushBoundary(
+                            edges, positionInEdge, i, j);
+                    if (boundary.size() > Math.max(
+                            edges[i].getM().size(), edges[j].getM().size())) {
+                        continue;
+                    }
+                    WeightedPushChoice candidate = new WeightedPushChoice(
+                            node, edges, i, j, boundary, stateCount(boundary));
+                    if (candidate.isBetterThan(best)) {
+                        best = candidate;
+                    }
+                }
+            }
+        }
+
+        if (best == null) {
+            // No unchecked edge participates in a legal push. Mark the exhausted
+            // search space exactly as repeated legacy pushNode() calls would.
+            for (BranchNode node : bigNodes) {
+                for (BranchEdge edge : bt.getEdgesForNode(node.getIndex())) {
+                    edge.setChecked(node, true);
+                }
+            }
+            return null;
+        }
+
+        best.edges[best.left].setChecked(best.node, true);
+        sx.add(best.edges[best.left]);
+        sx.add(best.edges[best.right]);
+        for (int edgeIndex = 0; edgeIndex < best.edges.length; edgeIndex++) {
+            if (edgeIndex != best.left && edgeIndex != best.right) {
+                sy.add(best.edges[edgeIndex]);
+            }
+        }
+        return best.node;
+    }
+
+    private LinkedHashSet<Integer> pushBoundary(BranchEdge[] edges,
+                                                 boolean[][] positionInEdge,
+                                                 int left, int right) {
+        LinkedHashSet<Integer> boundary = new LinkedHashSet<>(edges[left].getM());
+        boundary.addAll(edges[right].getM());
+        boundary.removeIf(pos -> {
+            if (pos < 0 || pos >= numPositions) return false;
+            for (int edgeIndex = 0; edgeIndex < edges.length; edgeIndex++) {
+                if (edgeIndex != left && edgeIndex != right
+                        && positionInEdge[pos][edgeIndex]) {
+                    return false;
+                }
+            }
+            return true;
+        });
+        return boundary;
     }
 
     // ========== Push operation ==========

@@ -1,6 +1,7 @@
 package edu.duke.cs.osprey.packstar;
 
 import edu.duke.cs.osprey.astar.conf.RCs;
+import edu.duke.cs.osprey.branchdp.BranchDpAdmission;
 import edu.duke.cs.osprey.confspace.ConfDB;
 import edu.duke.cs.osprey.confspace.SimpleConfSpace;
 import edu.duke.cs.osprey.ematrix.EnergyMatrix;
@@ -17,7 +18,7 @@ import java.math.BigDecimal;
  * <p>This class owns the PACK* API while reusing the shared branch-DP backend.
  * PACK* estimator mode is forced for the backend.</p>
  */
-public class PackStarBound implements PartitionFunction.WithConfDB, PackStarSampleTraceable {
+public class PackStarBound implements PartitionFunction.WithConfDB, PackStarSampleTraceable, AutoCloseable {
 
     private final PackStarBackend backend;
 
@@ -67,6 +68,15 @@ public class PackStarBound implements PartitionFunction.WithConfDB, PackStarSamp
 
     public void setReduceMinimizations(boolean enabled) {
         backend.setReduceMinimizations(enabled);
+    }
+
+    public BranchDpAdmission.Prediction getAdmissionPrediction() {
+        return backend.getAdmissionPrediction();
+    }
+
+    @Override
+    public void setInstanceId(int val) {
+        backend.setInstanceId(val);
     }
 
     @Override
@@ -127,5 +137,10 @@ public class PackStarBound implements PartitionFunction.WithConfDB, PackStarSamp
     @Override
     public void setConfDB(ConfDB confDB, ConfDB.Key key) {
         backend.setConfDB(confDB, key);
+    }
+
+    @Override
+    public void close() {
+        backend.close();
     }
 }

@@ -79,7 +79,7 @@ public class CommandBindingAffinity extends RunnableCommand {
     public double packStarPacConfidence = Double.NaN;
 
     @Parameter(names = "--packstar-pac-residual-bound",
-            description = "Deterministic absolute residual-energy bound |xi| in kcal/mol. Required for a strict PAC certificate.")
+            description = "Assumed one-sided PACK* tail bound E_eta-E_true <= B in kcal/mol. Tightens the clipped PAC upper; q_m is the unconditional fallback.")
     public double packStarPacResidualBound = Double.NaN;
 
     @Parameter(names = "--stability-threshold", description = "Pruning criteria to remove sequences with unstable unbound states relative to the wild type sequence. Set to a negative number to disable.")
