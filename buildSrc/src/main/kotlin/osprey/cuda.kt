@@ -64,11 +64,13 @@ fun Project.nvcc(exec: Exec, kernelName: String, maxRegisters: Int? = null, prof
 		// NOTE: change this to your GPU's arch
 		args.addAll(listOf("-cubin", "-gencode=arch=compute_86,code=sm_86", "-lineinfo", "--ptxas-options=-v"))
 	} else {
-		// otherwise, compile for V100/Titan V and Ampere A5000 plus PTX for driver JIT compatibility
+		// otherwise, compile for V100/Titan V, Ampere A5000, and Hopper H200,
+		// plus PTX for driver JIT compatibility on newer architectures
 		args.addAll(listOf("-fatbin",
 			"-gencode=arch=compute_70,code=sm_70",
 			"-gencode=arch=compute_86,code=sm_86",
-			"-gencode=arch=compute_86,code=compute_86"
+			"-gencode=arch=compute_90,code=sm_90",
+			"-gencode=arch=compute_90,code=compute_90"
 		))
 	}
 

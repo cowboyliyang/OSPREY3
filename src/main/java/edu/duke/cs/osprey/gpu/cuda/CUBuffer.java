@@ -91,10 +91,29 @@ public class CUBuffer<T extends Buffer> {
 		buf.rewind();
 		stream.getContext().uploadAsync(pdBuf, phBuf, numBytes, stream);
 	}
+
+	public void uploadAsync(long bytes) {
+		checkTransferSize(bytes);
+		buf.rewind();
+		stream.getContext().uploadAsync(pdBuf, phBuf, bytes, stream);
+	}
 	
 	public void downloadAsync() {
 		buf.rewind();
 		stream.getContext().downloadAsync(phBuf, pdBuf, numBytes, stream);
+	}
+
+	public void downloadAsync(long bytes) {
+		checkTransferSize(bytes);
+		buf.rewind();
+		stream.getContext().downloadAsync(phBuf, pdBuf, bytes, stream);
+	}
+
+	private void checkTransferSize(long bytes) {
+		if (bytes < 0 || bytes > numBytes) {
+			throw new IllegalArgumentException(
+				"transfer size " + bytes + " is outside buffer capacity " + numBytes);
+		}
 	}
 	
 	public T downloadSync() {

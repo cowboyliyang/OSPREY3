@@ -9,9 +9,8 @@
 
 set -euo pipefail
 
-REPO=/home/users/lz280/IdeaProjects/OSPREY3
-JAVA_HOME=/home/users/lz280/java/jdk-17.0.2+8
-PROJECT_CACHE=${SLURM_TMPDIR:-/tmp}/osprey3-calibration-cache-${SLURM_JOB_ID}
+REPO=${REPO:-/hpc/home/lz280/OSPREY3}
+JAVA_HOME=${JAVA_HOME:-/hpc/home/lz280/tools/jdk17}
 
 cd "$REPO"
 export JAVA_HOME
@@ -22,7 +21,9 @@ if [ -f /etc/profile.d/modules.sh ]; then
     source /etc/profile.d/modules.sh
 fi
 if command -v module >/dev/null 2>&1; then
-    module load cuda/12.8 >/dev/null 2>&1 \
+    module load CUDA/12.8 >/dev/null 2>&1 \
+        || module load CUDA/12.4 >/dev/null 2>&1 \
+        || module load cuda/12.8 >/dev/null 2>&1 \
         || module load cuda/12.4 >/dev/null 2>&1 \
         || module load cuda/cuda-12.1 >/dev/null 2>&1 \
         || module load cuda >/dev/null 2>&1 \
@@ -89,9 +90,18 @@ nvidia-smi --query-gpu=name,uuid,memory.total,memory.free \
     --format=csv,noheader
 "$NVCC" --version | tail -n 1
 
-./gradlew --project-cache-dir "$PROJECT_CACHE" \
-    compileCuda_dp compileTestJava --offline --no-daemon --max-workers=4 \
-    -Dorg.gradle.jvmargs=-Xmx3g
+required_artifacts=(
+    build/classes/java/main/edu/duke/cs/osprey/branchdp/DPGpuFullDP.class
+    build/classes/java/main/edu/duke/cs/osprey/branchdp/DPGpuOutOfCore.class
+    build/classes/java/test/edu/duke/cs/osprey/branchdp/TestGpuFullDP.class
+    build/resources/main/gpuKernels/cuda/dp.bin
+)
+for artifact in "${required_artifacts[@]}"; do
+    if [ ! -f "$artifact" ]; then
+        echo "Missing prebuilt calibration artifact: $artifact" >&2
+        exit 1
+    fi
+done
 
 echo "git_head=$(git rev-parse HEAD)"
 sha256sum \
@@ -103,9 +113,12 @@ sha256sum \
     build/classes/java/main/edu/duke/cs/osprey/branchdp/DPGpuOutOfCore.class \
     build/resources/main/gpuKernels/cuda/dp.bin
 
-./gradlew --project-cache-dir "$PROJECT_CACHE" \
-    test --offline --no-daemon --max-workers=1 \
+./gradlew \
+    cleanTest test -x compileKotlin -x compileJava \
+    -x compileTestKotlin -x compileTestJava \
+    --offline --no-daemon --max-workers=1 \
     -Dorg.gradle.jvmargs=-Xmx3g -DtestMaxHeap=8g \
+    -Dkotlin.compiler.execution.strategy=in-process \
     -Dbranchdp.test.gpu.calibrate=true \
     --tests edu.duke.cs.osprey.branchdp.TestGpuFullDP.gpuLeafThroughputCalibration \
     --tests edu.duke.cs.osprey.branchdp.TestGpuFullDP.gpuOutOfCoreThroughputCalibration
