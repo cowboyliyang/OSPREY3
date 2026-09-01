@@ -246,6 +246,15 @@ final class DPGpuFullDP {
         int[] lmMCounts;
         long[] lmOffsets;
 
+        // Exact three-position factors local to this edge. Slots use one
+        // namespace: [0,mCounts.length) is M and the remainder is lambda.
+        // Each factor owns one dense table in tripleRigid/tripleMin.
+        int[] tripleSlots = new int[0];       // 3 entries per factor
+        long[] tripleStrides = new long[0];  // 3 entries per factor
+        long[] tripleOffsets = new long[0];  // one table base per factor
+        double[] tripleRigid = new double[0];
+        double[] tripleMin = new double[0];
+
         // Per-child fold plans, concatenated CSR-style across numChildren.
         int[] childMSrcAll;
         long[] childMStrideAll;
@@ -899,6 +908,7 @@ final class DPGpuFullDP {
             CUBuffer<IntBuffer> lmMSlots = uploadInts(stream, req.lmMSlots, buffers);
             CUBuffer<IntBuffer> lmMCounts = uploadInts(stream, req.lmMCounts, buffers);
             CUBuffer<LongBuffer> lmOffsets = uploadLongs(stream, req.lmOffsets, buffers);
+            GpuTripleBuffers triple = uploadTripleBuffers(req, stream, buffers, rawBufs);
             CUBuffer<IntBuffer> childMSrcAll = uploadInts(stream, req.childMSrcAll, buffers);
             CUBuffer<LongBuffer> childMStrideAll = uploadLongs(stream, req.childMStrideAll, buffers);
             CUBuffer<IntBuffer> childMTermOff = uploadInts(stream, req.childMTermOff, buffers);
@@ -926,6 +936,7 @@ final class DPGpuFullDP {
             int[] mCountArg = { req.mCounts.length };
             int[] lambdaCountArg = { req.lambdaCounts.length };
             int[] lmPairCountArg = { req.lmLamSlots.length };
+            int[] tripleFactorCountArg = { req.tripleOffsets.length };
             int[] numChildrenArg = { req.numChildren };
             double[] invRTArg = { req.invRT };
 
@@ -947,6 +958,11 @@ final class DPGpuFullDP {
                     lmMSlots.getDevicePointer(),
                     lmMCounts.getDevicePointer(),
                     lmOffsets.getDevicePointer(),
+                    triple.slots.getDevicePointer(),
+                    triple.strides.getDevicePointer(),
+                    triple.offsets.getDevicePointer(),
+                    Pointer.to(triple.rigid),
+                    Pointer.to(triple.min),
                     childMSrcAll.getDevicePointer(),
                     childMStrideAll.getDevicePointer(),
                     childMTermOff.getDevicePointer(),
@@ -966,6 +982,7 @@ final class DPGpuFullDP {
                     Pointer.to(mCountArg),
                     Pointer.to(lambdaCountArg),
                     Pointer.to(lmPairCountArg),
+                    Pointer.to(tripleFactorCountArg),
                     Pointer.to(numChildrenArg),
                     Pointer.to(invRTArg)
                 ));
@@ -1050,6 +1067,7 @@ final class DPGpuFullDP {
             CUBuffer<IntBuffer> lmMSlots = uploadInts(stream, req.lmMSlots, buffers);
             CUBuffer<IntBuffer> lmMCounts = uploadInts(stream, req.lmMCounts, buffers);
             CUBuffer<LongBuffer> lmOffsets = uploadLongs(stream, req.lmOffsets, buffers);
+            GpuTripleBuffers triple = uploadTripleBuffers(req, stream, buffers, rawBufs);
             CUBuffer<IntBuffer> childMSrcAll = uploadInts(stream, req.childMSrcAll, buffers);
             CUBuffer<LongBuffer> childMStrideAll = uploadLongs(stream, req.childMStrideAll, buffers);
             CUBuffer<LongBuffer> childMPackedStrideAll = uploadLongs(stream,
@@ -1079,6 +1097,7 @@ final class DPGpuFullDP {
             int[] mCountArg = { req.mCounts.length };
             int[] lambdaCountArg = { req.lambdaCounts.length };
             int[] lmPairCountArg = { req.lmLamSlots.length };
+            int[] tripleFactorCountArg = { req.tripleOffsets.length };
             int[] numChildrenArg = { req.numChildren };
             int[] streamedChildArg = { plan.streamedChild };
             double[] invRTArg = { req.invRT };
@@ -1152,6 +1171,11 @@ final class DPGpuFullDP {
                                 lmMSlots.getDevicePointer(),
                                 lmMCounts.getDevicePointer(),
                                 lmOffsets.getDevicePointer(),
+                                triple.slots.getDevicePointer(),
+                                triple.strides.getDevicePointer(),
+                                triple.offsets.getDevicePointer(),
+                                Pointer.to(triple.rigid),
+                                Pointer.to(triple.min),
                                 childMSrcAll.getDevicePointer(),
                                 childMStrideAll.getDevicePointer(),
                                 childMPackedStrideAll.getDevicePointer(),
@@ -1176,6 +1200,7 @@ final class DPGpuFullDP {
                                 Pointer.to(mCountArg),
                                 Pointer.to(lambdaCountArg),
                                 Pointer.to(lmPairCountArg),
+                                Pointer.to(tripleFactorCountArg),
                                 Pointer.to(numChildrenArg),
                                 Pointer.to(streamedChildArg),
                                 Pointer.to(streamedRowStartArg),
@@ -1312,6 +1337,7 @@ final class DPGpuFullDP {
             CUBuffer<IntBuffer> lmMSlots = uploadInts(stream, req.lmMSlots, buffers);
             CUBuffer<IntBuffer> lmMCounts = uploadInts(stream, req.lmMCounts, buffers);
             CUBuffer<LongBuffer> lmOffsets = uploadLongs(stream, req.lmOffsets, buffers);
+            GpuTripleBuffers triple = uploadTripleBuffers(req, stream, buffers, rawBufs);
             CUBuffer<IntBuffer> childMSrcAll = uploadInts(stream, req.childMSrcAll, buffers);
             CUBuffer<LongBuffer> childMPackedStrideAll = uploadLongs(stream, req.childMPackedStrideAll, buffers);
             CUBuffer<IntBuffer> childMTermOff = uploadInts(stream, req.childMTermOff, buffers);
@@ -1346,6 +1372,7 @@ final class DPGpuFullDP {
             int[] mCountArg = { req.mCounts.length };
             int[] lambdaCountArg = { req.lambdaCounts.length };
             int[] lmPairCountArg = { req.lmLamSlots.length };
+            int[] tripleFactorCountArg = { req.tripleOffsets.length };
             int[] numChildrenArg = { req.numChildren };
             double[] invRTArg = { req.invRT };
             long processedOutputs = 0L;
@@ -1366,11 +1393,12 @@ final class DPGpuFullDP {
                         mCounts, lambdaCounts,
                         lambdaOnlyRigid, lambdaOnlyMin, lmRigid, lmMin,
                         lmLamSlots, lmMSlots, lmMCounts, lmOffsets,
+                        triple,
                         childMSrcAll, childMPackedStrideAll, childMTermOff, childMTermCnt,
                         childLSrcAll, childLPackedStrideAll, childLTermOff, childLTermCnt,
                         childLambdaStates, outLower, outUpper, mIdxList, mIdxListHost,
                         mStateCountArg, totalLambdaStatesArg, mCountArg, lambdaCountArg,
-                        lmPairCountArg, numChildrenArg, invRTArg);
+                        lmPairCountArg, tripleFactorCountArg, numChildrenArg, invRTArg);
                 processedOutputs += slice.outputCount;
                 if (req.progress) {
                     double ms = (System.nanoTime() - startAllNanos)/1e6;
@@ -1415,6 +1443,7 @@ final class DPGpuFullDP {
             CUBuffer<IntBuffer> lmMSlots,
             CUBuffer<IntBuffer> lmMCounts,
             CUBuffer<LongBuffer> lmOffsets,
+            GpuTripleBuffers triple,
             CUBuffer<IntBuffer> childMSrcAll,
             CUBuffer<LongBuffer> childMPackedStrideAll,
             CUBuffer<IntBuffer> childMTermOff,
@@ -1433,6 +1462,7 @@ final class DPGpuFullDP {
             int[] mCountArg,
             int[] lambdaCountArg,
             int[] lmPairCountArg,
+            int[] tripleFactorCountArg,
             int[] numChildrenArg,
             double[] invRTArg) {
 
@@ -1471,6 +1501,11 @@ final class DPGpuFullDP {
                         lmMSlots.getDevicePointer(),
                         lmMCounts.getDevicePointer(),
                         lmOffsets.getDevicePointer(),
+                        triple.slots.getDevicePointer(),
+                        triple.strides.getDevicePointer(),
+                        triple.offsets.getDevicePointer(),
+                        Pointer.to(triple.rigid),
+                        Pointer.to(triple.min),
                         childMSrcAll.getDevicePointer(),
                         childMPackedStrideAll.getDevicePointer(),
                         childMTermOff.getDevicePointer(),
@@ -1494,6 +1529,7 @@ final class DPGpuFullDP {
                         Pointer.to(mCountArg),
                         Pointer.to(lambdaCountArg),
                         Pointer.to(lmPairCountArg),
+                        Pointer.to(tripleFactorCountArg),
                         Pointer.to(numChildrenArg),
                         Pointer.to(invRTArg)
                 ));
@@ -1577,6 +1613,7 @@ final class DPGpuFullDP {
                     req.lmMCounts, buffers);
             CUBuffer<LongBuffer> lmOffsets = uploadLongs(stream,
                     req.lmOffsets, buffers);
+            GpuTripleBuffers triple = uploadTripleBuffers(req, stream, buffers, rawBufs);
             CUBuffer<IntBuffer> childMSrcAll = uploadInts(stream,
                     req.childMSrcAll, buffers);
             CUBuffer<LongBuffer> childMPackedStrideAll = uploadLongs(stream,
@@ -1646,10 +1683,16 @@ final class DPGpuFullDP {
 
             long auditedDeviceBytes = Math.max(1L, req.lmRigid.length)
                     * (long)Double.BYTES
-                    + Math.max(1L, req.lmMin.length) * (long)Double.BYTES;
+                    + Math.max(1L, req.lmMin.length) * (long)Double.BYTES
+                    + Math.max(1L, req.tripleRigid.length) * (long)Double.BYTES
+                    + Math.max(1L, req.tripleMin.length) * (long)Double.BYTES;
             long largestAuditedAllocation = Math.max(
-                    Math.max(1L, req.lmRigid.length) * (long)Double.BYTES,
-                    Math.max(1L, req.lmMin.length) * (long)Double.BYTES);
+                    Math.max(
+                            Math.max(1L, req.lmRigid.length) * (long)Double.BYTES,
+                            Math.max(1L, req.lmMin.length) * (long)Double.BYTES),
+                    Math.max(
+                            Math.max(1L, req.tripleRigid.length) * (long)Double.BYTES,
+                            Math.max(1L, req.tripleMin.length) * (long)Double.BYTES));
             for (CUBuffer<?> buffer : buffers) {
                 auditedDeviceBytes = Math.addExact(auditedDeviceBytes,
                         buffer.getNumBytes());
@@ -1686,6 +1729,7 @@ final class DPGpuFullDP {
             int[] mCountArg = {req.mCounts.length};
             int[] lambdaCountArg = {req.lambdaCounts.length};
             int[] lmPairCountArg = {req.lmLamSlots.length};
+            int[] tripleFactorCountArg = {req.tripleOffsets.length};
             int[] numChildrenArg = {req.numChildren};
             double[] invRTArg = {req.invRT};
             long boxEnd = boxStart + boxCount;
@@ -1796,6 +1840,11 @@ final class DPGpuFullDP {
                                 lmMSlots.getDevicePointer(),
                                 lmMCounts.getDevicePointer(),
                                 lmOffsets.getDevicePointer(),
+                                triple.slots.getDevicePointer(),
+                                triple.strides.getDevicePointer(),
+                                triple.offsets.getDevicePointer(),
+                                Pointer.to(triple.rigid),
+                                Pointer.to(triple.min),
                                 childMSrcAll.getDevicePointer(),
                                 childMPackedStrideAll.getDevicePointer(),
                                 childMTermOff.getDevicePointer(),
@@ -1826,6 +1875,7 @@ final class DPGpuFullDP {
                                 Pointer.to(mCountArg),
                                 Pointer.to(lambdaCountArg),
                                 Pointer.to(lmPairCountArg),
+                                Pointer.to(tripleFactorCountArg),
                                 Pointer.to(numChildrenArg),
                                 Pointer.to(firstLambdaTileArg),
                                 Pointer.to(lastLambdaTileArg),
@@ -2735,6 +2785,7 @@ final class DPGpuFullDP {
                     req.numChildren,
                     residentStates,
                     req.mStateChunk);
+            fixedBytes = addTripleDeviceBytes(fixedBytes, req);
             fixedBytes = addBytes(fixedBytes, req.mStateChunk, Long.BYTES);
             fixedBytes = addBytes(fixedBytes, req.numChildren, Long.BYTES);
             fixedBytes = addBytes(fixedBytes, req.numChildren, Long.BYTES);
@@ -2826,6 +2877,7 @@ final class DPGpuFullDP {
                 req.childTableBase.length,
                 0L,
                 req.mStateChunk);
+        fixed = addTripleDeviceBytes(fixed, req);
         fixed = addBytes(fixed, req.mStateChunk, Long.BYTES); // mIdxList
         long available = usable > fixed ? usable - fixed : 1L;
         return Math.max(1L, Math.min(configured, available));
@@ -2864,6 +2916,7 @@ final class DPGpuFullDP {
                 req.childTableBase.length,
                 childTableStates,
                 req.mStateChunk);
+        bytes = addTripleDeviceBytes(bytes, req);
         bytes = addBytes(bytes, req.mStateChunk, Long.BYTES); // mIdxList
         bytes = addBytes(bytes, multiplyLong(unionStatesPerSlice, req.numChildren), Long.BYTES); // row keys worst-case
         bytes = addBytes(bytes, req.numChildren, Long.BYTES); // childPackedBase
@@ -2898,6 +2951,7 @@ final class DPGpuFullDP {
                 req.childTableBase.length,
                 childTableStates,
                 req.mStateChunk);
+        bytes = addTripleDeviceBytes(bytes, req);
         bytes = addBytes(bytes, req.mStateChunk, Long.BYTES); // mIdxList
         bytes = addBytes(bytes, req.numChildren, Long.BYTES); // one row key per child
         bytes = addBytes(bytes, req.numChildren, Long.BYTES); // childPackedBase
@@ -2932,6 +2986,7 @@ final class DPGpuFullDP {
                 req.childTableBase.length,
                 slice.packedStates,
                 req.mStateChunk);
+        bytes = addTripleDeviceBytes(bytes, req);
         bytes = addBytes(bytes, req.mStateChunk, Long.BYTES);
         bytes = addBytes(bytes, slice.childRowKeysAll.length, Long.BYTES);
         bytes = addBytes(bytes, req.numChildren, Long.BYTES);
@@ -2963,6 +3018,36 @@ final class DPGpuFullDP {
         int capped = Math.min(requested, stream.getContext().getGpu().getMaxBlockThreads());
         int powerOfTwo = Integer.highestOneBit(capped);
         return Math.max(1, powerOfTwo);
+    }
+
+    private static final class GpuTripleBuffers {
+        final CUBuffer<IntBuffer> slots;
+        final CUBuffer<LongBuffer> strides;
+        final CUBuffer<LongBuffer> offsets;
+        final CUdeviceptr rigid;
+        final CUdeviceptr min;
+
+        GpuTripleBuffers(CUBuffer<IntBuffer> slots,
+                         CUBuffer<LongBuffer> strides,
+                         CUBuffer<LongBuffer> offsets,
+                         CUdeviceptr rigid, CUdeviceptr min) {
+            this.slots = slots;
+            this.strides = strides;
+            this.offsets = offsets;
+            this.rigid = rigid;
+            this.min = min;
+        }
+    }
+
+    private static GpuTripleBuffers uploadTripleBuffers(
+            Request req, GpuStream stream,
+            List<CUBuffer<?>> buffers, List<CUdeviceptr> rawBufs) {
+        return new GpuTripleBuffers(
+                uploadInts(stream, req.tripleSlots, buffers),
+                uploadLongs(stream, req.tripleStrides, buffers),
+                uploadLongs(stream, req.tripleOffsets, buffers),
+                uploadDoublesBig(req.tripleRigid, rawBufs),
+                uploadDoublesBig(req.tripleMin, rawBufs));
     }
 
     private static CUBuffer<IntBuffer> uploadInts(GpuStream stream, int[] values, List<CUBuffer<?>> buffers) {
@@ -3110,7 +3195,7 @@ final class DPGpuFullDP {
     }
 
     static long estimateDeviceBytes(Request req) {
-        return estimateDeviceBytesForShape(
+        long bytes = estimateDeviceBytesForShape(
                 req.mCounts.length,
                 req.lambdaCounts.length,
                 req.totalLambdaStates,
@@ -3121,6 +3206,16 @@ final class DPGpuFullDP {
                 req.childTableBase.length,
                 req.childTableTotal,
                 req.mStateChunk);
+        return addTripleDeviceBytes(bytes, req);
+    }
+
+    private static long addTripleDeviceBytes(long bytes, Request req) {
+        bytes = addBytes(bytes, req.tripleSlots.length, Integer.BYTES);
+        bytes = addBytes(bytes, req.tripleStrides.length, Long.BYTES);
+        bytes = addBytes(bytes, req.tripleOffsets.length, Long.BYTES);
+        bytes = addBytes(bytes, req.tripleRigid.length, Double.BYTES);
+        bytes = addBytes(bytes, req.tripleMin.length, Double.BYTES);
+        return bytes;
     }
 
     static long estimateDeviceBytesForShape(int mCountLen, int lambdaCountLen,

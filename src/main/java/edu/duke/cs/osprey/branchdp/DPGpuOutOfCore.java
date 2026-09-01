@@ -146,6 +146,8 @@ final class DPGpuOutOfCore {
         final long lmPairCount;
         final long childMTermTotal;
         final long childLTermTotal;
+        final long tripleFactorCount;
+        final long tripleTermCount;
 
         PlanningInput(int mPositionCount, int[] lambdaCounts,
                       int[] unionMCounts, int[][] childMUnionDims,
@@ -153,6 +155,20 @@ final class DPGpuOutOfCore {
                       long childSliceMaxBytes, long outputWorkspaceMaxBytes,
                       long lmTermCount, long lmPairCount,
                       long childMTermTotal, long childLTermTotal) {
+            this(mPositionCount, lambdaCounts, unionMCounts,
+                    childMUnionDims, childLambdaDims, parentFreeStateCount,
+                    childSliceMaxBytes, outputWorkspaceMaxBytes,
+                    lmTermCount, lmPairCount, childMTermTotal,
+                    childLTermTotal, 0L, 0L);
+        }
+
+        PlanningInput(int mPositionCount, int[] lambdaCounts,
+                      int[] unionMCounts, int[][] childMUnionDims,
+                      int[][] childLambdaDims, long parentFreeStateCount,
+                      long childSliceMaxBytes, long outputWorkspaceMaxBytes,
+                      long lmTermCount, long lmPairCount,
+                      long childMTermTotal, long childLTermTotal,
+                      long tripleFactorCount, long tripleTermCount) {
             this.mPositionCount = mPositionCount;
             this.lambdaCounts = lambdaCounts.clone();
             this.unionMCounts = unionMCounts.clone();
@@ -166,6 +182,8 @@ final class DPGpuOutOfCore {
             this.lmPairCount = lmPairCount;
             this.childMTermTotal = childMTermTotal;
             this.childLTermTotal = childLTermTotal;
+            this.tripleFactorCount = tripleFactorCount;
+            this.tripleTermCount = tripleTermCount;
         }
 
         static PlanningInput fromRequest(DPGpuFullDP.Request req) {
@@ -205,7 +223,8 @@ final class DPGpuOutOfCore {
                     req.parentFreeStateCount, req.childSliceMaxBytes,
                     req.outOfCoreOutputWorkspaceMaxBytes, req.lmRigid.length,
                     req.lmLamSlots.length, req.childMSrcAll.length,
-                    req.childLSrcAll.length);
+                    req.childLSrcAll.length, req.tripleOffsets.length,
+                    req.tripleRigid.length);
         }
     }
 
@@ -452,6 +471,14 @@ final class DPGpuOutOfCore {
                 && req.lmLamSlots.length == req.lmMSlots.length
                 && req.lmLamSlots.length == req.lmMCounts.length
                 && req.lmLamSlots.length == req.lmOffsets.length
+                && req.tripleSlots != null
+                && req.tripleStrides != null
+                && req.tripleOffsets != null
+                && req.tripleRigid != null
+                && req.tripleMin != null
+                && req.tripleSlots.length == req.tripleOffsets.length * 3L
+                && req.tripleStrides.length == req.tripleSlots.length
+                && req.tripleRigid.length == req.tripleMin.length
                 && req.childMSrcAll != null
                 && req.childMStrideAll != null
                 && req.childMCountsAll != null
@@ -609,6 +636,11 @@ final class DPGpuOutOfCore {
         bytes = addBytes(bytes, input.lmPairCount, Integer.BYTES);
         bytes = addBytes(bytes, input.lmPairCount, Integer.BYTES);
         bytes = addBytes(bytes, input.lmPairCount, Long.BYTES);
+        bytes = addBytes(bytes, 3L * input.tripleFactorCount, Integer.BYTES);
+        bytes = addBytes(bytes, 3L * input.tripleFactorCount, Long.BYTES);
+        bytes = addBytes(bytes, input.tripleFactorCount, Long.BYTES);
+        bytes = addBytes(bytes, input.tripleTermCount, Double.BYTES);
+        bytes = addBytes(bytes, input.tripleTermCount, Double.BYTES);
         bytes = addBytes(bytes, input.childMTermTotal, Integer.BYTES);
         bytes = addBytes(bytes, input.childMTermTotal, Long.BYTES);
         bytes = addBytes(bytes, input.numChildren, Integer.BYTES);

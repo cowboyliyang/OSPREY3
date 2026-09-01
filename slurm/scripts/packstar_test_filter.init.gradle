@@ -1,0 +1,23 @@
+// Keep the targeted PackStar validation independent of stale benchmark tests
+// that reference experiments intentionally omitted from the slim target.
+gradle.afterProject { project ->
+    if (project == gradle.rootProject) {
+        def sourceSets = project.extensions.findByName('sourceSets')
+        if (sourceSets != null) {
+            def testJava = sourceSets.getByName('test').java
+            testJava.exclude('edu/duke/cs/osprey/markstar/bench/GenericPDBBench.java')
+            testJava.exclude('edu/duke/cs/osprey/markstar/bench/PackStarScalingBench.java')
+            testJava.exclude('edu/duke/cs/osprey/markstar/TestBranchMARKStar.java')
+            // These main-branch benchmark drivers still import the omitted
+            // TestBranchMARKStar harness transitively.
+            testJava.exclude('edu/duke/cs/osprey/markstar/bench/EGFRBench.java')
+            testJava.exclude('edu/duke/cs/osprey/markstar/bench/GNNDataExport.java')
+            testJava.exclude('edu/duke/cs/osprey/markstar/bench/GNNStrategyBench.java')
+            testJava.exclude('edu/duke/cs/osprey/markstar/bench/KStarBaselineBench.java')
+            testJava.exclude('edu/duke/cs/osprey/markstar/bench/PendingEdgeSweep.java')
+            testJava.exclude('edu/duke/cs/osprey/markstar/bench/ScalingBench.java')
+            testJava.exclude('edu/duke/cs/osprey/markstar/RunBenchmark.java')
+            testJava.exclude('edu/duke/cs/osprey/markstar/RunKStarBaseline.java')
+        }
+    }
+}
