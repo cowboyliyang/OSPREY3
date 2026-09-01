@@ -72,6 +72,34 @@ __device__ void decode_state(long long idx, const int *counts, int count, int *o
 	}
 }
 
+/* Exact edge-local three-position factors.  A slot below mCount addresses
+ * mLocal; all other slots address lambdaLocal after subtracting mCount. */
+__device__ double triple_energy(
+	const int *mLocal,
+	const int *lambdaLocal,
+	int mCount,
+	const int *tripleSlots,
+	const long long *tripleStrides,
+	const long long *tripleOffsets,
+	const double *tripleValues,
+	int tripleFactorCount
+) {
+	double e = 0.0;
+	for (int factor=0; factor<tripleFactorCount; factor++) {
+		long long index = tripleOffsets[factor];
+		int meta = factor*3;
+		for (int term=0; term<3; term++) {
+			int slot = tripleSlots[meta + term];
+			int rc = slot < mCount
+				? mLocal[slot]
+				: lambdaLocal[slot - mCount];
+			index += (long long)rc*tripleStrides[meta + term];
+		}
+		e += tripleValues[index];
+	}
+	return e;
+}
+
 __device__ double local_energy(
 	int lIdx,
 	const int *mLocal,
@@ -84,7 +112,13 @@ __device__ double local_energy(
 	const int *lmMSlots,
 	const int *lmMCounts,
 	const long long *lmOffsets,
-	int lmPairCount
+	int lmPairCount,
+	const int *tripleSlots,
+	const long long *tripleStrides,
+	const long long *tripleOffsets,
+	const double *tripleValues,
+	int tripleFactorCount,
+	int mCount
 ) {
 	decode_state((long long)lIdx, lambdaCounts, lambdaCount, lambdaLocal);
 
@@ -97,6 +131,9 @@ __device__ double local_energy(
 			+ (long long)mLocal[mSlot];
 		e += lmPairs[off];
 	}
+	e += triple_energy(mLocal, lambdaLocal, mCount,
+		tripleSlots, tripleStrides, tripleOffsets, tripleValues,
+		tripleFactorCount);
 	return e;
 }
 
@@ -115,7 +152,13 @@ __device__ double local_energy_indexed(
 	const int *lmMSlots,
 	const int *lmMCounts,
 	const long long *lmOffsets,
-	int lmPairCount
+	int lmPairCount,
+	const int *tripleSlots,
+	const long long *tripleStrides,
+	const long long *tripleOffsets,
+	const double *tripleValues,
+	int tripleFactorCount,
+	int mCount
 ) {
 	decode_state((long long)globalLIdx, lambdaCounts, lambdaCount, lambdaLocal);
 	double e = lambdaOnlyValue;
@@ -127,6 +170,9 @@ __device__ double local_energy_indexed(
 			+ (long long)mLocal[mSlot];
 		e += lmPairs[off];
 	}
+	e += triple_energy(mLocal, lambdaLocal, mCount,
+		tripleSlots, tripleStrides, tripleOffsets, tripleValues,
+		tripleFactorCount);
 	return e;
 }
 
@@ -313,6 +359,11 @@ extern "C" __global__ void full_dp_n_children(
 	const int *lmMSlots,
 	const int *lmMCounts,
 	const long long *lmOffsets,
+	const int *tripleSlots,
+	const long long *tripleStrides,
+	const long long *tripleOffsets,
+	const double *tripleRigid,
+	const double *tripleMin,
 	const int *childMSrcAll,
 	const long long *childMStrideAll,
 	const int *childMTermOff,
@@ -332,6 +383,7 @@ extern "C" __global__ void full_dp_n_children(
 	int mCount,
 	int lambdaCount,
 	int lmPairCount,
+	int tripleFactorCount,
 	int numChildren,
 	double invRT
 ) {
@@ -359,12 +411,14 @@ extern "C" __global__ void full_dp_n_children(
 	double tUpperMax = -INFINITY, tUpperSum = 0.0;
 	for (int lIdx=tid; lIdx<totalLambdaStates; lIdx += blockDim.x) {
 		double eRigid = local_energy(lIdx, mLocal, lambdaLocal, lambdaCounts, lambdaCount,
-			lambdaOnlyRigid, lmRigid, lmLamSlots, lmMSlots, lmMCounts, lmOffsets, lmPairCount);
+			lambdaOnlyRigid, lmRigid, lmLamSlots, lmMSlots, lmMCounts, lmOffsets, lmPairCount,
+			tripleSlots, tripleStrides, tripleOffsets, tripleRigid, tripleFactorCount, mCount);
 		double fLower = child_sum(childLowerAll, childTableBase, numChildren, mLocal, lambdaLocal,
 			childMSrcAll, childMStrideAll, childMTermOff, childMTermCnt,
 			childLSrcAll, childLStrideAll, childLTermOff, childLTermCnt);
 		double eMin = local_energy(lIdx, mLocal, lambdaLocal, lambdaCounts, lambdaCount,
-			lambdaOnlyMin, lmMin, lmLamSlots, lmMSlots, lmMCounts, lmOffsets, lmPairCount);
+			lambdaOnlyMin, lmMin, lmLamSlots, lmMSlots, lmMCounts, lmOffsets, lmPairCount,
+			tripleSlots, tripleStrides, tripleOffsets, tripleMin, tripleFactorCount, mCount);
 		double fUpper = child_sum(childUpperAll, childTableBase, numChildren, mLocal, lambdaLocal,
 			childMSrcAll, childMStrideAll, childMTermOff, childMTermCnt,
 			childLSrcAll, childLStrideAll, childLTermOff, childLTermCnt);
@@ -425,6 +479,11 @@ extern "C" __global__ void full_dp_n_children_sliced(
 	const int *lmMSlots,
 	const int *lmMCounts,
 	const long long *lmOffsets,
+	const int *tripleSlots,
+	const long long *tripleStrides,
+	const long long *tripleOffsets,
+	const double *tripleRigid,
+	const double *tripleMin,
 	const int *childMSrcAll,
 	const long long *childMPackedStrideAll,
 	const int *childMTermOff,
@@ -448,6 +507,7 @@ extern "C" __global__ void full_dp_n_children_sliced(
 	int mCount,
 	int lambdaCount,
 	int lmPairCount,
+	int tripleFactorCount,
 	int numChildren,
 	double invRT
 ) {
@@ -499,11 +559,13 @@ extern "C" __global__ void full_dp_n_children_sliced(
 	double tUpperMax = -INFINITY, tUpperSum = 0.0;
 	for (int lIdx=tid; lIdx<totalLambdaStates; lIdx += blockDim.x) {
 		double eRigid = local_energy(lIdx, mLocal, lambdaLocal, lambdaCounts, lambdaCount,
-			lambdaOnlyRigid, lmRigid, lmLamSlots, lmMSlots, lmMCounts, lmOffsets, lmPairCount);
+			lambdaOnlyRigid, lmRigid, lmLamSlots, lmMSlots, lmMCounts, lmOffsets, lmPairCount,
+			tripleSlots, tripleStrides, tripleOffsets, tripleRigid, tripleFactorCount, mCount);
 		double fLower = child_sum_sliced(childLowerPacked, childPackedBase, childPackedRows, childLambdaStates,
 			numChildren, lambdaLocal, childLSrcAll, childLPackedStrideAll, childLTermOff, childLTermCnt);
 		double eMin = local_energy(lIdx, mLocal, lambdaLocal, lambdaCounts, lambdaCount,
-			lambdaOnlyMin, lmMin, lmLamSlots, lmMSlots, lmMCounts, lmOffsets, lmPairCount);
+			lambdaOnlyMin, lmMin, lmLamSlots, lmMSlots, lmMCounts, lmOffsets, lmPairCount,
+			tripleSlots, tripleStrides, tripleOffsets, tripleMin, tripleFactorCount, mCount);
 		double fUpper = child_sum_sliced(childUpperPacked, childPackedBase, childPackedRows, childLambdaStates,
 			numChildren, lambdaLocal, childLSrcAll, childLPackedStrideAll, childLTermOff, childLTermCnt);
 
@@ -559,6 +621,11 @@ extern "C" __global__ void full_dp_n_children_out_of_core(
 	const int *lmMSlots,
 	const int *lmMCounts,
 	const long long *lmOffsets,
+	const int *tripleSlots,
+	const long long *tripleStrides,
+	const long long *tripleOffsets,
+	const double *tripleRigid,
+	const double *tripleMin,
 	const int *childMSrcAll,
 	const long long *childMPackedStrideAll,
 	const int *childMTermOff,
@@ -589,6 +656,7 @@ extern "C" __global__ void full_dp_n_children_out_of_core(
 	int mCount,
 	int lambdaCount,
 	int lmPairCount,
+	int tripleFactorCount,
 	int numChildren,
 	int firstLambdaTile,
 	int lastLambdaTile,
@@ -646,7 +714,8 @@ extern "C" __global__ void full_dp_n_children_out_of_core(
 		double eRigid = local_energy_indexed(globalLIdx,
 			lambdaOnlyRigidTile[tileLIdx], mLocal, lambdaLocal,
 			lambdaCounts, lambdaCount, lmRigid, lmLamSlots, lmMSlots,
-			lmMCounts, lmOffsets, lmPairCount);
+			lmMCounts, lmOffsets, lmPairCount, tripleSlots, tripleStrides,
+			tripleOffsets, tripleRigid, tripleFactorCount, mCount);
 		double fLower = child_sum_out_of_core(childLowerPacked,
 			childPackedBase, childPackedRows, childLambdaKeyBase,
 			childLambdaKeyCount, childLambdaKeysAll, numChildren,
@@ -655,7 +724,8 @@ extern "C" __global__ void full_dp_n_children_out_of_core(
 		double eMin = local_energy_indexed(globalLIdx,
 			lambdaOnlyMinTile[tileLIdx], mLocal, lambdaLocal,
 			lambdaCounts, lambdaCount, lmMin, lmLamSlots, lmMSlots,
-			lmMCounts, lmOffsets, lmPairCount);
+			lmMCounts, lmOffsets, lmPairCount, tripleSlots, tripleStrides,
+			tripleOffsets, tripleMin, tripleFactorCount, mCount);
 		double fUpper = child_sum_out_of_core(childUpperPacked,
 			childPackedBase, childPackedRows, childLambdaKeyBase,
 			childLambdaKeyCount, childLambdaKeysAll, numChildren,
@@ -736,6 +806,11 @@ extern "C" __global__ void full_dp_n_children_hybrid(
 	const int *lmMSlots,
 	const int *lmMCounts,
 	const long long *lmOffsets,
+	const int *tripleSlots,
+	const long long *tripleStrides,
+	const long long *tripleOffsets,
+	const double *tripleRigid,
+	const double *tripleMin,
 	const int *childMSrcAll,
 	const long long *childMStrideAll,
 	const long long *childMPackedStrideAll,
@@ -760,6 +835,7 @@ extern "C" __global__ void full_dp_n_children_hybrid(
 	int mCount,
 	int lambdaCount,
 	int lmPairCount,
+	int tripleFactorCount,
 	int numChildren,
 	int streamedChild,
 	long long streamedRowStart,
@@ -803,14 +879,16 @@ extern "C" __global__ void full_dp_n_children_hybrid(
 	double tUpperMax = -INFINITY, tUpperSum = 0.0;
 	for (int lIdx=tid; lIdx<totalLambdaStates; lIdx += blockDim.x) {
 		double eRigid = local_energy(lIdx, mLocal, lambdaLocal, lambdaCounts, lambdaCount,
-			lambdaOnlyRigid, lmRigid, lmLamSlots, lmMSlots, lmMCounts, lmOffsets, lmPairCount);
+			lambdaOnlyRigid, lmRigid, lmLamSlots, lmMSlots, lmMCounts, lmOffsets, lmPairCount,
+			tripleSlots, tripleStrides, tripleOffsets, tripleRigid, tripleFactorCount, mCount);
 		double fLower = child_sum_hybrid(residentLower, streamedLower,
 			residentTableBase, childLambdaStates, streamedChild, packedRow, numChildren,
 			mLocal, lambdaLocal, childMSrcAll, childMStrideAll,
 			childMTermOff, childMTermCnt, childLSrcAll, childLStrideAll,
 			childLPackedStrideAll, childLTermOff, childLTermCnt);
 		double eMin = local_energy(lIdx, mLocal, lambdaLocal, lambdaCounts, lambdaCount,
-			lambdaOnlyMin, lmMin, lmLamSlots, lmMSlots, lmMCounts, lmOffsets, lmPairCount);
+			lambdaOnlyMin, lmMin, lmLamSlots, lmMSlots, lmMCounts, lmOffsets, lmPairCount,
+			tripleSlots, tripleStrides, tripleOffsets, tripleMin, tripleFactorCount, mCount);
 		double fUpper = child_sum_hybrid(residentUpper, streamedUpper,
 			residentTableBase, childLambdaStates, streamedChild, packedRow, numChildren,
 			mLocal, lambdaLocal, childMSrcAll, childMStrideAll,

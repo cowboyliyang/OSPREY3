@@ -74,7 +74,9 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
     public boolean debug = false;
     public boolean profileOutput = false;
     private Status status = null;
-    private Values values = null;
+    // Protected for the branch-DP/PACK* subclasses, which own their result
+    // lifecycle while reusing MARK*'s value container.
+    protected Values values = null;
 
     // the number of full conformations minimized
     private int numConfsEnergied = 0;
@@ -152,6 +154,24 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
         this.maxNumConfs = maxNumConfs;
     }
 
+    /** Configure the number of leaf minimizations submitted in one batch. */
+    public void setLeafMinimizationBatchSize(int batchSize) {
+        if (batchSize < 1) {
+            throw new IllegalArgumentException("leaf minimization batch size must be >= 1");
+        }
+        maxMinimizations = batchSize;
+    }
+
+    /** Use all configured worker threads for a leaf batch. */
+    public void useFullParallelLeafBatch() {
+        setLeafMinimizationBatchSize(parallelism == null ? 1 : parallelism.numThreads);
+    }
+
+    /** Enable or disable MARK* correction tightening for shared backends. */
+    public void setCorrectionTighteningEnabled(boolean enabled) {
+        correctionTighteningEnabled = enabled;
+    }
+
     @Override
 	public void setConfDB(ConfDB confDB, ConfDB.Key key) {
     	this.confDB = confDB;
@@ -177,6 +197,25 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
         status = Status.Estimating;
         values = new Values();
         this.stabilityThreshold = stabilityThreshold;
+    }
+
+    /** Allow a branch-DP subclass to publish its terminal status. */
+    protected void setStatus(Status status) {
+        this.status = status;
+    }
+
+    /** Optional branch-DP profiling hook; disabled in the slim PACK* target. */
+    protected void recordLeafMinimizationProfile(String algorithm,
+            int minimizationIndex, int[] assignments,
+            double oldConfLower, double oldConfUpper, double minimizedEnergy,
+            BigDecimal oldLeafLowerZ, BigDecimal oldLeafUpperZ, BigDecimal exactLeafZ,
+            double epsilonBefore, double epsilonAfter) {
+        // no-op
+    }
+
+    /** Optional branch-DP profiling hook; disabled in the slim PACK* target. */
+    protected void printLeafMinimizationProfile() {
+        // no-op
     }
 
 
@@ -308,11 +347,12 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
     private MARKStarNode.ScorerFactory hscorerFactory;
 
     public boolean reduceMinimizations = true;
+    protected boolean correctionTighteningEnabled = true;
     private ConfAnalyzer confAnalyzer;
-    EnergyMatrix minimizingEmat;
-    EnergyMatrix rigidEmat;
-    UpdatingEnergyMatrix correctionMatrix;
-    ConfEnergyCalculator minimizingEcalc;
+    protected EnergyMatrix minimizingEmat;
+    protected EnergyMatrix rigidEmat;
+    protected UpdatingEnergyMatrix correctionMatrix;
+    protected ConfEnergyCalculator minimizingEcalc;
     private Stopwatch stopwatch = new Stopwatch().start();
     // Variables for reporting pfunc reductions more accurately
     BigDecimal startUpperBound = null; //can't start with infinity
@@ -325,7 +365,7 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
 
     BigDecimal cumulativeZCorrection = BigDecimal.ZERO;//Pfunc upper bound improvement from partial minimization corrections
     BigDecimal ZReductionFromMin = BigDecimal.ZERO;//Pfunc lower bound improvement from full minimization
-    BoltzmannCalculator bc = new BoltzmannCalculator(PartitionFunction.decimalPrecision);
+    protected BoltzmannCalculator bc = new BoltzmannCalculator(PartitionFunction.decimalPrecision);
     private boolean computedCorrections = false;
     private long loopPartialTime = 0;
     private Set<String> correctedTuples = Collections.synchronizedSet(new HashSet<>());

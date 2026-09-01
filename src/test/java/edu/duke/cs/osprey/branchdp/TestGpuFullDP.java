@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import edu.duke.cs.osprey.astar.conf.RCs;
+import edu.duke.cs.osprey.confspace.RCTuple;
 import edu.duke.cs.osprey.ematrix.EnergyMatrix;
 import edu.duke.cs.osprey.gpu.cuda.Gpus;
 
@@ -307,6 +308,89 @@ public class TestGpuFullDP {
         return parent;
     }
 
+    private static void addTriple(EnergyMatrix emat, int[] cards, int[] positions,
+                                  double base) {
+        assertEquals(3, positions.length);
+        for (int rc0 = 0; rc0 < cards[positions[0]]; rc0++) {
+            for (int rc1 = 0; rc1 < cards[positions[1]]; rc1++) {
+                for (int rc2 = 0; rc2 < cards[positions[2]]; rc2++) {
+                    emat.setHigherOrder(new RCTuple(
+                            positions[0], rc0, positions[1], rc1,
+                            positions[2], rc2),
+                            base + 0.071 * rc0 - 0.043 * rc1 + 0.029 * rc2);
+                }
+            }
+        }
+    }
+
+    /** Non-leaf edge with two M/lambda-crossing triple factors. */
+    private RootedTreeEdge buildCrossingTripleParent(
+            int[] cards, int[] mPos, int[] lambdaPos, int[][] childMPositions) {
+        return buildTripleEdge(cards, mPos, lambdaPos, childMPositions,
+                new int[][]{{0, 3, 4}, {1, 3, 4}},
+                new double[]{0.41, -0.27}, new double[]{-0.36, 0.19});
+    }
+
+    private RootedTreeEdge buildTripleEdge(
+            int[] cards, int[] mPos, int[] lambdaPos, int[][] childMPositions,
+            int[][] triplePositions, double[] rigidBases, double[] minimizingBases) {
+        assertEquals(triplePositions.length, rigidBases.length);
+        assertEquals(triplePositions.length, minimizingBases.length);
+        RootedTreeEdge parent = buildParent(cards, mPos, lambdaPos, childMPositions);
+        EnergyMatrix rigid = ematFilled(cards.length, cards, 1.0);
+        EnergyMatrix minimizing = ematFilled(cards.length, cards, 2.0);
+        for (int i = 0; i < triplePositions.length; i++) {
+            addTriple(rigid, cards, triplePositions[i], rigidBases[i]);
+            addTriple(minimizing, cards, triplePositions[i], minimizingBases[i]);
+        }
+        parent.initIncrementalEnumeration(
+                rigid, minimizing, fullyConnected(cards.length), 1.9);
+        return parent;
+    }
+
+    /** Leaf edge with one crossing triple and one lambda-only triple. */
+    private RootedTreeEdge buildTripleLeaf(int[] cards) {
+        int[] allPos = {0, 1, 2, 3};
+        RCs rcs = rcsFor(allPos, cards);
+        EnergyMatrix rigid = ematFilled(cards.length, cards, 1.0);
+        EnergyMatrix minimizing = ematFilled(cards.length, cards, 2.0);
+        for (int rc0 = 0; rc0 < cards[0]; rc0++) {
+            for (int rc1 = 0; rc1 < cards[1]; rc1++) {
+                for (int rc2 = 0; rc2 < cards[2]; rc2++) {
+                    rigid.setHigherOrder(new RCTuple(0, rc0, 1, rc1, 2, rc2),
+                            0.37 + 0.11 * rc0 - 0.07 * rc1 + 0.05 * rc2);
+                    minimizing.setHigherOrder(new RCTuple(0, rc0, 1, rc1, 2, rc2),
+                            -0.23 + 0.09 * rc0 + 0.04 * rc1 - 0.03 * rc2);
+                }
+            }
+        }
+        for (int rc1 = 0; rc1 < cards[1]; rc1++) {
+            for (int rc2 = 0; rc2 < cards[2]; rc2++) {
+                for (int rc3 = 0; rc3 < cards[3]; rc3++) {
+                    rigid.setHigherOrder(new RCTuple(1, rc1, 2, rc2, 3, rc3),
+                            -0.19 + 0.06 * rc1 + 0.02 * rc2 - 0.08 * rc3);
+                    minimizing.setHigherOrder(new RCTuple(1, rc1, 2, rc2, 3, rc3),
+                            0.29 - 0.03 * rc1 + 0.07 * rc2 + 0.04 * rc3);
+                }
+            }
+        }
+
+        RootedTreeEdge edge = new RootedTreeEdge(
+                null, null, new LinkedHashSet<>(), false, rcs);
+        set(edge, "isLambdaEdge", Boolean.TRUE);
+        set(edge, "mPositionsSorted", new int[]{0});
+        set(edge, "lambdaPositionsSorted", new int[]{1, 2, 3});
+        set(edge, "mStateCount", Long.valueOf(cards[0]));
+        set(edge, "mArraySize", Integer.valueOf(cards[0]));
+        int lambdaStates = cards[1] * cards[2] * cards[3];
+        set(edge, "totalLambdaStates", Integer.valueOf(lambdaStates));
+        set(edge, "dpTable", new DenseDPTable(cards[0]));
+        set(edge, "Fset", new LinkedHashSet<RootedTreeEdge>());
+        edge.initIncrementalEnumeration(
+                rigid, minimizing, fullyConnected(cards.length), 1.9);
+        return edge;
+    }
+
     private static double[][] read(RootedTreeEdge p, long mc) {
         double[] lo = new double[(int) mc];
         double[] up = new double[(int) mc];
@@ -574,6 +658,199 @@ public class TestGpuFullDP {
     }
 
     @Test
+    public void gpuExactTriples_matchJavaAndUploadOnlyCrossingFactors() {
+        Assumptions.assumeTrue(visibleGpuCount() >= 1,
+                "exact triple-factor validation needs a visible CUDA GPU");
+        int[] cards = {2, 2, 3, 2};
+
+        System.setProperty("branchdp.dp.gpu", "false");
+        System.setProperty("branchdp.dp.nativeKernel", "false");
+        System.setProperty("branchdp.dp.parallel", "false");
+        System.setProperty("branchdp.dp.progress", "false");
+        RootedTreeEdge javaEdge = buildTripleLeaf(cards);
+        javaEdge.computeFullDP();
+        double[][] expected = read(javaEdge, cards[0]);
+
+        System.setProperty("branchdp.dp.gpu", "true");
+        System.setProperty("branchdp.dp.gpu.minWork", "1");
+        System.setProperty("branchdp.dp.gpu.maxBytes", String.valueOf(1L << 30));
+        System.setProperty("branchdp.dp.gpu.maxGpus", "1");
+        System.setProperty("branchdp.dp.gpu.minMStatesPerGpu",
+                String.valueOf(Long.MAX_VALUE));
+        System.setProperty("branchdp.dp.gpu.persistentContext", "true");
+        System.setProperty("branchdp.dp.progress", "true");
+        RootedTreeEdge gpuEdge = buildTripleLeaf(cards);
+        invoke(gpuEdge, "ensureChildFoldPlans");
+        long work = (long)cards[0] * cards[1] * cards[2] * cards[3];
+        DPGpuFullDP.Request packed = (DPGpuFullDP.Request)invoke(
+                gpuEdge, "buildGpuFullDPRequest", work);
+        assertEquals(1, packed.tripleOffsets.length,
+                "only the M/lambda-crossing position triple is uploaded");
+        assertEquals(cards[0] * cards[1] * cards[2], packed.tripleRigid.length);
+        assertEquals(packed.tripleRigid.length, packed.tripleMin.length);
+
+        boolean fired = (Boolean)invoke(gpuEdge, "tryComputeFullDPGpu");
+        Assumptions.assumeTrue(fired,
+                "GPU exact triple-factor path did not fire");
+        double[][] actual = read(gpuEdge, cards[0]);
+        for (int bound = 0; bound < 2; bound++) {
+            for (int m = 0; m < cards[0]; m++) {
+                double rel = Math.abs(actual[bound][m] - expected[bound][m])
+                        / (1.0 + Math.abs(expected[bound][m]));
+                assertTrue(rel <= REL_TOL,
+                        "triple-factor GPU/Java mismatch at bound=" + bound
+                                + ", m=" + m + ": rel=" + rel);
+            }
+        }
+    }
+
+    private void configureHigherOrderGpuRoute(String route) {
+        System.setProperty("branchdp.dp.gpu", "true");
+        System.setProperty("branchdp.dp.gpu.minWork", "1");
+        System.setProperty("branchdp.dp.gpu.maxBytes", String.valueOf(1L << 30));
+        System.setProperty("branchdp.dp.gpu.maxGpus", "1");
+        System.setProperty("branchdp.dp.gpu.minMStatesPerGpu",
+                String.valueOf(Long.MAX_VALUE));
+        System.setProperty("branchdp.dp.gpu.persistentContext", "true");
+        System.setProperty("branchdp.dp.gpu.trace", "true");
+        System.setProperty("branchdp.dp.gpu.outputTileMStates", "8");
+        System.setProperty("branchdp.dp.gpu.childSliceMaxBytes", "4096");
+        System.setProperty("branchdp.dp.nativeKernel", "false");
+        System.setProperty("branchdp.dp.parallel", "false");
+        System.setProperty("branchdp.dp.foldChildren", "true");
+        System.setProperty("branchdp.dp.progress", "true");
+
+        if ("regular".equals(route)) {
+            System.setProperty("branchdp.dp.gpu.childSlicing", "false");
+            System.setProperty("branchdp.dp.gpu.childSlicing.force", "false");
+            System.setProperty("branchdp.dp.gpu.hybridChildTiling.force", "false");
+            System.setProperty("branchdp.dp.gpu.outOfCore", "false");
+            System.setProperty("branchdp.dp.gpu.outOfCore.force", "false");
+        } else if ("sliced".equals(route)) {
+            System.setProperty("branchdp.dp.gpu.childSlicing", "true");
+            System.setProperty("branchdp.dp.gpu.childSlicing.force", "true");
+            System.setProperty("branchdp.dp.gpu.hybridChildTiling.force", "false");
+            System.setProperty("branchdp.dp.gpu.outOfCore", "false");
+            System.setProperty("branchdp.dp.gpu.outOfCore.force", "false");
+        } else if ("hybrid".equals(route)) {
+            System.setProperty("branchdp.dp.gpu.childSlicing", "true");
+            System.setProperty("branchdp.dp.gpu.childSlicing.force", "false");
+            System.setProperty("branchdp.dp.gpu.hybridChildTiling.force", "true");
+            System.setProperty("branchdp.dp.gpu.outOfCore", "false");
+            System.setProperty("branchdp.dp.gpu.outOfCore.force", "false");
+        } else if ("out-of-core".equals(route)) {
+            long budget = 1L << 20;
+            System.setProperty("branchdp.dp.gpu.childSlicing", "true");
+            System.setProperty("branchdp.dp.gpu.childSlicing.force", "false");
+            System.setProperty("branchdp.dp.gpu.hybridChildTiling.force", "false");
+            System.setProperty("branchdp.dp.gpu.outOfCore", "true");
+            System.setProperty("branchdp.dp.gpu.outOfCore.force", "true");
+            System.setProperty("branchdp.dp.gpu.outOfCore.budgetBytes",
+                    String.valueOf(budget));
+            System.setProperty("branchdp.dp.gpu.outOfCore.outputWorkspaceMaxBytes",
+                    String.valueOf(1L << 16));
+            System.setProperty("branchdp.dp.gpu.childSliceMaxBytes", "64");
+            System.setProperty("branchdp.dp.gpu.outputTileMStates", "17");
+        } else {
+            throw new IllegalArgumentException("unknown GPU route: " + route);
+        }
+    }
+
+    private void compareHigherOrderParentRoute(String route) {
+        Assumptions.assumeTrue(visibleGpuCount() >= 1,
+                "higher-order " + route + " validation needs a visible CUDA GPU");
+        int[] cards = {3, 4, 5, 6, 7};
+        int[] mPos = {0, 1, 2};
+        int[] lambdaPos = {3, 4};
+        int[][] childMPositions = {{0, 3}, {2, 4}};
+        long mStates = product(cards, mPos);
+        long lambdaStates = product(cards, lambdaPos);
+        long work = mStates * lambdaStates;
+
+        System.setProperty("branchdp.dp.gpu", "false");
+        System.setProperty("branchdp.dp.nativeKernel", "false");
+        System.setProperty("branchdp.dp.parallel", "false");
+        System.setProperty("branchdp.dp.progress", "false");
+        System.setProperty("branchdp.dp.foldChildren", "false");
+        RootedTreeEdge javaEdge = buildCrossingTripleParent(
+                cards, mPos, lambdaPos, childMPositions);
+        javaEdge.computeFullDP();
+        double[][] expected = read(javaEdge, mStates);
+
+        configureHigherOrderGpuRoute(route);
+        RootedTreeEdge gpuEdge = buildCrossingTripleParent(
+                cards, mPos, lambdaPos, childMPositions);
+        try {
+            invoke(gpuEdge, "ensureChildFoldPlans");
+            DPGpuFullDP.Request request = (DPGpuFullDP.Request)invoke(
+                    gpuEdge, "buildGpuFullDPRequest", work);
+            assertNotNull(request);
+            assertEquals(2, request.tripleOffsets.length,
+                    route + ": both crossing triples must be uploaded");
+            assertEquals(cards[0] * cards[3] * cards[4]
+                            + cards[1] * cards[3] * cards[4],
+                    request.tripleRigid.length,
+                    route + ": packed triple-table size");
+            assertEquals(request.tripleRigid.length, request.tripleMin.length);
+
+            if ("hybrid".equals(route)) {
+                assertNotNull(DPGpuFullDP.chooseHybridPlan(request, 1L << 30, 1),
+                        "forced hybrid route needs a feasible streamed-child plan");
+            } else if ("out-of-core".equals(route)) {
+                assertNotNull(DPGpuOutOfCore.choosePlan(request, 1L << 20),
+                        "forced out-of-core route needs a feasible bounded plan");
+            }
+
+            boolean fired = (Boolean)invoke(gpuEdge, "tryComputeFullDPGpu");
+            assertTrue(fired, route + ": CUDA exact-DP path did not fire");
+
+            double[][] actual = read(gpuEdge, mStates);
+            double maxRelLower = 0.0;
+            double maxRelUpper = 0.0;
+            for (int i = 0; i < expected[0].length; i++) {
+                assertTrue(Double.isFinite(actual[0][i])
+                                && Double.isFinite(actual[1][i]),
+                        route + ": non-finite GPU bound at M-state " + i);
+                maxRelLower = Math.max(maxRelLower,
+                        Math.abs(actual[0][i] - expected[0][i])
+                                / (1.0 + Math.abs(expected[0][i])));
+                maxRelUpper = Math.max(maxRelUpper,
+                        Math.abs(actual[1][i] - expected[1][i])
+                                / (1.0 + Math.abs(expected[1][i])));
+            }
+            System.out.println(String.format(Locale.ROOT,
+                    "[GPU-DP-HIGHER-ORDER-ROUTE] route=%s maxRelLower=%.3e maxRelUpper=%.3e",
+                    route, maxRelLower, maxRelUpper));
+            assertTrue(maxRelLower <= REL_TOL,
+                    route + ": lower relative error " + maxRelLower);
+            assertTrue(maxRelUpper <= REL_TOL,
+                    route + ": upper relative error " + maxRelUpper);
+        } finally {
+            gpuEdge.releaseLargeMemory();
+        }
+    }
+
+    @Test
+    public void gpuExactTriples_nonLeafRegularMatchesJava() {
+        compareHigherOrderParentRoute("regular");
+    }
+
+    @Test
+    public void gpuExactTriples_childSlicedMatchesJava() {
+        compareHigherOrderParentRoute("sliced");
+    }
+
+    @Test
+    public void gpuExactTriples_hybridMatchesJava() {
+        compareHigherOrderParentRoute("hybrid");
+    }
+
+    @Test
+    public void gpuExactTriples_outOfCoreMatchesJava() {
+        compareHigherOrderParentRoute("out-of-core");
+    }
+
+    @Test
     public void gpuHybridResidentStreamed_matchesJava_twoChildren() {
         System.setProperty("branchdp.dp.gpu.hybridChildTiling.force", "true");
         try {
@@ -666,6 +943,90 @@ public class TestGpuFullDP {
             assertTrue(Double.isFinite(parent.getLogZUpper(0)));
         } finally {
             parent.releaseLargeMemory();
+        }
+    }
+
+    @Test
+    public void gpuExactTriplesThroughputCalibration() {
+        Assumptions.assumeTrue(Boolean.getBoolean("branchdp.test.gpu.calibrate"),
+                "higher-order throughput calibration runs only when explicitly requested");
+        Assumptions.assumeTrue(visibleGpuCount() >= 1,
+                "higher-order throughput calibration needs a visible CUDA GPU");
+
+        // A CPU/GPU-comparable production-shaped leaf.  Keep enough M/lambda
+        // volume to amortize CUDA launch overhead, but avoid a reference run
+        // dominated by per-state Java decode/allocation costs.
+        int[] cards = {
+                4, 4, 4, 4, 4, 4, 1, 1, 1, 1, 1, 1,
+                8, 14, 15, 4
+        };
+        int[] mPos = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+        int[] lambdaPos = {12, 13, 14, 15};
+        int[][] triples = {{0, 12, 13}, {1, 13, 14}};
+        long mStates = product(cards, mPos);
+        long lambdaStates = product(cards, lambdaPos);
+        long work = Math.multiplyExact(mStates, lambdaStates);
+        assertEquals(4_096L, mStates);
+        assertEquals(6_720L, lambdaStates);
+
+        System.setProperty("branchdp.dp.gpu", "false");
+        System.setProperty("branchdp.dp.nativeKernel", "false");
+        System.setProperty("branchdp.dp.parallel", "false");
+        System.setProperty("branchdp.dp.progress", "false");
+        System.setProperty("branchdp.dp.foldChildren", "false");
+        RootedTreeEdge cpu = buildTripleEdge(cards, mPos, lambdaPos,
+                new int[][]{}, triples,
+                new double[]{0.37, -0.21}, new double[]{-0.19, 0.26});
+        long cpuStart = System.nanoTime();
+        cpu.computeFullDP();
+        double cpuSeconds = (System.nanoTime() - cpuStart) / 1e9;
+        double[][] expected = read(cpu, mStates);
+        cpu.releaseLargeMemory();
+
+        System.setProperty("branchdp.dp.gpu", "true");
+        System.setProperty("branchdp.dp.gpu.minWork", "1");
+        System.setProperty("branchdp.dp.gpu.maxBytes", String.valueOf(1L << 30));
+        System.setProperty("branchdp.dp.gpu.outputTileMStates", String.valueOf(mStates));
+        System.setProperty("branchdp.dp.gpu.persistentContext", "true");
+        System.setProperty("branchdp.dp.nativeKernel", "false");
+        System.setProperty("branchdp.dp.gpu.maxGpus", "1");
+        System.setProperty("branchdp.dp.gpu.minMStatesPerGpu",
+                String.valueOf(Long.MAX_VALUE));
+        System.setProperty("branchdp.dp.progress", "true");
+
+        RootedTreeEdge gpu = buildTripleEdge(cards, mPos, lambdaPos,
+                new int[][]{}, triples,
+                new double[]{0.37, -0.21}, new double[]{-0.19, 0.26});
+        try {
+            invoke(gpu, "ensureChildFoldPlans");
+            long coldStart = System.nanoTime();
+            boolean coldFired = (Boolean)invoke(gpu, "tryComputeFullDPGpu");
+            double coldSeconds = (System.nanoTime() - coldStart) / 1e9;
+            assertTrue(coldFired);
+
+            long warmStart = System.nanoTime();
+            boolean warmFired = (Boolean)invoke(gpu, "tryComputeFullDPGpu");
+            double warmSeconds = (System.nanoTime() - warmStart) / 1e9;
+            assertTrue(warmFired);
+
+            double[][] actual = read(gpu, mStates);
+            double maxRel = 0.0;
+            for (int i = 0; i < expected[0].length; i++) {
+                maxRel = Math.max(maxRel,
+                        Math.abs(actual[0][i] - expected[0][i])
+                                / (1.0 + Math.abs(expected[0][i])));
+                maxRel = Math.max(maxRel,
+                        Math.abs(actual[1][i] - expected[1][i])
+                                / (1.0 + Math.abs(expected[1][i])));
+            }
+            System.out.println(String.format(Locale.ROOT,
+                    "[GPU-DP-CALIBRATE] kind=exact-triple visibleGpus=%d mStates=%d lambdaStates=%d work=%d cpuSeconds=%.6f gpuColdSeconds=%.6f gpuWarmSeconds=%.6f coldSpeedup=%.3f warmSpeedup=%.3f maxRel=%.3e",
+                    visibleGpuCount(), mStates, lambdaStates, work,
+                    cpuSeconds, coldSeconds, warmSeconds,
+                    cpuSeconds / coldSeconds, cpuSeconds / warmSeconds, maxRel));
+            assertTrue(maxRel <= REL_TOL);
+        } finally {
+            gpu.releaseLargeMemory();
         }
     }
 

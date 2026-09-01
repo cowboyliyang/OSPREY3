@@ -93,6 +93,20 @@ public class TestPackStarConfig {
                 false, true, 4, false));
         assertEquals(7, PackStarBranchDpBackend.conservativeDpSweeps(
                 true, true, 4, true));
+        assertEquals(12, PackStarBranchDpBackend.conservativeDpSweeps(
+                true, true, 4, 6, false));
+        assertEquals(13, PackStarBranchDpBackend.conservativeDpSweeps(
+                true, true, 4, 6, true));
+        assertEquals(13, PackStarBranchDpBackend.conservativeDpSweeps(
+                true, true, 4, 7, false));
+        assertEquals(16,
+                PackStarBranchDpBackend
+                        .conservativeEtaV4AdditionalDpSweeps(2, 4));
+        assertEquals(22, PackStarBranchDpBackend.conservativeDpSweeps(
+                true, true, 4,
+                PackStarBranchDpBackend
+                        .conservativeEtaV4AdditionalDpSweeps(2, 4),
+                false));
     }
 
     private static void withProperties(Map<String, String> values, Runnable test) {

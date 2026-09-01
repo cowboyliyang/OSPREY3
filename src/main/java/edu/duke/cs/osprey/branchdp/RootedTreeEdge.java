@@ -16,6 +16,8 @@ package edu.duke.cs.osprey.branchdp;
 
 import com.sun.jna.Native;
 import edu.duke.cs.osprey.astar.conf.RCs;
+import edu.duke.cs.osprey.confspace.HigherTupleFinder;
+import edu.duke.cs.osprey.confspace.RCTuple;
 import edu.duke.cs.osprey.ematrix.EnergyMatrix;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -704,6 +706,8 @@ public class RootedTreeEdge {
                 }
             }
         }
+        energy += computeHigherOrderEnergy(
+                lambdaPositionsSorted, lambdaRCs, emat);
         return energy;
     }
 
@@ -721,13 +725,122 @@ public class RootedTreeEdge {
                 }
             }
         }
+        if (emat.hasHigherOrderTerms()) {
+            // Higher-order factors wholly inside lambda were charged by
+            // computeLambdaOnlyEnergy.  Factors wholly inside M belong to an
+            // ancestor/descendant elimination edge.  The remainder is exactly
+            // the set of local factors crossing M and lambda.
+            int[] localPositions = mergeSortedPositions(
+                    mPositionsSorted, lambdaPositionsSorted);
+            int[] localRCs = mergeLocalRCs(
+                    localPositions, mPositionsSorted, mRCs,
+                    lambdaPositionsSorted, lambdaRCs);
+            energy += computeHigherOrderEnergy(
+                    localPositions, localRCs, emat);
+            energy -= computeHigherOrderEnergy(
+                    mPositionsSorted, mRCs, emat);
+            energy -= computeHigherOrderEnergy(
+                    lambdaPositionsSorted, lambdaRCs, emat);
+        }
         return energy;
+    }
+
+    /**
+     * Return only the n-body (n &gt; 2) contribution for one partial assignment.
+     * RC arrays use the local RC indices employed by the branch DP; the energy
+     * matrix stores global RC identifiers, so translate through {@link RCs}.
+     *
+     * <p>The branch decomposition is exact for a higher-order factor whenever
+     * its primal positions form a clique in the interaction graph.  In that
+     * case the running-intersection property places the full factor in a bag,
+     * and the M/lambda subtraction above charges it exactly once, when its
+     * first position is eliminated.  Proposal builders must reject factors
+     * that are not graph cliques.</p>
+     */
+    private double computeHigherOrderEnergy(
+            int[] positions, int[] localRCs, EnergyMatrix emat) {
+        if (!emat.hasHigherOrderTerms() || positions.length < 3) {
+            return 0.0;
+        }
+        if (positions.length != localRCs.length) {
+            throw new IllegalArgumentException(
+                    "higher-order local position/RC lengths differ");
+        }
+        RCTuple tuple = new RCTuple();
+        double pairwise = 0.0;
+        for (int i = 0; i < positions.length; i++) {
+            int pos = positions[i];
+            int rc = rcs.get(pos, localRCs[i]);
+            tuple.pos.add(pos);
+            tuple.RCs.add(rc);
+            pairwise += emat.getOneBody(pos, rc);
+            for (int j = 0; j < i; j++) {
+                int pos2 = positions[j];
+                int rc2 = rcs.get(pos2, localRCs[j]);
+                pairwise += emat.getPairwise(pos, rc, pos2, rc2);
+            }
+        }
+        return emat.getInternalEnergy(tuple) - pairwise;
+    }
+
+    private static int[] mergeSortedPositions(int[] left, int[] right) {
+        int[] merged = new int[left.length + right.length];
+        int i = 0;
+        int j = 0;
+        int out = 0;
+        while (i < left.length || j < right.length) {
+            if (j >= right.length
+                    || (i < left.length && left[i] < right[j])) {
+                merged[out++] = left[i++];
+            } else if (i >= left.length || right[j] < left[i]) {
+                merged[out++] = right[j++];
+            } else {
+                throw new IllegalArgumentException(
+                        "M and lambda position sets overlap at " + left[i]);
+            }
+        }
+        return merged;
+    }
+
+    private static int[] mergeLocalRCs(
+            int[] mergedPositions,
+            int[] leftPositions, int[] leftRCs,
+            int[] rightPositions, int[] rightRCs) {
+        if (leftPositions.length != leftRCs.length
+                || rightPositions.length != rightRCs.length) {
+            throw new IllegalArgumentException(
+                    "local position/RC lengths differ");
+        }
+        int[] mergedRCs = new int[mergedPositions.length];
+        int left = 0;
+        int right = 0;
+        for (int out = 0; out < mergedPositions.length; out++) {
+            int pos = mergedPositions[out];
+            if (left < leftPositions.length
+                    && leftPositions[left] == pos) {
+                mergedRCs[out] = leftRCs[left++];
+            } else if (right < rightPositions.length
+                    && rightPositions[right] == pos) {
+                mergedRCs[out] = rightRCs[right++];
+            } else {
+                throw new IllegalArgumentException(
+                        "merged position is absent from both inputs: " + pos);
+            }
+        }
+        return mergedRCs;
     }
 
     private double computeLocalEnergy(int[] mRCs, int[] lambdaRCs,
                                        EnergyMatrix emat, InteractionGraph G) {
         return computeLambdaOnlyEnergy(lambdaRCs, emat, G)
                 + computeLambdaMEnergy(mRCs, lambdaRCs, emat, G);
+    }
+
+    /** Exact local proposal energy used by ancestral samplers. */
+    public double computeLocalEnergyPublic(
+            int[] mRCs, int[] lambdaRCs,
+            EnergyMatrix emat, InteractionGraph graph) {
+        return computeLocalEnergy(mRCs, lambdaRCs, emat, graph);
     }
 
     // ========== Incremental lambda enumeration ==========
@@ -1437,7 +1550,12 @@ public class RootedTreeEdge {
             return false; // precomputed state not ready yet: benign
         }
 
-        DPGpuFullDP.Request req = buildGpuFullDPRequest(work);
+        DPGpuFullDP.Request req;
+        try {
+            req = buildGpuFullDPRequest(work);
+        } catch (GpuHigherOrderPackingException ex) {
+            return failNoGpuPath(ex.getMessage());
+        }
         if (req == null) {
             return failNoGpuPath("lm cross-term count (or a child CSR index array) overflows a 32-bit int"
                     + " while building the GPU request");
@@ -1479,6 +1597,8 @@ public class RootedTreeEdge {
                     + ", work=" + work
                     + ", lmPairs=" + req.lmLamSlots.length
                     + ", lmTerms=" + req.lmRigid.length
+                    + ", tripleFactors=" + req.tripleOffsets.length
+                    + ", tripleTerms=" + req.tripleRigid.length
                     + ", outputTileMStates=" + req.mStateChunk
                     + ", outputTableDense=" + dpTable.isDenseArrayBacked()
                     + ", childSlicing=" + req.childSlicing
@@ -1690,7 +1810,210 @@ public class RootedTreeEdge {
             offset += (int)((long)lambdaCount*(long)mCount);
         }
 
+        populateGpuTripleFactors(req);
+
         return req;
+    }
+
+    /** A structurally unsupported higher-order request, safe to route through failNoGpuPath(). */
+    private static final class GpuHigherOrderPackingException extends RuntimeException {
+        GpuHigherOrderPackingException(String message) {
+            super(message);
+        }
+    }
+
+    /** Canonical (descending-position) identity of one three-position factor table. */
+    private static final class GpuTriplePositions implements Comparable<GpuTriplePositions> {
+        final int high;
+        final int middle;
+        final int low;
+
+        GpuTriplePositions(int high, int middle, int low) {
+            if (!(high > middle && middle > low)) {
+                throw new IllegalArgumentException("triple positions are not strictly descending");
+            }
+            this.high = high;
+            this.middle = middle;
+            this.low = low;
+        }
+
+        @Override
+        public int compareTo(GpuTriplePositions other) {
+            int cmp = Integer.compare(high, other.high);
+            if (cmp != 0) return cmp;
+            cmp = Integer.compare(middle, other.middle);
+            if (cmp != 0) return cmp;
+            return Integer.compare(low, other.low);
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof GpuTriplePositions)) return false;
+            GpuTriplePositions rhs = (GpuTriplePositions)other;
+            return high == rhs.high && middle == rhs.middle && low == rhs.low;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(high, middle, low);
+        }
+    }
+
+    /**
+     * Pack exactly the n=3 factors owned by this M/lambda edge.  Lambda-only
+     * factors are already present in lambdaOnlyRigid/lambdaOnlyMin; M-only
+     * factors belong to another elimination edge.  Therefore only factors
+     * crossing M and lambda are uploaded here.
+     */
+    private void populateGpuTripleFactors(DPGpuFullDP.Request req) {
+        if (!cachedRigidEmat.hasHigherOrderTerms()
+                && !cachedMinEmat.hasHigherOrderTerms()) {
+            return;
+        }
+
+        int[] localPositions = mergeSortedPositions(
+                mPositionsSorted, lambdaPositionsSorted);
+        SortedSet<GpuTriplePositions> candidates = new TreeSet<>();
+        collectGpuTriplePositions(cachedRigidEmat, localPositions, candidates);
+        collectGpuTriplePositions(cachedMinEmat, localPositions, candidates);
+
+        List<GpuTriplePositions> crossing = new ArrayList<>();
+        long totalTerms = 0L;
+        for (GpuTriplePositions triple : candidates) {
+            int slot0 = gpuLocalSlot(triple.high);
+            int slot1 = gpuLocalSlot(triple.middle);
+            int slot2 = gpuLocalSlot(triple.low);
+            boolean hasM = slot0 < mPositionsSorted.length
+                    || slot1 < mPositionsSorted.length
+                    || slot2 < mPositionsSorted.length;
+            boolean hasLambda = slot0 >= mPositionsSorted.length
+                    || slot1 >= mPositionsSorted.length
+                    || slot2 >= mPositionsSorted.length;
+            if (!hasM || !hasLambda) {
+                continue;
+            }
+            long terms = (long)rcs.getNum(triple.high)
+                    * (long)rcs.getNum(triple.middle)
+                    * (long)rcs.getNum(triple.low);
+            if (terms < 0L || totalTerms > Integer.MAX_VALUE - terms) {
+                throw new GpuHigherOrderPackingException(
+                        "exact triple-factor table exceeds the Java/CUDA 32-bit dense-table limit");
+            }
+            crossing.add(triple);
+            totalTerms += terms;
+        }
+
+        int factorCount = crossing.size();
+        req.tripleSlots = new int[factorCount * 3];
+        req.tripleStrides = new long[factorCount * 3];
+        req.tripleOffsets = new long[factorCount];
+        req.tripleRigid = new double[(int)totalTerms];
+        req.tripleMin = new double[(int)totalTerms];
+
+        int tableOffset = 0;
+        for (int factor = 0; factor < factorCount; factor++) {
+            GpuTriplePositions triple = crossing.get(factor);
+            int highCount = rcs.getNum(triple.high);
+            int middleCount = rcs.getNum(triple.middle);
+            int lowCount = rcs.getNum(triple.low);
+            int meta = factor * 3;
+            req.tripleSlots[meta] = gpuLocalSlot(triple.high);
+            req.tripleSlots[meta + 1] = gpuLocalSlot(triple.middle);
+            req.tripleSlots[meta + 2] = gpuLocalSlot(triple.low);
+            req.tripleStrides[meta] = (long)middleCount * (long)lowCount;
+            req.tripleStrides[meta + 1] = lowCount;
+            req.tripleStrides[meta + 2] = 1L;
+            req.tripleOffsets[factor] = tableOffset;
+
+            for (int highRc = 0; highRc < highCount; highRc++) {
+                for (int middleRc = 0; middleRc < middleCount; middleRc++) {
+                    for (int lowRc = 0; lowRc < lowCount; lowRc++) {
+                        int index = tableOffset
+                                + (highRc * middleCount + middleRc) * lowCount
+                                + lowRc;
+                        req.tripleRigid[index] = gpuTripleValue(cachedRigidEmat,
+                                triple, highRc, middleRc, lowRc);
+                        req.tripleMin[index] = gpuTripleValue(cachedMinEmat,
+                                triple, highRc, middleRc, lowRc);
+                    }
+                }
+            }
+            // totalTerms was checked in long arithmetic above. Keep this
+            // increment in the same domain so an individual dense factor
+            // cannot overflow an intermediate int multiplication.
+            tableOffset += (int)((long)highCount
+                    * (long)middleCount * (long)lowCount);
+        }
+    }
+
+    /** Discover canonical direct triples and reject cross-edge factors of order n&gt;3. */
+    private void collectGpuTriplePositions(
+            EnergyMatrix emat,
+            int[] localPositions,
+            SortedSet<GpuTriplePositions> out) {
+        if (!emat.hasHigherOrderTerms()) return;
+
+        for (int highIndex = 2; highIndex < localPositions.length; highIndex++) {
+            int high = localPositions[highIndex];
+            for (int middleIndex = 1; middleIndex < highIndex; middleIndex++) {
+                int middle = localPositions[middleIndex];
+                for (int highRc = 0; highRc < rcs.getNum(high); highRc++) {
+                    int globalHighRc = rcs.get(high, highRc);
+                    for (int middleRc = 0; middleRc < rcs.getNum(middle); middleRc++) {
+                        int globalMiddleRc = rcs.get(middle, middleRc);
+                        HigherTupleFinder<Double> finder = emat.getHigherOrderTerms(
+                                high, globalHighRc, middle, globalMiddleRc);
+                        if (finder == null) continue;
+
+                        for (int lowIndex = 0; lowIndex < middleIndex; lowIndex++) {
+                            int low = localPositions[lowIndex];
+                            if (!finder.getInteractingPos().contains(low)) continue;
+                            boolean hasDirectTriple = false;
+                            for (int lowRc = 0; lowRc < rcs.getNum(low); lowRc++) {
+                                int globalLowRc = rcs.get(low, lowRc);
+                                Double value = finder.getInteraction(low, globalLowRc);
+                                if (value != null && value.doubleValue() != 0.0) {
+                                    hasDirectTriple = true;
+                                }
+                                if (finder.getHigherInteractions(low, globalLowRc) != null) {
+                                    throw new GpuHigherOrderPackingException(
+                                            "CUDA exact DP supports three-position factors, but this edge"
+                                                    + " contains a factor of order greater than three");
+                                }
+                            }
+                            if (hasDirectTriple) {
+                                out.add(new GpuTriplePositions(high, middle, low));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /** Unified GPU local slot: M first, followed by lambda. */
+    private int gpuLocalSlot(int position) {
+        int slot = Arrays.binarySearch(mPositionsSorted, position);
+        if (slot >= 0) return slot;
+        slot = Arrays.binarySearch(lambdaPositionsSorted, position);
+        if (slot >= 0) return mPositionsSorted.length + slot;
+        throw new IllegalArgumentException("position is outside this edge: " + position);
+    }
+
+    private double gpuTripleValue(
+            EnergyMatrix emat,
+            GpuTriplePositions triple,
+            int highLocalRc,
+            int middleLocalRc,
+            int lowLocalRc) {
+        HigherTupleFinder<Double> finder = emat.getHigherOrderTerms(
+                triple.high, rcs.get(triple.high, highLocalRc),
+                triple.middle, rcs.get(triple.middle, middleLocalRc));
+        if (finder == null) return 0.0;
+        Double value = finder.getInteraction(
+                triple.low, rcs.get(triple.low, lowLocalRc));
+        return value == null ? 0.0 : value;
     }
 
     private long resolveGpuOutputTileMStates() {
