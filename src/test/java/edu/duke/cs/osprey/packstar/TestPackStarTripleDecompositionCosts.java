@@ -2,6 +2,7 @@ package edu.duke.cs.osprey.packstar;
 
 import edu.duke.cs.osprey.astar.conf.RCs;
 import edu.duke.cs.osprey.branchdp.BranchDecomposition;
+import edu.duke.cs.osprey.branchdp.BranchDpBackend;
 import edu.duke.cs.osprey.branchdp.InteractionGraph;
 import edu.duke.cs.osprey.branchdp.RootedTreeEdge;
 import edu.duke.cs.osprey.branchdp.RootedTreeNode;
@@ -141,15 +142,18 @@ class TestPackStarTripleDecompositionCosts {
         assertEquals(2, cache.builds);
         List<int[]> edges = new ArrayList<>(graph.getEdgeList());
         edges.add(new int[]{0, 2}); edges.add(new int[]{1, 3});
-        var decomposition = new BranchDecomposition(InteractionGraph.buildFromEdges(4, edges),
-                BranchDecomposition.Strategy.WEIGHTED_HICKS, new int[]{2, 3, 2, 2});
-        decomposition.compute();
-        RootedTreeNode root = decomposition.rootBranchTree(rcs);
+        var production = PackStarTripleDecompositionCosts.rootProposalGraph(
+                InteractionGraph.buildFromEdges(4, edges), rcs, null, true);
+        RootedTreeNode root = production.selected.root;
         try {
-            RootedTreeEdge.postOrderCompLlambda(root, false);
-            root.getLeftChild().getChildOfEdge().compactTree();
-            assertEquals(decomposition.getBranchwidth(), preview.branchwidth);
-            assertEquals(PackStarTripleDecompositionCosts.summarize(root, true).toString(), preview.toString());
+            assertEquals(production.cost().toString(), preview.toString());
+        } finally {
+            RootedTreeEdge.postOrderReleaseLargeMemory(root);
+        }
+        var structural = PackStarTripleDecompositionCosts.rootProposalGraph(
+                InteractionGraph.buildFromEdges(4, edges), rcs, null, false);
+        root = structural.selected.root;
+        try {
             List<RootedTreeEdge> lambdaEdges = new ArrayList<>();
             RootedTreeEdge.collectLambdaEdges(root, lambdaEdges);
             for (RootedTreeEdge e : lambdaEdges) {
@@ -167,6 +171,77 @@ class TestPackStarTripleDecompositionCosts {
         assertSame(base, cache.preview(Set.of())); // base is pinned
         cache.preview(fill);
         assertEquals(4, cache.builds); // the one-entry LRU evicted the first union
+    }
+
+    private static final class Properties implements AutoCloseable {
+        private final java.util.Map<String, String> old = new java.util.HashMap<>();
+        Properties(String... pairs) {
+            for (int i = 0; i < pairs.length; i += 2) {
+                old.put(pairs[i], System.getProperty(pairs[i]));
+                System.setProperty(pairs[i], pairs[i + 1]);
+            }
+        }
+        @Override public void close() {
+            old.forEach((key, value) -> {
+                if (value == null) System.clearProperty(key); else System.setProperty(key, value);
+            });
+        }
+    }
+
+    @Test void gpuRootOptimizationImprovesOverEdgeZeroAndMatchesMaterializedProposal() {
+        try (var properties = new Properties("packstar.rootSplit", "gpubytes",
+                "packstar.rootSplit.hostBudgetBytes", "1GiB",
+                "packstar.rootSplit.gpuBudgetBytes", "1GiB")) {
+            int[] counts = {2, 7, 3, 11, 2, 5};
+            int[][] allowed = new int[counts.length][];
+            for (int p = 0; p < counts.length; p++)
+                allowed[p] = java.util.stream.IntStream.range(0, counts[p]).toArray();
+            RCs rcs = new RCs(allowed);
+            var edges = new ArrayList<int[]>();
+            for (int p = 0; p < counts.length - 1; p++) edges.add(new int[]{p, p + 1});
+            var base = InteractionGraph.buildFromEdges(counts.length, edges);
+            var cache = new PackStarTripleDecompositionCosts.Cache(rcs, base, null, 8);
+            var fill = Set.of(edge(0, 2), edge(2, 4), edge(1, 4));
+            var preview = cache.preview(fill);
+            edges.add(new int[]{0, 2}); edges.add(new int[]{1, 4}); edges.add(new int[]{2, 4});
+            var graph = InteractionGraph.buildFromEdges(counts.length, edges);
+            var production = PackStarTripleDecompositionCosts.rootProposalGraph(graph, rcs, null, true);
+            try {
+                assertEquals(production.cost().toString(), preview.toString());
+                assertNotEquals(0, preview.rootSplitIndex, "regression: proposal must not silently use edge 0");
+            } finally { RootedTreeEdge.postOrderReleaseLargeMemory(production.selected.root); }
+            System.setProperty("packstar.rootSplit", "0");
+            var legacy = PackStarTripleDecompositionCosts.rootProposalGraph(graph, rcs, null, false);
+            try {
+                assertTrue(preview.work.compareTo(legacy.cost().work) < 0,
+                        "selected=" + preview + ", edge0=" + legacy.cost());
+            } finally { RootedTreeEdge.postOrderReleaseLargeMemory(legacy.selected.root); }
+        }
+    }
+
+    @Test void configuredExplicitRootAndHeapRejectionApplyToPreviewAndExecution() {
+        try (var properties = new Properties("packstar.rootSplit", "1",
+                "packstar.rootSplit.hostBudgetBytes", "1GiB")) {
+            var rcs = new RCs(new int[][]{{0, 1}, {0, 1, 2}, {0, 1}, {0, 1}});
+            var base = InteractionGraph.buildFromEdges(4,
+                    List.of(new int[]{0, 1}, new int[]{1, 2}, new int[]{2, 3}));
+            var graph = InteractionGraph.buildFromEdges(4,
+                    List.of(new int[]{0, 1}, new int[]{1, 2}, new int[]{2, 3}, new int[]{0, 2}));
+            var preview = new PackStarTripleDecompositionCosts.Cache(rcs, base, null, 2)
+                    .preview(Set.of(edge(0, 2)));
+            var production = PackStarTripleDecompositionCosts.rootProposalGraph(graph, rcs, null, true);
+            try {
+                assertEquals(1, preview.rootSplitIndex);
+                assertEquals(production.cost().toString(), preview.toString());
+            } finally { RootedTreeEdge.postOrderReleaseLargeMemory(production.selected.root); }
+            System.setProperty("packstar.rootSplit.hostBudgetBytes", "1");
+            var cache = new PackStarTripleDecompositionCosts.Cache(rcs, base, null, 2);
+            var rejected = cache.preview(Set.of(edge(0, 2)));
+            assertEquals("size-overflow", unlimited().rejection(rejected));
+            assertSame(rejected, cache.preview(Set.of(edge(0, 2))));
+            assertThrows(BranchDpBackend.RootSelectionException.class,
+                    () -> PackStarTripleDecompositionCosts.rootProposalGraph(graph, rcs, null, true));
+        }
     }
 
     @Test void mmapUsesAuxiliaryHeapAndHonorsPackstarAliasWithoutAllocatingFiles() {

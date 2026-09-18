@@ -1956,7 +1956,7 @@ public class PackStarEstimator {
         if (frequencySeverityDecompositionCache == null)
             frequencySeverityDecompositionCache = new PackStarTripleDecompositionCosts.Cache(
                     rcs, interactionGraph, initialRootedRoot,
-                    getConfigInteger(PackStarTripleDecompositionCosts.PREFIX + "PreviewCacheEntries", 1024));
+                    getConfigInteger(PackStarTripleDecompositionCosts.PREFIX + "PreviewCacheEntries", 1024), confSpace);
         PackStarTripleEtaCorrections.MomentPath path = frequencySeverityTripleEta.fitSecondMomentPath(rcs, interactionGraph,
                 proposalLearningData(samples, pairEta), inner, RT,
                 requiredK, frequencySeverityTripleEtaMaxFillEdges,
@@ -2028,7 +2028,7 @@ public class PackStarEstimator {
             if (frequencySeverityDecompositionCostSelection && frequencySeverityDecompositionCache == null) {
                 frequencySeverityDecompositionCache = new PackStarTripleDecompositionCosts.Cache(
                         rcs, interactionGraph, initialRootedRoot,
-                        getConfigInteger(PackStarTripleDecompositionCosts.PREFIX + "PreviewCacheEntries", 1024));
+                        getConfigInteger(PackStarTripleDecompositionCosts.PREFIX + "PreviewCacheEntries", 1024), confSpace);
             }
             return frequencySeverityTripleEta.fitSelectedSecondMoment(
                     rcs, interactionGraph, proposalLearningData(samples, pairEta), inner, RT,
@@ -4100,7 +4100,7 @@ public class PackStarEstimator {
                 writeFrequencySeverityKey(writer, "tripleEtaDecompositionLimits",
                         frequencySeverityDecompositionLimits.toString());
                 writeFrequencySeverityKey(writer, "tripleEtaDecompositionPreview",
-                        "weighted-hicks-root-zero;no-enumeration-arrays-or-dp-tables;per-pfunc-LRU-cache");
+                        "weighted-hicks-configured-root;shared-with-proposal-execution;no-enumeration-arrays-or-dp-tables;per-pfunc-LRU-cache");
             }
             writeFrequencySeverityKey(writer,
                     "tripleEtaMinimumCellContexts",
@@ -7047,23 +7047,11 @@ public class PackStarEstimator {
             return;
         }
 
-        int[] stateCounts = new int[rcs.getNumPos()];
-        for (int pos = 0; pos < stateCounts.length; pos++) {
-            stateCounts[pos] = rcs.getNum(pos);
-        }
-        BranchDecomposition decomposition = new BranchDecomposition(
-                desired, BranchDecomposition.Strategy.WEIGHTED_HICKS,
-                stateCounts);
-        decomposition.compute();
-        RootedTreeNode rebuiltRoot = decomposition.rootBranchTree(rcs);
-        if (rebuiltRoot == null) {
-            throw new IllegalStateException(
-                    "selected triple proposal graph produced no branch tree");
-        }
-        RootedTreeEdge.postOrderCompLlambda(rebuiltRoot, true);
+        PackStarTripleDecompositionCosts.ProposalRoot proposal =
+                PackStarTripleDecompositionCosts.rootProposalGraph(desired, rcs, confSpace, true);
+        RootedTreeNode rebuiltRoot = proposal.selected.root;
         RootedTreeEdge rebuiltRootEdge =
                 rebuiltRoot.getLeftChild().getChildOfEdge();
-        rebuiltRootEdge.compactTree();
         rootedRoot = rebuiltRoot;
         rootedRootEdge = rebuiltRootEdge;
         proposalInteractionGraph = desired;
@@ -7072,7 +7060,10 @@ public class PackStarEstimator {
                 + " graph: baseEdges=" + interactionGraph.getNumEdges()
                 + ", fillEdges=" + fillEdges.size()
                 + ", proposalEdges=" + desired.getNumEdges()
-                + ", branchwidth=" + decomposition.getBranchwidth()
+                + ", branchwidth=" + proposal.branchwidth
+                + ", rootSplit=" + proposal.selected.splitEdgeIndex
+                + ", rootSelectionMs=" + proposal.rootSelectionNanos / 1e6
+                + ", gpuWork=" + proposal.selected.gpuWork
                 + ", triples="
                 + (eta.tripleEta == null ? "[]"
                 : eta.tripleEta.positionTriples()));

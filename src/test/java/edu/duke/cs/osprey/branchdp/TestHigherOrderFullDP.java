@@ -363,18 +363,30 @@ public class TestHigherOrderFullDP {
                 proposalGraph, BranchDecomposition.Strategy.GREEDY_MERGE,
                 cards);
         decomposition.compute();
-        RootedTreeNode root = decomposition.rootBranchTree(rcs);
-        RootedTreeEdge.postOrderCompLlambda(root, true);
-        RootedTreeEdge rootEdge = root.getLeftChild().getChildOfEdge();
-        rootEdge.compactTree();
-        RootedTreeEdge.postOrderInitIncremental(
-                root, emat, emat, proposalGraph, RT);
-        RootedTreeEdge.postOrderComputeFullDP(root);
-
-        double expected = expectedFullLogZ(emat, cards);
-        assertEquals(expected, rootEdge.getLogZLower(0), 1.0e-12,
-                "fill-edge rigid logZ");
-        assertEquals(expected, rootEdge.getLogZUpper(0), 1.0e-12,
-                "fill-edge minimizing logZ");
+        String oldRoot = System.getProperty("branchdp.rootSplit");
+        String oldBudget = System.getProperty("branchdp.rootSplit.gpuBudgetBytes");
+        try {
+            System.setProperty("branchdp.rootSplit.gpuBudgetBytes", "1GiB");
+            for (String strategy : List.of("0", "1", "work", "gpubytes")) {
+                System.setProperty("branchdp.rootSplit", strategy);
+                RootedTreeNode root = BranchDpBackend.selectConfiguredRoot(
+                        decomposition, proposalGraph, rcs, null, true).root;
+                try {
+                    RootedTreeEdge rootEdge = root.getLeftChild().getChildOfEdge();
+                    RootedTreeEdge.postOrderInitIncremental(root, emat, emat, proposalGraph, RT);
+                    RootedTreeEdge.postOrderComputeFullDP(root);
+                    double expected = expectedFullLogZ(emat, cards);
+                    assertEquals(expected, rootEdge.getLogZLower(0), 1.0e-12,
+                            "fill-edge rigid logZ, root=" + strategy);
+                    assertEquals(expected, rootEdge.getLogZUpper(0), 1.0e-12,
+                            "fill-edge minimizing logZ, root=" + strategy);
+                } finally { RootedTreeEdge.postOrderReleaseLargeMemory(root); }
+            }
+        } finally {
+            if (oldRoot == null) System.clearProperty("branchdp.rootSplit");
+            else System.setProperty("branchdp.rootSplit", oldRoot);
+            if (oldBudget == null) System.clearProperty("branchdp.rootSplit.gpuBudgetBytes");
+            else System.setProperty("branchdp.rootSplit.gpuBudgetBytes", oldBudget);
+        }
     }
 }

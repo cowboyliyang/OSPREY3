@@ -8,6 +8,7 @@ import edu.duke.cs.osprey.branchdp.DPTableTooLargeException;
 import edu.duke.cs.osprey.branchdp.InteractionGraph;
 import edu.duke.cs.osprey.branchdp.RootedTreeEdge;
 import edu.duke.cs.osprey.branchdp.RootedTreeNode;
+import edu.duke.cs.osprey.confspace.SimpleConfSpace;
 
 import java.math.BigInteger;
 import java.util.ArrayList;
@@ -51,6 +52,7 @@ final class PackStarTripleDecompositionCosts {
 
     static final class Cost {
         final int branchwidth;
+        final int rootSplitIndex;
         final long maxMStates, totalMStates, maxTableBytes, totalTableBytes;
         final long hostBytes, fileBytes;
         final BigInteger work;
@@ -58,7 +60,15 @@ final class PackStarTripleDecompositionCosts {
         Cost(int branchwidth, long maxMStates, long totalMStates,
              long maxTableBytes, long totalTableBytes, long hostBytes, long fileBytes,
              BigInteger work) {
+            this(branchwidth, maxMStates, totalMStates, maxTableBytes, totalTableBytes,
+                    hostBytes, fileBytes, work, -1);
+        }
+
+        Cost(int branchwidth, long maxMStates, long totalMStates,
+             long maxTableBytes, long totalTableBytes, long hostBytes, long fileBytes,
+             BigInteger work, int rootSplitIndex) {
             this.branchwidth = branchwidth;
+            this.rootSplitIndex = rootSplitIndex;
             this.maxMStates = maxMStates;
             this.totalMStates = totalMStates;
             this.maxTableBytes = maxTableBytes;
@@ -87,7 +97,7 @@ final class PackStarTripleDecompositionCosts {
         }
 
         @Override public String toString() {
-            return "bw=" + branchwidth + ";maxMStates=" + maxMStates
+            return "bw=" + branchwidth + ";rootSplit=" + rootSplitIndex + ";maxMStates=" + maxMStates
                     + ";totalMStates=" + totalMStates + ";maxTableBytes=" + maxTableBytes
                     + ";totalTableBytes=" + totalTableBytes + ";hostBytes=" + hostBytes
                     + ";fileBytes=" + fileBytes + ";work=" + work;
@@ -154,21 +164,68 @@ final class PackStarTripleDecompositionCosts {
         }
     }
 
+    static final class ProposalRoot {
+        final BranchDpBackend.RootingCandidate selected;
+        final int branchwidth;
+        final long rootSelectionNanos;
+        final boolean materialized;
+
+        ProposalRoot(BranchDpBackend.RootingCandidate selected, int branchwidth, long nanos,
+                boolean materialized) {
+            this.selected = selected;
+            this.branchwidth = branchwidth;
+            this.rootSelectionNanos = nanos;
+            this.materialized = materialized;
+        }
+
+        Cost cost() {
+            Cost c = summarize(selected.root, !materialized);
+            return new Cost(branchwidth, c.maxMStates, c.totalMStates, c.maxTableBytes,
+                    c.totalTableBytes, c.hostBytes, c.fileBytes, c.work, selected.splitEdgeIndex);
+        }
+    }
+
+    /** The same graph, decomposition and configured root policy for preview and execution. */
+    static ProposalRoot rootProposalGraph(InteractionGraph graph, RCs rcs,
+            SimpleConfSpace confSpace, boolean materialize) {
+        try (BranchDpConfig.Scope ignored = BranchDpConfig.enterPackStarAliasScope()) {
+            int[] counts = new int[rcs.getNumPos()];
+            for (int p = 0; p < counts.length; p++) counts[p] = rcs.getNum(p);
+            BranchDecomposition decomposition = new BranchDecomposition(graph,
+                    BranchDecomposition.Strategy.WEIGHTED_HICKS, counts, null, false);
+            decomposition.compute();
+            long started = System.nanoTime();
+            BranchDpBackend.RootingCandidate selected = BranchDpBackend.selectConfiguredRoot(
+                    decomposition, graph, rcs, confSpace, materialize);
+            if (selected == null) throw new IllegalStateException("Proposal graph has no branch tree");
+            return new ProposalRoot(selected, decomposition.getBranchwidth(),
+                    System.nanoTime() - started, materialize);
+        }
+    }
+
     /** One cache per immutable pfunc graph/RC domain, shared by all folds and refits. */
     static final class Cache implements Previewer {
         private final RCs rcs;
         private final InteractionGraph graph;
         private final RootedTreeNode baseRoot;
+        private final SimpleConfSpace confSpace;
         private final int capacity;
         private final Map<List<Long>, Cost> costs = new LinkedHashMap<>(16, 0.75f, true);
         private Cost baseCost;
         long requests, hits, builds, nanos;
+        long rootSelectionNanos;
 
         Cache(RCs rcs, InteractionGraph graph, RootedTreeNode baseRoot, int capacity) {
+            this(rcs, graph, baseRoot, capacity, null);
+        }
+
+        Cache(RCs rcs, InteractionGraph graph, RootedTreeNode baseRoot, int capacity,
+                SimpleConfSpace confSpace) {
             if (capacity < 1) throw new IllegalArgumentException("preview cache capacity must be positive");
             this.rcs = rcs;
             this.graph = graph;
             this.baseRoot = baseRoot;
+            this.confSpace = confSpace;
             this.capacity = capacity;
         }
 
@@ -189,20 +246,16 @@ final class PackStarTripleDecompositionCosts {
                     List<int[]> edges = new ArrayList<>(graph.getEdgeList());
                     for (long packed : key) edges.add(new int[]{(int) (packed >>> 32), (int) packed});
                     InteractionGraph desired = InteractionGraph.buildFromEdges(graph.getNumPositions(), edges);
-                    int[] counts = new int[rcs.getNumPos()];
-                    for (int p = 0; p < counts.length; p++) counts[p] = rcs.getNum(p);
-                    BranchDecomposition decomposition = new BranchDecomposition(desired,
-                            BranchDecomposition.Strategy.WEIGHTED_HICKS, counts, null, false);
-                    decomposition.compute();
-                    RootedTreeNode root = decomposition.rootBranchTree(rcs);
+                    RootedTreeNode root = null;
                     try {
-                        RootedTreeEdge.postOrderCompLlambda(root, false);
-                        if (root != null) root.getLeftChild().getChildOfEdge().compactTree();
-                        result = summarize(root, true);
-                    } catch (DPTableTooLargeException ex) {
+                        ProposalRoot proposal = rootProposalGraph(desired, rcs, confSpace, false);
+                        root = proposal.selected.root;
+                        rootSelectionNanos += proposal.rootSelectionNanos;
+                        result = proposal.cost();
+                    } catch (DPTableTooLargeException | BranchDpBackend.RootSelectionException ex) {
                         // Capacity failures are an optional-candidate rejection;
                         // cache them too. Programming/configuration errors propagate.
-                        result = new Cost(decomposition.getBranchwidth(), Long.MAX_VALUE,
+                        result = new Cost(Integer.MAX_VALUE, Long.MAX_VALUE,
                                 Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE,
                                 Long.MAX_VALUE, Long.MAX_VALUE, BigInteger.valueOf(Long.MAX_VALUE));
                         System.out.println("[PACK*-triple-m2-preview] rejected fill=" + key
@@ -225,7 +278,8 @@ final class PackStarTripleDecompositionCosts {
 
         String audit() {
             return "requests=" + requests + ", hits=" + hits + ", builds=" + builds
-                    + ", cachedGraphs=" + costs.size() + ", previewMs=" + nanos / 1e6;
+                    + ", cachedGraphs=" + costs.size() + ", previewMs=" + nanos / 1e6
+                    + ", rootSelectionMs=" + rootSelectionNanos / 1e6;
         }
     }
 
