@@ -14,8 +14,8 @@
 #
 # Usage: bash bench_scaling_pac.sh ["8 10 12 16 20"]
 #   env overrides: EPSILON=0.683  METHOD=both|markstar|packstar
-#                  PACKSTAR_SAMPLES=1000  PACKSTAR_CONFIDENCE=0.05  PACKSTAR_RESIDUAL_BOUND=1.0
-#                  PACKSTAR_ETA_ENABLED=true  PACKSTAR_MAX_EST_SAMPLES=4000
+#                  PACKSTAR_SAMPLES=1000  PACKSTAR_CONFIDENCE=0.05
+#                  PACKSTAR_MAX_EST_SAMPLES=4000
 #                  GRISMAN_CPUS=104  GRISMAN_MEM=400G  GRISMAN_GPUS=8
 #                  JAVA_XMX=192g JAVA_XMS=192g
 # ===================================================================
@@ -30,8 +30,6 @@ EPSILON=${EPSILON:-0.683}
 METHOD=${METHOD:-both}
 PACKSTAR_SAMPLES=${PACKSTAR_SAMPLES:-1000}
 PACKSTAR_CONFIDENCE=${PACKSTAR_CONFIDENCE:-0.05}
-PACKSTAR_RESIDUAL_BOUND=${PACKSTAR_RESIDUAL_BOUND:-1.0}
-PACKSTAR_ETA_ENABLED=${PACKSTAR_ETA_ENABLED:-true}
 PACKSTAR_MAX_EST_SAMPLES=${PACKSTAR_MAX_EST_SAMPLES:-4000}
 GRISMAN_CPUS=${GRISMAN_CPUS:-104}
 GRISMAN_MEM=${GRISMAN_MEM:-400G}
@@ -53,8 +51,8 @@ for jar in lib/*.jar; do CP="$CP:$jar"; done
 for jar in $(find /home/users/lz280/.gradle/caches/modules-2 -name "*.jar" -path "*/files-2.1/*" 2>/dev/null | grep -v "onnxruntime" | sort -u); do CP="$CP:$jar"; done
 echo "$CP" > "$LOGDIR/.classpath_scaling_pac.txt"
 
-# Same fix as bench_sample_size_convergence.sh: N*-sizing stops as soon as it
-# predicts hitting the loose 0.683 target, so without pinning maxEstSamples/
+# N*-sizing stops as soon as it predicts hitting the loose 0.683 target, so
+# without pinning maxEstSamples/
 # unreachableCap to n_s's own n_2 budget (and forcing the target unreachable),
 # PACK*'s reported epsilon here would just reflect the 0.683 target rather than
 # actually exercising the fixed n_s=$PACKSTAR_SAMPLES sample budget across n.
@@ -77,8 +75,6 @@ for N in $N_LIST; do
             -Dosprey.branchdp.numCpus=\$RUN_CPUS \
             -Dpackstar.pac.samples=$PACKSTAR_SAMPLES \
             -Dpackstar.pac.confidence=$PACKSTAR_CONFIDENCE \
-            -Dpackstar.pac.residualBound=$PACKSTAR_RESIDUAL_BOUND \
-            -Dpackstar.pac.etaEnabled=$PACKSTAR_ETA_ENABLED \
             -Dpackstar.pac.maxEstSamples=$ESTCAP \
             -Dpackstar.pac.unreachableCap=$ESTCAP \
             -Dpackstar.pac.targetEpsilon=$PACKSTAR_TARGET_EPSILON_TIGHT \

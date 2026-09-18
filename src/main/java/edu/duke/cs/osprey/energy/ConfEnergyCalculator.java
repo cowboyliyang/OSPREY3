@@ -43,6 +43,9 @@ import edu.duke.cs.osprey.confspace.ConfSearch.ScoredConf;
 import edu.duke.cs.osprey.ematrix.SimpleReferenceEnergies;
 import edu.duke.cs.osprey.energy.approximation.ApproximatorMatrix;
 import edu.duke.cs.osprey.energy.approximation.ResidueInteractionsApproximator;
+import edu.duke.cs.osprey.energy.forcefield.ResidueForcefieldEnergy;
+import edu.duke.cs.osprey.gpu.cuda.GpuStreamPool;
+import edu.duke.cs.osprey.gpu.cuda.kernels.ResidueCudaCCDBatchMinimizer;
 import edu.duke.cs.osprey.minimization.MoleculeObjectiveFunction;
 import edu.duke.cs.osprey.parallelism.TaskExecutor;
 import edu.duke.cs.osprey.parallelism.TaskExecutor.TaskListener;
@@ -306,6 +309,80 @@ public class ConfEnergyCalculator {
 		// Phase 2: Pass frag (RCTuple) to enable SubtreeDOFCache
 		// Phase 5: Pass confSpace to enable PartialStartCache
 		return ecalc.calcEnergy(pmol, inters, approximator, frag, confSpace);
+	}
+
+	/**
+	 * Whether this calculator can use the ordinary residue CUDA CCD kernel in
+	 * batched mode.  The batch path deliberately has the same forcefield and
+	 * minimization assumptions as {@link EnergyCalculator.Type#ResidueCudaCCD};
+	 * callers must use the scalar path for approximators or clash-recovery
+	 * policies because those add terms/steps that the batch kernel does not
+	 * represent.
+	 */
+	public boolean supportsResidueCudaCCDBatch() {
+		return ecalc != null
+			&& confSpace != null
+			&& amat == null
+			&& ecalc.type == EnergyCalculator.Type.ResidueCudaCCD
+			&& ecalc.isMinimizing
+			&& ecalc.infiniteWellEnergy == null
+			&& ecalc.alwaysResolveClashesEnergy == null
+			&& ecalc.context.getGpuStreamPool() != null;
+	}
+
+	/**
+	 * Minimize a group of residue-CUDA CCD problems with one grid launch.
+	 *
+	 * <p>The two lists are parallel and retain their caller order.  A
+	 * {@code null} return means that this calculator cannot safely batch the
+	 * request; callers should submit the same problems through
+	 * {@link #calcEnergy(RCTuple, ResidueInteractions)}.  Returning null rather
+	 * than changing semantics is important for partial triple corrections,
+	 * where finite/abort behavior must remain identical to the established
+	 * scalar path.</p>
+	 */
+	public double[] calcResidueCudaCCDBatch(
+			List<RCTuple> frags,
+			List<ResidueInteractions> interactions) {
+		if (!supportsResidueCudaCCDBatch()
+				|| frags == null || interactions == null
+				|| frags.size() != interactions.size()
+				|| frags.isEmpty()) {
+			return null;
+		}
+
+		List<ResidueCudaCCDBatchMinimizer.Problem> problems =
+				new ArrayList<>(frags.size());
+		for (int i = 0; i < frags.size(); i++) {
+			RCTuple frag = frags.get(i);
+			ResidueInteractions inters = interactions.get(i);
+			if (frag == null || inters == null) return null;
+
+			ParametricMolecule pmol = confSpace.makeMolecule(frag);
+			ResidueForcefieldEnergy efunc = new ResidueForcefieldEnergy(
+					ecalc.resPairCache, inters, pmol.mol);
+			if (efunc.isBroken) return null;
+			problems.add(new ResidueCudaCCDBatchMinimizer.Problem(
+					new MoleculeObjectiveFunction(pmol, efunc), efunc));
+		}
+
+		GpuStreamPool pool = ecalc.context.getGpuStreamPool();
+		if (pool == null) return null;
+		try (ResidueCudaCCDBatchMinimizer minimizer =
+				new ResidueCudaCCDBatchMinimizer(pool, problems)) {
+			double[] energies = minimizer.minimize();
+			if (energies.length != frags.size()) return null;
+			numCalculations.addAndGet(frags.size());
+			return energies;
+		} catch (RuntimeException ex) {
+			// Resource/architecture mismatches should not change the numerical
+			// contract.  The triple-correction caller will use the scalar GPU
+			// implementation for this chunk and record the fallback.
+			if (Boolean.getBoolean("osprey.cuda.debugBatch")) {
+				ex.printStackTrace(System.err);
+			}
+			return null;
+		}
 	}
 
 	/**

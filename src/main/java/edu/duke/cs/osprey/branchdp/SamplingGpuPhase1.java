@@ -54,6 +54,8 @@ final class SamplingGpuPhase1 {
     private static final Object persistentLock = new Object();
     private static PersistentPool persistentPool = null;
     private static boolean persistentShutdownHook = false;
+    private static final long SAMPLE_SEED_STRIDE =
+            0x9E3779B97F4A7C15L;
 
     private SamplingGpuPhase1() {
     }
@@ -166,7 +168,34 @@ final class SamplingGpuPhase1 {
                 return null;
             }
             if (method == Method.GUMBEL) {
-                int[] g = runGumbel(req, gpus.get(0), grouped);
+                int nGpus = chooseGpuCountForSamples(
+                        req, gpus.size(), grouped.numSamples);
+                int[] g;
+                long startNanos = System.nanoTime();
+                if (nGpus <= 1) {
+                    g = runGumbel(req, gpus.get(0), grouped);
+                } else {
+                    g = new int[grouped.numSamples];
+                    runMultiGpuGumbel(req, grouped, gpus, nGpus, g);
+                    if (req.progress) {
+                        double ms = (System.nanoTime() - startNanos) / 1e6;
+                        System.out.println(BranchDpConfig.getBackendLogPrefix()
+                                + " GPU sampling done, samples="
+                                + grouped.numSamples
+                                + ", method=" + Method.GUMBEL.propertyValue
+                                + ", distinctMIdx=" + grouped.numGroups
+                                + ", cdfReuse=0"
+                                + ", gpus=" + nGpus
+                                + ", lambdaStates=" + req.totalLambdaStates
+                                + ", children=" + req.numChildren
+                                + ", blockThreads="
+                                + Math.max(1, req.blockThreads)
+                                + ", residentChildTables=false"
+                                + ", elapsedMs="
+                                + String.format(java.util.Locale.ROOT,
+                                "%.1f", ms));
+                    }
+                }
                 consecutiveEdgeFailures = 0;
                 return g;
             }
@@ -260,7 +289,24 @@ final class SamplingGpuPhase1 {
     }
 
     private static int[] runGumbel(Request req, Gpu gpu, GroupedSamples grouped) {
-        int numSamples = req.mIdxPerSample.length;
+        return runGumbel(req, gpu, grouped, 0,
+                req.mIdxPerSample.length, req.baseSeed, true);
+    }
+
+    /** Run Gumbel for one contiguous sample slice. */
+    private static int[] runGumbel(Request req, Gpu gpu,
+                                   GroupedSamples grouped,
+                                   int sampleStart, int numSamples,
+                                   long baseSeed, boolean reportProgress) {
+        long sampleEnd = (long) sampleStart + numSamples;
+        if (sampleStart < 0 || numSamples < 0
+                || sampleEnd > req.mIdxPerSample.length) {
+            throw new IndexOutOfBoundsException(
+                    "invalid Gumbel sample slice [" + sampleStart + ","
+                            + sampleEnd + ")/" + req.mIdxPerSample.length);
+        }
+        long[] mIdxSlice = Arrays.copyOfRange(
+                req.mIdxPerSample, sampleStart, (int) sampleEnd);
         Context context = null;
         GpuStream stream = null;
         List<CUBuffer<?>> buffers = new ArrayList<>();
@@ -299,7 +345,8 @@ final class SamplingGpuPhase1 {
             CUBuffer<IntBuffer> childLTermCnt = uploadInts(stream, req.childLTermCnt, buffers);
             CUBuffer<LongBuffer> childTableBase = uploadLongs(stream, req.childTableBase, buffers);
             CUdeviceptr childUpperAll = uploadDoublesBig(req.childUpperAll, rawBufs);
-            CUBuffer<LongBuffer> mIdxPerSample = uploadLongs(stream, req.mIdxPerSample, buffers);
+            CUBuffer<LongBuffer> mIdxPerSample = uploadLongs(stream,
+                    mIdxSlice, buffers);
             CUBuffer<IntBuffer> outLIdx = makeInts(stream, Math.max(1, numSamples), buffers);
 
             int[] numSamplesArg = { numSamples };
@@ -309,7 +356,7 @@ final class SamplingGpuPhase1 {
             int[] lmPairCountArg = { req.lmLamSlots.length };
             int[] numChildrenArg = { req.numChildren };
             double[] invRTArg = { req.invRT };
-            long[] baseSeedArg = { req.baseSeed };
+            long[] baseSeedArg = { baseSeed };
 
             func.setArgs(Pointer.to(
                 mCounts.getDevicePointer(),
@@ -352,7 +399,7 @@ final class SamplingGpuPhase1 {
             host.rewind();
             host.get(result, 0, numSamples);
 
-            if (req.progress) {
+            if (req.progress && reportProgress) {
                 double ms = (System.nanoTime() - startNanos)/1e6;
                 System.out.println(BranchDpConfig.getBackendLogPrefix() + " GPU sampling done, samples=" + numSamples
                         + ", method=" + Method.GUMBEL.propertyValue
@@ -380,6 +427,63 @@ final class SamplingGpuPhase1 {
             }
             if (context != null) {
                 try { context.cleanup(); } catch (Throwable t) { t.printStackTrace(System.err); }
+            }
+        }
+    }
+
+    private static int chooseGpuCountForSamples(
+            Request req, int available, int numSamples) {
+        if (!req.multiGpu) {
+            return 1;
+        }
+        int cap = Math.min(available, Math.max(1, numSamples));
+        if (req.maxGpus > 0) {
+            cap = Math.min(cap, req.maxGpus);
+        }
+        return Math.max(1, cap);
+    }
+
+    private static void runMultiGpuGumbel(
+            Request req, GroupedSamples grouped,
+            List<Gpu> gpus, int nGpus, int[] result)
+            throws InterruptedException {
+        int base = grouped.numSamples / nGpus;
+        int rem = grouped.numSamples % nGpus;
+        Thread[] threads = new Thread[nGpus];
+        Throwable[] errors = new Throwable[nGpus];
+        int sampleStart = 0;
+        for (int gpuIndex = 0; gpuIndex < nGpus; gpuIndex++) {
+            int sampleCount = base + (gpuIndex < rem ? 1 : 0);
+            final int start = sampleStart;
+            final int count = sampleCount;
+            final int gi = gpuIndex;
+            final Gpu gpu = gpus.get(gpuIndex);
+            threads[gpuIndex] = new Thread(() -> {
+                try {
+                    // The CUDA kernel derives its stateless random value from
+                    // baseSeed + SAMPLE_SEED_STRIDE * sampleSlot.  Offset the
+                    // per-slice seed so local slot s has exactly the same
+                    // stream as global slot start+s in the one-GPU path.
+                    long sliceSeed = req.baseSeed
+                            + SAMPLE_SEED_STRIDE * (long) start;
+                    int[] local = runGumbel(req, gpu, grouped, start,
+                            count, sliceSeed, false);
+                    System.arraycopy(local, 0, result, start, count);
+                } catch (Throwable t) {
+                    errors[gi] = t;
+                }
+            }, "bms-gpu-sampling-gumbel-" + gpuIndex);
+            threads[gpuIndex].start();
+            sampleStart += sampleCount;
+        }
+        for (Thread thread : threads) {
+            thread.join();
+        }
+        for (Throwable error : errors) {
+            if (error != null) {
+                throw new RuntimeException(
+                        "multi-GPU Gumbel sampling failed: "
+                                + error.getMessage(), error);
             }
         }
     }

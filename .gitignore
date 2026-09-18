@@ -68,3 +68,20 @@ replay_pid*.log
 
 # CUDA build artifacts
 src/main/cu/CudaConfEcalc/build_sm86/
+
+# Keep local notes and generated reports out of the published source tree.
+*.md
+*.rst
+*.pdf
+!H200_EXPERIMENTS.md
+/doc/
+/docs/
+/.claude/
+/.codex/
+*.log
+__pycache__/
+/h200-runs/
+/examples/1CC8.junit/README
+/examples/python.PAStE/READY_TO_RUN.txt
+/examples/python.PAStE/RESULTS_EMAIL.txt
+/progs/ambertools/patches/readme.txt

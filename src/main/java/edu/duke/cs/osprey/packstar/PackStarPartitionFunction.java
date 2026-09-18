@@ -96,6 +96,16 @@ public class PackStarPartitionFunction implements PartitionFunction.WithConfDB, 
         delegate.setSampleListener(listener);
     }
 
+    /** Configure the functional event measured on PACK*'s final sample. */
+    public void setFunctionalEvent(String name, PackStarFunctionalEvent event) {
+        delegate.setFunctionalEvent(name, event);
+    }
+
+    /** Return the most recent functional-event estimate and diagnostics. */
+    public PackStarFunctionalObservableResult getFunctionalObservableResult() {
+        return delegate.getFunctionalObservableResult();
+    }
+
     @Override
     public void setReportProgress(boolean val) {
         delegate.setReportProgress(val);
@@ -142,8 +152,8 @@ public class PackStarPartitionFunction implements PartitionFunction.WithConfDB, 
     }
 
     @Override
-    public Result makeResult() {
-        return delegate.makeResult();
+    public PackStarResult makeResult() {
+        return new PackStarResult(delegate.makeResult(), getFunctionalObservableResult());
     }
 
     @Override

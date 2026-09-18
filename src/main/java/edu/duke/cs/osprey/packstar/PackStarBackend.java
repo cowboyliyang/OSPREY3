@@ -24,6 +24,10 @@ public interface PackStarBackend extends PartitionFunction.WithConfDB, PackStarS
 
     void setReduceMinimizations(boolean enabled);
 
+    void setFunctionalEvent(String name, PackStarFunctionalEvent event);
+
+    PackStarFunctionalObservableResult getFunctionalObservableResult();
+
     BranchDpAdmission.Prediction getAdmissionPrediction();
 
     /** Stable K-star state role used to derive the estimator random stream. */

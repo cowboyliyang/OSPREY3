@@ -24,8 +24,9 @@ import java.util.List;
 /**
  * PACK* paper Table 2 ("scaling with n") driver.
  *
- * Runs MARK* (deterministic, branch-decomposition DP) and PACK* (PAC two-stage
- * estimator) on the SAME {@link ConfSpaces2RL0#buildWildTypeConfSpace(int)}
+ * Runs MARK* (deterministic, branch-decomposition DP) and PACK* (adaptive
+ * frequency/severity PAC estimator) on the SAME
+ * {@link ConfSpaces2RL0#buildWildTypeConfSpace(int)}
  * system already used by {@link TestBranchMARKStar}'s numFlexible harness (the
  * "10-position benchmark" referenced in the PACK* paper's Introduction), so the
  * two methods' epsilon/CCD-count scaling with n is directly comparable at
@@ -45,8 +46,8 @@ import java.util.List;
  *   osprey.scalingpac.numCPUs   — CPU count (default TestBranchMARKStar.NUM_CPUs)
  *   osprey.scalingpac.outputCsv — output CSV path (appended; header written once)
  *   plus every packstar.pac.* / packstar.dp.* property (samples, trainSamples,
- *   pilotSamples, confidence, residualBound, clip, iterate, etaEnabled, dumpDir,
- *   randomSeed, dp.gpu, ...) — these are read directly by PackStarEstimator /
+ *   pilotSamples, confidence, frequencySeverity.*, randomSeed, dp.gpu, ...) —
+ *   these are read directly by PackStarEstimator /
  *   PackStarPartitionFunction from system properties, exactly as in the real
  *   38-system benchmark, so no extra plumbing is needed here.
  */
@@ -57,7 +58,7 @@ public class PackStarScalingBench {
         "prot_lb_log10,prot_ub_log10,prot_status,prot_eps,prot_nconf,prot_nscored," +
         "lig_lb_log10,lig_ub_log10,lig_status,lig_eps,lig_nconf,lig_nscored," +
         "comp_lb_log10,comp_ub_log10,comp_status,comp_eps,comp_nconf,comp_nscored," +
-        "total_time_s,n_s,eta_enabled,seed";
+        "total_time_s,n_s,triple_eta_enabled,seed";
 
     public void benchmarkScalingN() throws Exception {
         int numFlexible = Integer.getInteger("branchdp.test.numFlexible", 10);
@@ -197,9 +198,8 @@ public class PackStarScalingBench {
 
     /**
      * Mirrors GenericPDBBench#formatScoreRow, prefixed with the scaling variable n and
-     * suffixed with the sweep identifiers (n_s, eta_enabled, seed) so that Table 2
-     * (scaling with n), Fig 1 (sample-size convergence), Table 3 (no-eta ablation) and
-     * the PAC coverage runs can all append to a shared or per-sweep CSV and still be
+     * suffixed with the sweep identifiers (n_s, triple_eta_enabled, seed) so that
+     * the scaling and PAC coverage runs can append to a shared or per-sweep CSV and still be
      * disambiguated by column instead of by filename/job bookkeeping alone.
      */
     private static String formatRow(int n, String method, int rank, Sequence sequence,
@@ -211,7 +211,8 @@ public class PackStarScalingBench {
         String lbStr = (lbLog == null || lbLog.isNaN()) ? "" : String.format("%.6f", lbLog);
         String ubStr = (ubLog == null || ubLog.isNaN()) ? "" : String.format("%.6f", ubLog);
         String nSamples = System.getProperty("packstar.pac.samples", "");
-        String etaEnabled = System.getProperty("packstar.pac.etaEnabled", "true");
+        String tripleEtaEnabled = System.getProperty(
+                "packstar.pac.frequencySeverity.tripleEta", "true");
         String seed = System.getProperty("packstar.pac.randomSeed", "");
         return String.format("%d,%s,%d,%s,%.6f,%s,%s,%s,%s,%s,%s,%.1f,%s,%s,%s",
                 n, method, rank,
@@ -222,7 +223,7 @@ public class PackStarScalingBench {
                 formatPfunc(score.ligand),
                 formatPfunc(score.complex),
                 totalTimeS,
-                nSamples, etaEnabled, seed);
+                nSamples, tripleEtaEnabled, seed);
     }
 
     /** Mirrors GenericPDBBench#formatPfunc: 6 columns "lb,ub,status,eps,nconf,nscored". */

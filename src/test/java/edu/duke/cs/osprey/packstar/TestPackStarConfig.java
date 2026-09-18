@@ -84,29 +84,10 @@ public class TestPackStarConfig {
     }
 
     @Test
-    public void packStarAdmissionCountsWorstCaseDpSweeps() {
-        assertEquals(6, PackStarBranchDpBackend.conservativeDpSweeps(
-                true, true, 4, false));
-        assertEquals(2, PackStarBranchDpBackend.conservativeDpSweeps(
-                true, false, 4, false));
-        assertEquals(2, PackStarBranchDpBackend.conservativeDpSweeps(
-                false, true, 4, false));
-        assertEquals(7, PackStarBranchDpBackend.conservativeDpSweeps(
-                true, true, 4, true));
-        assertEquals(12, PackStarBranchDpBackend.conservativeDpSweeps(
-                true, true, 4, 6, false));
-        assertEquals(13, PackStarBranchDpBackend.conservativeDpSweeps(
-                true, true, 4, 6, true));
-        assertEquals(13, PackStarBranchDpBackend.conservativeDpSweeps(
-                true, true, 4, 7, false));
-        assertEquals(16,
-                PackStarBranchDpBackend
-                        .conservativeEtaV4AdditionalDpSweeps(2, 4));
-        assertEquals(22, PackStarBranchDpBackend.conservativeDpSweeps(
-                true, true, 4,
-                PackStarBranchDpBackend
-                        .conservativeEtaV4AdditionalDpSweeps(2, 4),
-                false));
+    public void packStarAdmissionCountsAdaptiveFrequencySeveritySweeps() {
+        assertEquals(2, PackStarBranchDpBackend.frequencySeverityDpSweeps(0));
+        assertEquals(6, PackStarBranchDpBackend.frequencySeverityDpSweeps(4));
+        assertEquals(2, PackStarBranchDpBackend.frequencySeverityDpSweeps(-3));
     }
 
     private static void withProperties(Map<String, String> values, Runnable test) {

@@ -84,6 +84,16 @@ public class PackStarBound implements PartitionFunction.WithConfDB, PackStarSamp
         backend.setSampleListener(listener);
     }
 
+    /** Configure the functional event measured on PACK*'s final sample. */
+    public void setFunctionalEvent(String name, PackStarFunctionalEvent event) {
+        backend.setFunctionalEvent(name, event);
+    }
+
+    /** Return the most recent functional-event estimate and diagnostics. */
+    public PackStarFunctionalObservableResult getFunctionalObservableResult() {
+        return backend.getFunctionalObservableResult();
+    }
+
     @Override
     public void setReportProgress(boolean val) {
         backend.setReportProgress(val);

@@ -36,7 +36,9 @@ set(JnaPlatform linux-x86-64) # TODO: get the JNA names for each platform
 set(OspreyBuildPath ${OspreyPath}/build/resources/main/${JnaPlatform})
 
 # tell CMake to write the libs into Osprey's resources dir
-set(LIBRARY_OUTPUT_PATH ${OspreyPath}/src/main/resources/${JnaPlatform})
+if(NOT LIBRARY_OUTPUT_PATH)
+    set(LIBRARY_OUTPUT_PATH ${OspreyPath}/src/main/resources/${JnaPlatform})
+endif()
 
 # set the CUDA options to build for all modern GPU architectures
 # see compatibilty guide:

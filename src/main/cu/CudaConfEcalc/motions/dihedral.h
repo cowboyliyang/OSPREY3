@@ -70,6 +70,10 @@ namespace osprey {
 					base.min = dihedral->min_radians;
 					base.max = dihedral->max_radians;
 					base.initial_step_size = 0.004363323; // 0.25 degrees, in radians
+					// Match compiled CPUConfEnergyCalculator + SurfingLineSearcher:
+					// that objective exposes radians and probes x +/- 1 radian.
+					// The ordinary residue CCD objective uses degrees instead.
+					base.wall_jump_size = static_cast<T>(1.0);
 					base.setter = set;
 					base.inters = reinterpret_cast<Array<PosInter<T>> *>(this + 1);
 					base.filter_inters(inters, dihedral->modified_posi);

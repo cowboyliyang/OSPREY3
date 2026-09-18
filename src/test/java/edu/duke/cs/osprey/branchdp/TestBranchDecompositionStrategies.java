@@ -12,6 +12,26 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class TestBranchDecompositionStrategies {
 
     @Test
+    public void boundaryProductsRemainExactAcrossLongOverflow() throws Exception {
+        int[] counts = {Integer.MAX_VALUE, Integer.MAX_VALUE, 3, 7, 11, 13};
+        BranchDecomposition bd = new BranchDecomposition(InteractionGraph.buildComplete(6),
+                BranchDecomposition.Strategy.WEIGHTED_HICKS, counts);
+        var method = BranchDecomposition.class.getDeclaredMethod("stateCount", java.util.Collection.class);
+        method.setAccessible(true);
+        for (int mask = 0; mask < 64; mask++) {
+            java.util.List<Integer> positions = new java.util.ArrayList<>();
+            BigInteger expected = BigInteger.ONE;
+            for (int pos = 0; pos < counts.length; pos++) if ((mask & (1 << pos)) != 0) {
+                positions.add(pos);
+                expected = expected.multiply(BigInteger.valueOf(counts[pos]));
+            }
+            assertEquals(expected, method.invoke(bd, positions));
+            java.util.Collections.reverse(positions);
+            assertEquals(expected, method.invoke(bd, positions));
+        }
+    }
+
+    @Test
     public void greedyMergeBuildsRootableBranchTree() {
         InteractionGraph graph = InteractionGraph.buildComplete(5);
         BranchDecomposition bd = new BranchDecomposition(

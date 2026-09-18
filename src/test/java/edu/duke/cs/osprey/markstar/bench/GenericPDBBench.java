@@ -256,6 +256,12 @@ public class GenericPDBBench {
             case "pac":
                 runPackStar(confSpaces, epsilon, parallelism, ematDir, designId, outputDir, method);
                 break;
+            case "packstar_pfunc":
+                runPackStarPfunc(confSpaces, epsilon, parallelism, ematDir, designId, outputDir);
+                break;
+            case "sequence_dump":
+                runSequenceDump(confSpaces, outputDir, designId);
+                break;
             case "dp_profile":
                 runDPProfile(confSpaces, parallelism, ematDir, designId);
                 break;
@@ -621,6 +627,209 @@ public class GenericPDBBench {
             minimizingEcalc.tasks.waitForFinish();
             rigidEcalc.tasks.waitForFinish();
         }
+    }
+
+    /**
+     * Run exactly one PACK* partition function for one state and one global
+     * sequence. This lets rescue-array tasks retry only the pfunc that failed
+     * in a previous full K* run.
+     */
+    private static void runPackStarPfunc(TestKStar.ConfSpaces confSpaces,
+                                         double epsilon,
+                                         Parallelism parallelism,
+                                         String ematDir,
+                                         String designId,
+                                         String outputDir) {
+        String stateProp = System.getProperty(
+                "osprey.packstarPfunc.state", "complex")
+                .trim().toLowerCase(Locale.ROOT);
+        int seqIndex = Integer.getInteger("osprey.packstarPfunc.seqIndex", 0);
+        int maxMut = Integer.getInteger("osprey.packstarPfunc.maxMut", 1);
+
+        SimpleConfSpace cs;
+        String stateName;
+        int stateInstanceId;
+        switch (stateProp) {
+            case "protein":
+                cs = confSpaces.protein;
+                stateName = "Protein";
+                stateInstanceId = 0;
+                break;
+            case "ligand":
+                cs = confSpaces.ligand;
+                stateName = "Ligand";
+                stateInstanceId = 1;
+                break;
+            case "complex":
+                cs = confSpaces.complex;
+                stateName = "Complex";
+                stateInstanceId = 2;
+                break;
+            default:
+                throw new IllegalArgumentException(
+                        "Unknown osprey.packstarPfunc.state: " + stateProp);
+        }
+
+        List<Sequence> sequences = new ArrayList<>();
+        if (confSpaces.complex.seqSpace.containsWildTypeSequence()) {
+            sequences.add(confSpaces.complex.seqSpace.makeWildTypeSequence());
+        }
+        sequences.addAll(confSpaces.complex.seqSpace.getMutants(maxMut, true));
+        if (seqIndex < 0 || seqIndex >= sequences.size()) {
+            throw new IllegalArgumentException("osprey.packstarPfunc.seqIndex="
+                    + seqIndex + " outside [0," + sequences.size() + ")");
+        }
+        Sequence globalSequence = sequences.get(seqIndex);
+        Sequence stateSequence = globalSequence.filter(cs.seqSpace);
+
+        System.out.println("\n=== PACK* single-pfunc run ===");
+        System.out.println("  Design: " + designId);
+        System.out.println("  State: " + stateName);
+        System.out.println("  Sequence index: " + seqIndex + " / "
+                + (sequences.size() - 1));
+        System.out.println("  Sequence: "
+                + globalSequence.toString(Sequence.Renderer.ResType));
+
+        EnergyCalculator.Type ecalcType = Integer.getInteger("osprey.wmb.numGpus", 0) > 0
+                ? EnergyCalculator.Type.ResidueCudaCCD : EnergyCalculator.Type.Cpu;
+        EnergyCalculator minimizingEcalc = new EnergyCalculator.Builder(
+                confSpaces.complex, confSpaces.ffparams)
+                .setParallelism(parallelism).setType(ecalcType).build();
+        EnergyCalculator rigidEcalc = new EnergyCalculator.Builder(
+                confSpaces.complex, confSpaces.ffparams)
+                .setParallelism(parallelism).setType(ecalcType)
+                .setIsMinimizing(false).build();
+
+        try {
+            ConfEnergyCalculator minimizingConfEcalc =
+                    new ConfEnergyCalculator.Builder(cs, minimizingEcalc)
+                    .setReferenceEnergies(
+                            new SimplerEnergyMatrixCalculator.Builder(
+                                    cs, minimizingEcalc)
+                                    .build().calcReferenceEnergies())
+                    .build();
+            ConfEnergyCalculator rigidConfEcalc =
+                    new ConfEnergyCalculator.Builder(cs, rigidEcalc)
+                    .setReferenceEnergies(
+                            new SimplerEnergyMatrixCalculator.Builder(
+                                    cs, rigidEcalc)
+                                    .build().calcReferenceEnergies())
+                    .build();
+
+            String cachePrefix = ematDir + "/packstar."
+                    + stateName.toLowerCase(Locale.ROOT);
+            EnergyMatrix rigidEmat =
+                    new SimplerEnergyMatrixCalculator.Builder(rigidConfEcalc)
+                    .setCacheFile(new File(cachePrefix + ".rigid.dat"))
+                    .build().calcEnergyMatrix();
+            EnergyMatrix minimizingEmat =
+                    new SimplerEnergyMatrixCalculator.Builder(minimizingConfEcalc)
+                    .setCacheFile(new File(cachePrefix + ".minimizing.dat"))
+                    .build().calcEnergyMatrix();
+            UpdatingEnergyMatrix corrections = new UpdatingEnergyMatrix(
+                    cs, minimizingEmat, minimizingConfEcalc);
+
+            PartitionFunction.Result result;
+            long start = System.currentTimeMillis();
+            try (PackStarPartitionFunction pfunc =
+                         new PackStarPartitionFunction(
+                                 cs, rigidEmat, minimizingEmat,
+                                 minimizingConfEcalc,
+                                 stateSequence.makeRCs(cs), parallelism,
+                                 stateName)) {
+                pfunc.setCorrections(corrections);
+                pfunc.setReduceMinimizations(Boolean.parseBoolean(
+                        System.getProperty(
+                                "osprey.packstar.reduceMinimizations", "true")));
+                pfunc.setCorrectionTighteningEnabled(Boolean.parseBoolean(
+                        System.getProperty(
+                                "osprey.packstar.correctionTightening", "true")));
+                pfunc.setInstanceId(stateInstanceId);
+                pfunc.setReportProgress(true);
+                pfunc.init(epsilon);
+                pfunc.compute();
+                result = pfunc.makeResult();
+            }
+            minimizingEcalc.tasks.waitForFinish();
+            rigidEcalc.tasks.waitForFinish();
+            double elapsedS = (System.currentTimeMillis() - start) / 1000.0;
+            double effectiveEps;
+            try {
+                effectiveEps = result.values.getEffectiveEpsilon();
+            } catch (RuntimeException ex) {
+                if (result.status == PartitionFunction.Status.Estimated) {
+                    throw ex;
+                }
+                effectiveEps = 1.0;
+            }
+            Double lowerLog10 = edu.duke.cs.osprey.kstar.KStarScore.scoreToLog10(
+                    result.values.calcLowerBound());
+            Double upperLog10 = edu.duke.cs.osprey.kstar.KStarScore.scoreToLog10(
+                    result.values.calcUpperBound());
+            String lowerText = lowerLog10 == null || !Double.isFinite(lowerLog10)
+                    ? "" : String.format(Locale.ROOT, "%.9f", lowerLog10);
+            String upperText = upperLog10 == null || !Double.isFinite(upperLog10)
+                    ? "" : String.format(Locale.ROOT, "%.9f", upperLog10);
+
+            String summaryPath = System.getProperty(
+                    "osprey.packstarPfunc.outputTsv",
+                    outputDir + "/" + designId + "_packstar_pfunc.tsv");
+            File summaryFile = new File(summaryPath);
+            if (summaryFile.getParentFile() != null) {
+                summaryFile.getParentFile().mkdirs();
+            }
+            boolean writeHeader = !summaryFile.exists();
+            try (PrintWriter writer = new PrintWriter(
+                    new FileWriter(summaryFile, true))) {
+                if (writeHeader) {
+                    writer.println("design_id\tstate\tseq_index\tsequence\tstatus\tepsilon\tlower_log10\tupper_log10\tnum_confs\telapsed_s");
+                }
+                writer.printf(Locale.ROOT,
+                        "%s\t%s\t%d\t%s\t%s\t%.9f\t%s\t%s\t%d\t%.3f%n",
+                        designId, stateName, seqIndex,
+                        globalSequence.toString(Sequence.Renderer.ResType),
+                        result.status.name(), effectiveEps,
+                        lowerText, upperText, result.numConfs, elapsedS);
+            } catch (IOException ex) {
+                throw new RuntimeException("PACK* pfunc summary write failed", ex);
+            }
+            System.out.println(String.format(Locale.ROOT,
+                    "[PACKSTAR_PFUNC_DONE] design=%s state=%s seqIndex=%d status=%s epsilon=%.9f elapsed=%.3fs output=%s",
+                    designId, stateName, seqIndex, result.status.name(),
+                    effectiveEps, elapsedS, summaryPath));
+        } finally {
+            minimizingEcalc.tasks.waitForFinish();
+            rigidEcalc.tasks.waitForFinish();
+        }
+    }
+
+    /** Dump the exact global WT + single-mutant order used by KStar. */
+    private static void runSequenceDump(TestKStar.ConfSpaces confSpaces,
+                                        String outputDir,
+                                        String designId) {
+        int maxMut = Integer.getInteger("osprey.sequenceDump.maxMut", 1);
+        List<Sequence> sequences = new ArrayList<>();
+        if (confSpaces.complex.seqSpace.containsWildTypeSequence()) {
+            sequences.add(confSpaces.complex.seqSpace.makeWildTypeSequence());
+        }
+        sequences.addAll(confSpaces.complex.seqSpace.getMutants(maxMut, true));
+        String outputPath = System.getProperty("osprey.sequenceDump.output",
+                outputDir + "/" + designId + "_sequences.tsv");
+        File output = new File(outputPath);
+        if (output.getParentFile() != null) {
+            output.getParentFile().mkdirs();
+        }
+        try (PrintWriter writer = new PrintWriter(new FileWriter(output))) {
+            writer.println("design_id\tseq_index\tsequence");
+            for (int i = 0; i < sequences.size(); i++) {
+                writer.printf(Locale.ROOT, "%s\t%d\t%s%n", designId, i,
+                        sequences.get(i).toString(Sequence.Renderer.ResType));
+            }
+        } catch (IOException ex) {
+            throw new RuntimeException("sequence dump write failed", ex);
+        }
+        System.out.println("[SEQUENCE_DUMP_DONE] design=" + designId
+                + " count=" + sequences.size() + " output=" + outputPath);
     }
 
     private static void runMARKStar(TestKStar.ConfSpaces confSpaces, double epsilon,

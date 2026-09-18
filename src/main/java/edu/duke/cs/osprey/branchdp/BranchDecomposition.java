@@ -117,6 +117,7 @@ public class BranchDecomposition {
     private final Strategy strategy;
     private final int[] positionStateCounts;
     private final ExactImproveOptions exactImproveOptions;
+    private final boolean logWeightedRefinement;
     private boolean computed = false;
     private static final int DEFAULT_EXACT_MAX_POSITIONS = 20;
     private static final int DEFAULT_EXACT_IMPROVE_MAX_DROP = 1;
@@ -168,11 +169,20 @@ public class BranchDecomposition {
     public BranchDecomposition(InteractionGraph graph, Strategy strategy,
                                int[] positionStateCounts,
                                ExactImproveOptions exactImproveOptions) {
+        this(graph, strategy, positionStateCounts, exactImproveOptions, true);
+    }
+
+    /** Suppress per-preview weighted refinement logs without changing the algorithm. */
+    public BranchDecomposition(InteractionGraph graph, Strategy strategy,
+                               int[] positionStateCounts,
+                               ExactImproveOptions exactImproveOptions,
+                               boolean logWeightedRefinement) {
         this.interactionGraph = graph;
         this.strategy = strategy == null ? Strategy.HICKS : strategy;
         this.numPositions = graph.getNumPositions();
         this.positionStateCounts = normalizePositionStateCounts(positionStateCounts, numPositions);
         this.exactImproveOptions = exactImproveOptions;
+        this.logWeightedRefinement = logWeightedRefinement;
         resetTree();
         if (this.strategy == Strategy.HICKS
                 || this.strategy == Strategy.WEIGHTED_HICKS
@@ -315,9 +325,11 @@ public class BranchDecomposition {
     private void refineCompletedTreeByStateCount(String label) {
         int swaps = refineWeightedNearestNeighborInterchanges();
         int improvements = refineWeightedNniRestarts();
-        System.out.println("BranchDecomposition " + label + ": weighted NNI swaps=" + swaps
-                + ", restartImprovements=" + improvements);
-        logWeightedCost(label);
+        if (logWeightedRefinement) {
+            System.out.println("BranchDecomposition " + label + ": weighted NNI swaps=" + swaps
+                    + ", restartImprovements=" + improvements);
+            logWeightedCost(label);
+        }
     }
 
     public BranchTree getTree() { return bt; }
@@ -757,11 +769,21 @@ public class BranchDecomposition {
     }
 
     private BigInteger stateCount(Collection<Integer> positions) {
-        BigInteger count = BigInteger.ONE;
+        // Most preview boundaries fit in a long. Avoid allocating one
+        // BigInteger per position, promoting before overflow when necessary.
+        long small = 1;
+        BigInteger large = null;
         for (int pos : positions) {
-            count = count.multiply(BigInteger.valueOf(positionStateCounts[pos]));
+            int factor = positionStateCounts[pos];
+            if (large != null) {
+                large = large.multiply(BigInteger.valueOf(factor));
+            } else if (factor > 0 && small <= Long.MAX_VALUE / factor) {
+                small *= factor;
+            } else {
+                large = BigInteger.valueOf(small).multiply(BigInteger.valueOf(factor));
+            }
         }
-        return count;
+        return large == null ? BigInteger.valueOf(small) : large;
     }
 
     private void logWeightedCost(String label) {
@@ -997,16 +1019,23 @@ public class BranchDecomposition {
                                              BranchEdge rightSwap, BranchEdge rightKeep,
                                              int branchwidthCap,
                                              boolean requireImprovement) {
-        LinkedHashSet<Integer> newMiddle = new LinkedHashSet<>(leftKeep.getM());
-        newMiddle.addAll(rightSwap.getM());
-        LinkedHashSet<Integer> otherSide = new LinkedHashSet<>(leftSwap.getM());
-        otherSide.addAll(rightKeep.getM());
-        newMiddle.retainAll(otherSide);
+        // (leftKeep U rightSwap) intersect (leftSwap U rightKeep), preserving
+        // the original insertion order without constructing the second union
+        // or allocating entries that the intersection immediately discards.
+        LinkedHashSet<Integer> newMiddle = new LinkedHashSet<>();
+        for (int pos : leftKeep.getM()) {
+            if (leftSwap.getM().contains(pos) || rightKeep.getM().contains(pos)) newMiddle.add(pos);
+        }
+        for (int pos : rightSwap.getM()) {
+            if (leftSwap.getM().contains(pos) || rightKeep.getM().contains(pos)) newMiddle.add(pos);
+        }
         if (newMiddle.size() > branchwidthCap) return null;
 
-        BigInteger currentStates = stateCount(central.getM());
-        BigInteger newStates = stateCount(newMiddle);
-        BigInteger reduction = currentStates.subtract(newStates);
+        // Random restart moves sample uniformly from legal choices and never
+        // compare their scores. Only the improving NNI search needs products.
+        BigInteger reduction = requireImprovement
+                ? stateCount(central.getM()).subtract(stateCount(newMiddle))
+                : BigInteger.ZERO;
         int sizeReduction = central.getM().size() - newMiddle.size();
         if (requireImprovement
                 && (reduction.signum() < 0

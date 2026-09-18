@@ -424,8 +424,11 @@ namespace osprey {
 		// but skipping this causes a noticeable rise in final energies too
 		// it's best to keep doing it I think
 
-		xm = xstar - 1;
-		xp = xstar + 1;
+		// Match the compiled CPU line search in the DOF's native units.
+		// Ordinary residue CCD uses a separate, degree-valued objective.
+		const T wall_jump = dofs[d].wall_jump_size;
+		xm = xstar - wall_jump;
+		xp = xstar + wall_jump;
 
 		if (xm >= xmin) {
 			fxm = f(xm);

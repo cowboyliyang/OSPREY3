@@ -78,10 +78,6 @@ public class CommandBindingAffinity extends RunnableCommand {
             description = "PACK* PAC confidence level. Uses the PACK* default when omitted.")
     public double packStarPacConfidence = Double.NaN;
 
-    @Parameter(names = "--packstar-pac-residual-bound",
-            description = "Assumed one-sided PACK* tail bound E_eta-E_true <= B in kcal/mol. Tightens the clipped PAC upper; q_m is the unconditional fallback.")
-    public double packStarPacResidualBound = Double.NaN;
-
     @Parameter(names = "--stability-threshold", description = "Pruning criteria to remove sequences with unstable unbound states relative to the wild type sequence. Set to a negative number to disable.")
     public double stabilityThreshold = 5.0;
 
@@ -112,10 +108,6 @@ public class CommandBindingAffinity extends RunnableCommand {
             }
             if (!Double.isNaN(packStarPacConfidence) && packStarPacConfidence > 0) {
                 System.setProperty("packstar.pac.confidence", Double.toString(packStarPacConfidence));
-            }
-            if (!Double.isNaN(packStarPacResidualBound) && packStarPacResidualBound >= 0) {
-                System.setProperty("packstar.pac.residualBound",
-                        Double.toString(packStarPacResidualBound));
             }
         }
 

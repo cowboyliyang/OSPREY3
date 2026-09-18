@@ -972,6 +972,111 @@ public class CudaConfEnergyCalculator implements ConfEnergyCalculator {
 		}
 	}
 
+	/*
+	 * Native minimization allocates one transfer workspace per CUDA stream.
+	 * The old fixed batch/stream heuristic used only SM count, so a large
+	 * conformation space could fail in alloc_stream before the first kernel was
+	 * launched.  Keep a conservative fraction of the currently free device
+	 * memory for other CUDA allocations and reduce the batch geometrically when
+	 * necessary.  The result is a throughput hint, not a correctness setting.
+	 */
+	private static final double NATIVE_GPU_MEMORY_FRACTION = 0.60;
+
+	private static long nativeBatchDeviceBytes(
+			Precision precision, ByteBuffer sizes, long batchSize) {
+		return switch (precision) {
+			case Float32 -> NativeLib.minimize_batch_bufsize_device_f32(
+					sizes, batchSize);
+			case Float64 -> NativeLib.minimize_batch_bufsize_device_f64(
+					sizes, batchSize);
+		};
+	}
+
+	private static boolean nativeBatchFits(
+			List<GpuStreams> gpuStreams,
+			Precision precision,
+			ByteBuffer sizes,
+			long batchSize) {
+		long bytes;
+		try {
+			bytes = nativeBatchDeviceBytes(precision, sizes, batchSize);
+		} catch (RuntimeException ex) {
+			// Let the normal allocator produce the detailed native error when
+			// the driver rejects the query; this probe must not hide it.
+			return true;
+		}
+		if (bytes <= 0L) return false;
+		for (GpuStreams streams : gpuStreams) {
+			if (streams == null || streams.gpuInfo == null
+					|| streams.numStreams < 1) {
+				return false;
+			}
+			long budget = (long)(streams.gpuInfo.memFree
+					* NATIVE_GPU_MEMORY_FRACTION);
+			long required;
+			try {
+				required = Math.multiplyExact(bytes, streams.numStreams);
+			} catch (ArithmeticException ex) {
+				return false;
+			}
+			if (required > budget) return false;
+		}
+		return true;
+	}
+
+	private static long chooseNativeBatchSize(
+			List<GpuStreams> gpuStreams,
+			Precision precision,
+			ByteBuffer sizes,
+			long requested) {
+		long candidate = Math.max(1L, requested);
+		String override = System.getProperty("osprey.cuda.native.batchSize");
+		if (override != null) {
+			try {
+				long configured = Long.parseLong(override);
+				if (configured > 0L) candidate = Math.min(candidate, configured);
+			} catch (NumberFormatException ex) {
+				log("WARN: ignoring invalid osprey.cuda.native.batchSize=%s", override);
+			}
+		}
+		long original = candidate;
+		while (candidate > 1L
+				&& !nativeBatchFits(gpuStreams, precision, sizes, candidate)) {
+			candidate = Math.max(1L, candidate / 2L);
+		}
+		if (!nativeBatchFits(gpuStreams, precision, sizes, candidate)) {
+			log("WARN: native CUDA batch workspace still exceeds the conservative memory budget at batch size %d; attempting one stream per GPU",
+				candidate);
+		}
+		if (candidate != original) {
+			log("native CUDA workspace exceeds the memory budget; using batch size %d (requested %d)",
+				candidate, original);
+		}
+		return candidate;
+	}
+
+	private static List<GpuStreams> limitNativeStreams(
+			List<GpuStreams> requested,
+			Precision precision,
+			ByteBuffer sizes,
+			long batchSize) {
+		long bytes = nativeBatchDeviceBytes(precision, sizes, batchSize);
+		List<GpuStreams> limited = new ArrayList<>(requested.size());
+		for (GpuStreams streams : requested) {
+			long budget = (long)(streams.gpuInfo.memFree
+					* NATIVE_GPU_MEMORY_FRACTION);
+			long allowed = bytes > 0L ? budget / bytes : streams.numStreams;
+			int count = (int)Math.max(1L, Math.min(
+					(long)streams.numStreams, allowed));
+			if (count < streams.numStreams) {
+				log("native CUDA workspace limits GPU %d to %d stream(s) at batch size %d",
+					streams.gpuInfo.id, count, batchSize);
+			}
+			limited.add(new GpuStreams(streams.gpuInfo, count));
+		}
+		return limited;
+	}
+
 	/** use all the GPUs by default */
 	public CudaConfEnergyCalculator(ConfSpace confSpace, Precision precision) {
 		this(confSpace, precision, getGpusInfos());
@@ -1018,11 +1123,15 @@ public class CudaConfEnergyCalculator implements ConfEnergyCalculator {
 		if (gpuStreams == null || gpuStreams.isEmpty()) {
 			throw new IllegalArgumentException("0 GPUs selected");
 		}
+		for (GpuStreams streams : gpuStreams) {
+			if (streams == null || streams.gpuInfo == null
+					|| streams.numStreams < 1) {
+				throw new IllegalArgumentException("invalid GPU stream configuration");
+			}
+		}
 
 		this.confSpace = confSpace;
 		this.precision = precision;
-		this.gpuStreams = gpuStreams;
-		this.maxBatchSize = maxBatchSize;
 
 		// find the forcefield implementation, or die trying
 		EnergyCalculator.Type[] ecalcTypes = Arrays.stream(confSpace.ecalcs)
@@ -1360,6 +1469,26 @@ public class CudaConfEnergyCalculator implements ConfEnergyCalculator {
 		confSpaceSizesStruct.num_mol_motions.set(confSpaceSizesMem, numMolMotions);
 		confSpaceSizesBuf = confSpaceSizesMem.asByteBuffer();
 
+		// Pick the batch size assuming one stream per device first.  We can add
+		// extra streams back below when the per-stream workspace leaves room;
+		// this avoids the old all-streams-at-once OOM failure mode.
+		List<GpuStreams> oneStreamPerGpu = gpuStreams.stream()
+				.map(streams -> new GpuStreams(streams.gpuInfo, 1))
+				.collect(Collectors.toList());
+		long effectiveMaxBatchSize = chooseNativeBatchSize(
+			oneStreamPerGpu, precision, confSpaceSizesBuf, maxBatchSize);
+		this.maxBatchSize = effectiveMaxBatchSize;
+		// Keep an immutable snapshot for diagnostics and cleanup.  The input list
+		// is often a subList owned by a caller and may otherwise be mutated while
+		// streams are being initialized.
+		this.gpuStreams = List.copyOf(limitNativeStreams(
+				gpuStreams, precision, confSpaceSizesBuf, effectiveMaxBatchSize));
+		log("native CUDA memory sizing: requestedBatch=%d effectiveBatch=%d "
+				+ "devices=%d streams=%d budgetFraction=%.2f",
+				maxBatchSize, effectiveMaxBatchSize, this.gpuStreams.size(),
+				this.gpuStreams.stream().mapToInt(it -> it.numStreams).sum(),
+				NATIVE_GPU_MEMORY_FRACTION);
+
 		// keep track of how many streams are left to give out
 		class StreamsLeft {
 			final GpuInfo gpuInfo;
@@ -1369,7 +1498,7 @@ public class CudaConfEnergyCalculator implements ConfEnergyCalculator {
 				this.numStreams = gpuStreams.numStreams;
 			}
 		}
-		var gpuStreamsLeft = gpuStreams.stream()
+		var gpuStreamsLeft = this.gpuStreams.stream()
 			.map(StreamsLeft::new)
 			.collect(Collectors.toList());
 
@@ -1382,6 +1511,7 @@ public class CudaConfEnergyCalculator implements ConfEnergyCalculator {
 			case Float32 -> NativeLib.minimize_batch_bufsize_device_f32(confSpaceSizesMem.asByteBuffer(), maxBatchSize);
 			case Float64 -> NativeLib.minimize_batch_bufsize_device_f64(confSpaceSizesMem.asByteBuffer(), maxBatchSize);
 		};
+		log("native CUDA workspace: hostBytes=%d deviceBytes=%d perStream", hostBytes, deviceBytes);
 
 		// layout the gpu streams in a round-robin order
 		int gpui = 0;
@@ -1664,15 +1794,33 @@ public class CudaConfEnergyCalculator implements ConfEnergyCalculator {
 
 	public void minimizeEnergies(List<MinimizationJob> jobs, CheckedOutStream co) {
 
+		if (jobs == null) {
+			throw new IllegalArgumentException("jobs can't be null");
+		}
+
+		// Split oversized requests instead of allocating a workspace for the
+		// whole list (or failing before any work is done).  Reusing a checked-out
+		// stream keeps the chunks ordered and avoids extra synchronization.
+		if (jobs.size() > maxBatchSize) {
+			int chunkSize = Math.toIntExact(Math.min(
+					(long) Integer.MAX_VALUE, maxBatchSize));
+			for (int start = 0; start < jobs.size();) {
+				int end = (int)Math.min((long)jobs.size(),
+						(long)start + chunkSize);
+				minimizeEnergies(jobs.subList(start, end), co);
+				// Advance from the computed end rather than adding chunkSize to
+				// avoid integer wraparound when a caller supplies a near-maximum
+				// Java list and the effective batch size is Integer.MAX_VALUE.
+				start = end;
+			}
+			return;
+		}
+
 		// check the batch size
 		if (jobs.size() <= 0) {
 			// nothing to do
 			// NOTE: don't try to send an empty job list to the GPU minimizer, it will complain
 			return;
-		} else if (jobs.size() > maxBatchSize) {
-			throw new IllegalArgumentException(String.format("too many jobs for batch: %d, max allocated is %d",
-				jobs.size(), maxBatchSize
-			));
 		}
 
 		try (var jobsMem = makeMinimizationJobsMem(jobs)) {

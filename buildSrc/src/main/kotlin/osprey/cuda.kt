@@ -25,6 +25,10 @@ fun Project.makeCudaTasks() {
 		nvcc(this, "residueCcd", maxRegisters=64)
 	}
 
+	val compileCuda_residueCcdBatch by tasks.creating(Exec::class) {
+		nvcc(this, "residueCcdBatch", maxRegisters=64)
+	}
+
 	val compileCuda_dp by tasks.creating(Exec::class) {
 		nvcc(this, "dp")
 	}
@@ -41,6 +45,7 @@ fun Project.makeCudaTasks() {
 			compileCuda_ccd,
 			compileCuda_residueForcefield,
 			compileCuda_residueCcd,
+			compileCuda_residueCcdBatch,
 			compileCuda_dp,
 			compileCuda_sampling
 		)
@@ -64,14 +69,28 @@ fun Project.nvcc(exec: Exec, kernelName: String, maxRegisters: Int? = null, prof
 		// NOTE: change this to your GPU's arch
 		args.addAll(listOf("-cubin", "-gencode=arch=compute_86,code=sm_86", "-lineinfo", "--ptxas-options=-v"))
 	} else {
-		// otherwise, compile for V100/Titan V, Ampere A5000, and Hopper H200,
-		// plus PTX for driver JIT compatibility on newer architectures
-		args.addAll(listOf("-fatbin",
-			"-gencode=arch=compute_70,code=sm_70",
-			"-gencode=arch=compute_86,code=sm_86",
-			"-gencode=arch=compute_90,code=sm_90",
-			"-gencode=arch=compute_90,code=compute_90"
-		))
+		// Otherwise, compile for V100/Titan V and Ampere A5000.  Hopper's
+		// compute_90 target is only accepted by CUDA >= 11.8; older nvcc
+		// installations are still common on the cluster and fail the entire
+		// build when handed an unknown architecture.  Allow an explicit
+		// OSPREY_CUDA_ARCHS override, and add 90 automatically when supported.
+		val requestedArchs = System.getenv("OSPREY_CUDA_ARCHS")
+		val archs = if (!requestedArchs.isNullOrBlank()) {
+			requestedArchs.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+		} else {
+			val defaults = mutableListOf("70", "86")
+			if (nvccSupportsCompute90(nvcc)) defaults.add("90")
+			defaults
+		}
+		args.add("-fatbin")
+		for (arch in archs) {
+			args.add("-gencode=arch=compute_$arch,code=sm_$arch")
+		}
+		// Keep PTX for the newest target so a newer driver can JIT it when
+		// requested explicitly (e.g. OSPREY_CUDA_ARCHS=90).
+		if (archs.contains("90")) {
+			args.add("-gencode=arch=compute_90,code=compute_90")
+		}
 	}
 
 	if (maxRegisters != null) {
@@ -82,4 +101,21 @@ fun Project.nvcc(exec: Exec, kernelName: String, maxRegisters: Int? = null, prof
 
 	exec.workingDir = file("src/main/resources/gpuKernels/cuda")
 	exec.commandLine(args)
+}
+
+private fun nvccSupportsCompute90(nvcc: String): Boolean {
+	return try {
+		val process = ProcessBuilder(nvcc, "--version")
+			.redirectErrorStream(true)
+			.start()
+		val output = process.inputStream.bufferedReader().readText()
+		process.waitFor()
+		val match = Regex("release\\s+(\\d+)\\.(\\d+)", RegexOption.IGNORE_CASE)
+			.find(output)
+		val major = match?.groupValues?.getOrNull(1)?.toIntOrNull() ?: return false
+		val minor = match.groupValues.getOrNull(2)?.toIntOrNull() ?: return false
+		major > 11 || (major == 11 && minor >= 8)
+	} catch (_: Throwable) {
+		false
+	}
 }

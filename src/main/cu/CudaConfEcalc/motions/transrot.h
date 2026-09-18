@@ -56,6 +56,7 @@ namespace osprey {
 					base.min = -radius;
 					base.max = radius;
 					base.initial_step_size = step;
+					base.wall_jump_size = static_cast<T>(1.0);
 					base.setter = set;
 					base.inters = reinterpret_cast<Array<PosInter<T>> *>(this + 1);
 					base.filter_inters(inters, pos_mask);

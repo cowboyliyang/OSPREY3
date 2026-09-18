@@ -19,7 +19,9 @@ BUILD_ROOT=/usr/xtmp/lz280/packstar_migration/gradle-build
 GRADLE_ROOT=/usr/xtmp/lz280/packstar_migration/gradle-home
 
 export JAVA_HOME=/home/users/lz280/java/jdk-17.0.2+8
-export PATH="$JAVA_HOME/bin:$PATH"
+CUDA_ENV=/home/users/lz280/miniconda3/envs/confdiff
+export PATH="$JAVA_HOME/bin:$CUDA_ENV/bin:$CUDA_ENV/cuda/bin:$PATH"
+export NVCC="$CUDA_ENV/bin/nvcc"
 export OSPREY_GRADLE_XTMP_BUILD_ROOT="$BUILD_ROOT"
 export GRADLE_USER_HOME="$GRADLE_ROOT"
 
@@ -29,6 +31,12 @@ command -v module >/dev/null 2>&1 && {
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null || true
 
 cd "$REPO"
+./gradlew compileCuda_residueCcd compileCuda_residueCcdBatch compileJava compileTestJava \
+    --no-daemon \
+    --max-workers=1 \
+    --init-script slurm/scripts/gradle_xtmp.init.gradle \
+    -Dorg.gradle.jvmargs=-Xmx8g
+
 ./gradlew test \
     --no-daemon \
     --max-workers=1 \
@@ -40,8 +48,11 @@ cd "$REPO"
     --tests edu.duke.cs.osprey.packstar.TestPackStarLogSpaceBounds \
     --tests edu.duke.cs.osprey.packstar.TestPackStarFrequencySeverityPAC \
     --tests edu.duke.cs.osprey.packstar.TestPackStarTripleEtaCorrections \
+    --tests edu.duke.cs.osprey.packstar.TestPackStarConformationDedup \
     --tests edu.duke.cs.osprey.branchdp.TestHigherOrderFullDP \
     --tests edu.duke.cs.osprey.branchdp.TestGpuFullDP.gpuExactTriples_nonLeafRegularMatchesJava \
     --tests edu.duke.cs.osprey.branchdp.TestGpuFullDP.gpuExactTriples_childSlicedMatchesJava \
     --tests edu.duke.cs.osprey.branchdp.TestGpuFullDP.gpuExactTriples_hybridMatchesJava \
-    --tests edu.duke.cs.osprey.branchdp.TestGpuFullDP.gpuExactTriples_outOfCoreMatchesJava
+    --tests edu.duke.cs.osprey.branchdp.TestGpuFullDP.gpuExactTriples_outOfCoreMatchesJava \
+    --tests edu.duke.cs.osprey.minimization.TestMinimization.testResidueCudaCCDBatchMatchesScalar \
+    --tests edu.duke.cs.osprey.minimization.TestMinimization.auditResidueCudaCCDAgainstCpu

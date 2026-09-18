@@ -115,7 +115,8 @@ public:
 	
 	__device__ Data(const byte * const data) :
 		m_data(data),
-		header(*(Header *)&m_data[0]),
+		// header is declared before m_data and is initialized first in C++.
+		header(*(const Header *)data),
 		m_dihedralOffsets((unsigned long *)&m_data[sizeof(Header)]),
 		m_resPairOffsets((unsigned long *)&m_data[sizeof(Header) + sizeof(long)*header.numDihedrals])
 	{
@@ -791,46 +792,37 @@ extern "C" __global__ void ccd(
 
 	// parse data
 	const Data data(rawdata);
-	
-	// partition shared memory
 	extern __shared__ byte shared[];
 	double * const threadEnergies = (double *)shared;
 	double * const nextx = threadEnergies + blockDim.x;
 	double * const firstSteps = nextx + data.header.numDihedrals;
 	double * const lastSteps = firstSteps + data.header.numDihedrals;
-	
-	// partition out memory
+
 	double & herefx = out[data.header.numDihedrals];
 	double * const herex = out;
-	
-	// init the step sizes
+
 	for (int d = threadIdx.x; d < data.header.numDihedrals; d += blockDim.x) {
 		firstSteps[d] = OneDegree;
 		lastSteps[d] = OneDegree;
 	}
 	__syncthreads();
-	
-	// get the initial energy
+
 	herefx = calcEnergy(coords, data, NULL, threadEnergies);
-	
-	// init starting x
+
 	for (int d = threadIdx.x; d < data.header.numDihedrals; d += blockDim.x) {
 		herex[d] = xin[d];
 	}
 	__syncthreads();
-	
-	// for each iteraction of CCD...
+
 	for (int iter=0; iter<MaxIterations; iter++) {
 
 		copyx(herex, nextx, data.header.numDihedrals);
-		
-		// for each dimension/dihedral...
+
 		for (int d=0; d<data.header.numDihedrals; d++) {
 			const Dihedral & dihedral = data.getDihedral(d);
-			
+
 			double xd = nextx[d];
-			
-			// get the step size, try to make it adaptive (based on historical steps if possible; else on step #)
+
 			double step;
 			{
 				double firstStep = firstSteps[d];
@@ -840,45 +832,35 @@ extern "C" __global__ void ccd(
 				} else {
 					step = InitialStep/pow(iter + 1.0, 3.0);
 				}
-				
-				// make sure the step isn't so big that the quadratic approximation is worthless
+
 				while (dihedral.xdmax > dihedral.xdmin && xd - step < dihedral.xdmin && xd + step > dihedral.xdmax) {
 					step /= 2;
 				}
 			}
-			
-			// do line search
+
 			LinesearchOut lsout = linesearch(coords, data, dihedral, threadEnergies, xd, step);
-			
-			// update x and the step
+
 			if (threadIdx.x == 0) {
-			
-				// update step tracking
 				if (iter == 0) {
 					firstSteps[d] = lsout.step;
 				}
 				lastSteps[d] = lsout.step;
-				
-				// update nextxd
 				nextx[d] = lsout.xdstar;
 			}
 			__syncthreads();
 		}
-		
-		// evaluate the whole energy function
+
 		double nextfx = calcEnergy(coords, data, NULL, threadEnergies);
 		double improvement = herefx - nextfx;
-		
+
 		if (improvement > 0) {
-		
-			// take the step
 			copyx(nextx, herex, data.header.numDihedrals);
 			herefx = nextfx;
-			
+
 			if (improvement < ConvergenceThreshold) {
 				break;
 			}
-			
+
 		} else {
 			break;
 		}

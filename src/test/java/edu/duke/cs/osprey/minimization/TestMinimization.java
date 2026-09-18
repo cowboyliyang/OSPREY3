@@ -38,6 +38,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -65,6 +66,7 @@ import edu.duke.cs.osprey.energy.EnergyFunction;
 import edu.duke.cs.osprey.energy.EnergyFunctionGenerator;
 import edu.duke.cs.osprey.energy.FFInterGen;
 import edu.duke.cs.osprey.energy.MultiTermEnergyFunction;
+import edu.duke.cs.osprey.energy.ResidueInteractions;
 import edu.duke.cs.osprey.energy.forcefield.ForcefieldInteractions;
 import edu.duke.cs.osprey.energy.forcefield.ForcefieldParams;
 import edu.duke.cs.osprey.energy.forcefield.ForcefieldParams.SolvationForcefield;
@@ -377,6 +379,137 @@ public class TestMinimization extends TestBase {
 	@Test
 	public void testResidueCudaCCD2Streams() {
 		check(EnergyCalculator.Type.ResidueCudaCCD, Parallelism.make(4, 1, 2));
+	}
+
+	/** Regression test for the heterogeneous one-grid residue CCD launcher. */
+	@Test
+	public void testResidueCudaCCDBatchMatchesScalar() {
+		checkResidueCudaCCDBatch(false);
+	}
+
+	@Test
+	public void testResidueCudaCCDPartialBatchMatchesScalar() {
+		checkResidueCudaCCDBatch(true);
+	}
+
+	private void checkResidueCudaCCDBatch(boolean partial) {
+		skipGPUTestsIfNeeded(Parallelism.make(1, 1));
+		Info info = Infos.get(true);
+		new EnergyCalculator.Builder(info.simpleConfSpace, info.ffparams)
+				.setType(EnergyCalculator.Type.ResidueCudaCCD)
+				.setParallelism(Parallelism.make(1, 1))
+				.use((ecalc) -> {
+					ConfEnergyCalculator confEcalc =
+							new ConfEnergyCalculator.Builder(
+									info.simpleConfSpace, ecalc).build();
+					assertThat(confEcalc.supportsResidueCudaCCDBatch(), is(true));
+					int requestedCount = Integer.getInteger(
+							"osprey.cuda.test.batchCount", 8);
+					int count = Math.min(requestedCount, info.confs.size());
+					List<RCTuple> tuples = new ArrayList<>(count);
+						List<ResidueInteractions> inters = new ArrayList<>(count);
+						double[] scalar = new double[count];
+						long scalarStart = System.nanoTime();
+						for (int i = 0; i < count; i++) {
+							RCTuple tuple = new RCTuple(info.confs.get(i).getAssignments());
+							if (partial) {
+								int[] conf = info.confs.get(i).getAssignments();
+								int p = i % (conf.length - 2);
+								tuple = new RCTuple(p, conf[p], p + 1, conf[p + 1],
+										p + 2, conf[p + 2]);
+							}
+						tuples.add(tuple);
+						ResidueInteractions interactions =
+								confEcalc.makeFragInters(tuple);
+						inters.add(interactions);
+							scalar[i] = confEcalc.calcEnergy(tuple, interactions).energy;
+						}
+						long scalarNanos = System.nanoTime() - scalarStart;
+						long batchStart = System.nanoTime();
+						double[] batch = confEcalc.calcResidueCudaCCDBatch(tuples, inters);
+						long batchNanos = System.nanoTime() - batchStart;
+						assertThat(batch, is(notNullValue()));
+					double maxAbs = 0.0;
+					for (int i = 0; i < count; i++) {
+						maxAbs = Math.max(maxAbs, Math.abs(batch[i] - scalar[i]));
+					}
+						System.out.println("[CCD-BATCH-AUDIT] n=" + count
+								+ " partial=" + partial
+								+ " maxAbsKcal=" + maxAbs
+								+ " scalarMs=" + scalarNanos / 1.0e6
+								+ " batchMs=" + batchNanos / 1.0e6);
+					assertThat(maxAbs, lessThanOrEqualTo(1.0e-5));
+			});
+	}
+
+	/**
+	 * Establish the ordinary residue-CUDA CCD versus CPU reference baseline.
+	 * The production target is p99 <= 1e-3 kcal/mol and at least 99.9% finite /
+	 * abort-state agreement; keep this fixture small enough for a regression test
+	 * while reporting the exact finite count and quantile used for the target.
+	 */
+	@Test
+	public void auditResidueCudaCCDAgainstCpu() {
+		skipGPUTestsIfNeeded(Parallelism.make(1, 1));
+		Info info = Infos.get(true);
+		final List<EnergiedConf>[] cpuHolder = new List[] {null};
+		long cpuStart = System.nanoTime();
+		new EnergyCalculator.Builder(info.simpleConfSpace, info.ffparams)
+				.setType(EnergyCalculator.Type.Cpu)
+				.setParallelism(Parallelism.make(1, 1))
+				.use(ecalc -> {
+					ConfEnergyCalculator confEcalc =
+							new ConfEnergyCalculator.Builder(
+									info.simpleConfSpace, ecalc).build();
+						cpuHolder[0] = confEcalc.calcAllEnergies(info.confs);
+					});
+		long cpuNanos = System.nanoTime() - cpuStart;
+		final List<EnergiedConf>[] gpuHolder = new List[] {null};
+		long gpuStart = System.nanoTime();
+		new EnergyCalculator.Builder(info.simpleConfSpace, info.ffparams)
+				.setType(EnergyCalculator.Type.ResidueCudaCCD)
+				.setParallelism(Parallelism.make(1, 1))
+				.use(ecalc -> {
+					ConfEnergyCalculator confEcalc =
+							new ConfEnergyCalculator.Builder(
+									info.simpleConfSpace, ecalc).build();
+						gpuHolder[0] = confEcalc.calcAllEnergies(info.confs);
+					});
+		long gpuNanos = System.nanoTime() - gpuStart;
+
+		List<Double> absErrors = new ArrayList<>();
+		int finiteStateMatches = 0;
+		int finiteStateMismatches = 0;
+		for (int i = 0; i < info.confs.size(); i++) {
+			double cpu = cpuHolder[0].get(i).getEnergy();
+			double gpu = gpuHolder[0].get(i).getEnergy();
+			boolean cpuFinite = Double.isFinite(cpu);
+			boolean gpuFinite = Double.isFinite(gpu);
+			if (cpuFinite == gpuFinite) finiteStateMatches++;
+			else finiteStateMismatches++;
+			if (cpuFinite && gpuFinite) {
+				absErrors.add(Math.abs(cpu - gpu));
+			}
+		}
+		Collections.sort(absErrors);
+		assertThat("ordinary residue-CUDA/CPU comparison has no finite pairs",
+				absErrors.isEmpty(), is(false));
+		int p99Index = Math.min(absErrors.size() - 1,
+				(int)Math.ceil(0.99 * absErrors.size()) - 1);
+		double p99 = absErrors.get(Math.max(0, p99Index));
+		double stateRate = finiteStateMatches
+				/ (double)info.confs.size();
+		System.out.println("[CCD-CPU-GPU-AUDIT] n=" + info.confs.size()
+				+ " finitePairs=" + absErrors.size()
+				+ " finiteStateMatchRate=" + stateRate
+				+ " p99AbsKcal=" + p99
+				+ " maxAbsKcal=" + absErrors.get(absErrors.size() - 1)
+				+ " cpuMs=" + cpuNanos / 1.0e6
+				+ " gpuMs=" + gpuNanos / 1.0e6);
+		assertThat("ordinary residue-CUDA/CPU finite-state agreement",
+				stateRate, greaterThanOrEqualTo(0.999));
+		assertThat("ordinary residue-CUDA/CPU p99 absolute error",
+				p99, lessThanOrEqualTo(1.0e-3));
 	}
 	
 	private static interface MinimizerFactory {

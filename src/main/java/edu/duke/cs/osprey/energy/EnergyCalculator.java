@@ -343,6 +343,11 @@ public class EnergyCalculator implements AutoCleanable {
 						pool.cleanup();
 						needsCleanup = false;
 					}
+
+					@Override
+					public GpuStreamPool getGpuStreamPool() {
+						return pool;
+					}
 				};
 			}
 		},
@@ -374,6 +379,11 @@ public class EnergyCalculator implements AutoCleanable {
 					public void cleanup() {
 						pool.cleanup();
 						needsCleanup = false;
+					}
+
+					@Override
+					public GpuStreamPool getGpuStreamPool() {
+						return pool;
 					}
 				};
 			}
@@ -407,6 +417,11 @@ public class EnergyCalculator implements AutoCleanable {
 						pool.cleanup();
 						needsCleanup = false;
 					}
+
+					@Override
+					public GpuStreamPool getGpuStreamPool() {
+						return pool;
+					}
 				};
 			}
 		},
@@ -438,6 +453,11 @@ public class EnergyCalculator implements AutoCleanable {
 					public void cleanup() {
 						pool.cleanup();
 						needsCleanup = false;
+					}
+
+					@Override
+					public GpuStreamPool getGpuStreamPool() {
+						return pool;
 					}
 				};
 			}
@@ -483,6 +503,16 @@ public class EnergyCalculator implements AutoCleanable {
 			public int numStreams;
 			public EfuncFactory efuncs;
 			public Factory<Minimizer,ObjectiveFunction> minimizers;
+
+			/**
+			 * Return the CUDA stream pool owned by this context, when one is
+			 * available.  This is intentionally optional: CPU and OpenCL contexts
+			 * return {@code null}.  Batch CUDA kernels use the owning pool so they
+			 * do not create and destroy a fresh CUDA context for every batch.
+			 */
+			public GpuStreamPool getGpuStreamPool() {
+				return null;
+			}
 			
 			protected boolean needsCleanup = false;
 			

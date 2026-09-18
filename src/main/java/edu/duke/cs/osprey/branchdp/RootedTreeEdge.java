@@ -70,6 +70,19 @@ public class RootedTreeEdge {
 
     private int[] mPositionsSorted;
     private int[] lambdaPositionsSorted;
+    private int[] mCounts;
+    private int[] lambdaCounts;
+    private long[] mStrides;
+    private long[] lambdaStrides;
+    /** Pair slots wholly inside lambda and crossing lambda/M, cached per graph. */
+    private int[] lambdaPairFirstSlots;
+    private int[] lambdaPairSecondSlots;
+    private int[] lambdaMFirstSlots;
+    private int[] lambdaMSecondSlots;
+    private InteractionGraph interactionTermCacheGraph;
+    /** GPU pair-term descriptors: [lambdaSlot, mSlot, lambdaPos, mPos, lambdaCount, mCount]. */
+    private int[][] gpuLambdaMTermDescriptors;
+    private InteractionGraph gpuLambdaMTermGraph;
     private RCs rcs;
     private long mStateCount;
     private int mArraySize;
@@ -83,6 +96,8 @@ public class RootedTreeEdge {
     // null => fold disabled for this edge (legacy getMstateForFullState path).
     private ChildFoldPlan[] childFoldPlans;
     private boolean childFoldHoistInvariant;
+    private boolean childFoldChildrenEnabled;
+    private boolean childFoldPlansInitialized;
 
     // Option A: native kernel toggle (resolved once before the DP loop) + per-thread
     // scratch row buffers reused across edges/M-states to avoid per-call allocation.
@@ -90,6 +105,17 @@ public class RootedTreeEdge {
     private static final ThreadLocal<double[]> NATIVE_LOWER_BUF = ThreadLocal.withInitial(() -> new double[0]);
     private static final ThreadLocal<double[]> NATIVE_UPPER_BUF = ThreadLocal.withInitial(() -> new double[0]);
     private static final ThreadLocal<double[]> NATIVE_OUT_BUF = ThreadLocal.withInitial(() -> new double[2]);
+    /** Scratch decode buffers for the full-DP worker that never escape the row. */
+    private static final ThreadLocal<int[]> FULL_DP_M_DECODE_BUF =
+            ThreadLocal.withInitial(() -> new int[0]);
+    private static final ThreadLocal<int[]> FULL_DP_LAMBDA_DECODE_BUF =
+            ThreadLocal.withInitial(() -> new int[0]);
+    private static final ThreadLocal<long[]> FULL_DP_CHILD_BASE_BUF =
+            ThreadLocal.withInitial(() -> new long[0]);
+    private static final ThreadLocal<LogSumExpAccumulator> FULL_DP_LOWER_ACCUMULATOR =
+            ThreadLocal.withInitial(LogSumExpAccumulator::new);
+    private static final ThreadLocal<LogSumExpAccumulator> FULL_DP_UPPER_ACCUMULATOR =
+            ThreadLocal.withInitial(LogSumExpAccumulator::new);
 
     private static final double NEG_INF = Double.NEGATIVE_INFINITY;
     private static final String DP_PARALLEL_PROPERTY = "branchdp.dp.parallel";
@@ -114,6 +140,14 @@ public class RootedTreeEdge {
     // Option C: non-leaf child-table folding (pure Java, no SIMD/JIT-vector risk).
     private static final String DP_FOLD_CHILDREN_PROPERTY = "branchdp.dp.foldChildren";
     private static final String DP_FOLD_HOIST_PROPERTY = "branchdp.dp.foldChildren.hoistInvariant";
+    private static final String DP_LAMBDA_DECODE_CACHE_BYTES_PROPERTY =
+            "branchdp.dp.lambdaDecodeCache.maxBytes";
+    private static final long DEFAULT_DP_LAMBDA_DECODE_CACHE_BYTES =
+            64L * 1024L * 1024L;
+    private static final String DP_CHILD_FOLD_PROJECTION_CACHE_BYTES_PROPERTY =
+            "branchdp.dp.childFoldProjectionCache.maxBytes";
+    private static final long DEFAULT_DP_CHILD_FOLD_PROJECTION_CACHE_BYTES =
+            64L * 1024L * 1024L;
     // Option A: native SIMD log-sum-exp kernel. Default OFF (wired but dormant:
     // libOspreyLogSumExp.so is built/validated separately, see src/main/c/).
     private static final String DP_NATIVE_KERNEL_PROPERTY = "branchdp.dp.nativeKernel";
@@ -176,12 +210,22 @@ public class RootedTreeEdge {
     // Full energy per (m, λ) = lambdaOnlyRigid[λ] + lambdaMRigid(m,λ) for rigid
     private double[] lambdaOnlyRigid;      // [lambdaIdx]
     private double[] lambdaOnlyMin;        // [lambdaIdx]
+    /** Flat structural lambda-digit cache; null when the configured byte cap is exceeded. */
+    private int[] lambdaStateDigits;
+    private boolean lambdaStateCacheAttempted;
 
     // Cached energy matrices and parameters for on-demand computation
     private EnergyMatrix cachedRigidEmat;
     private EnergyMatrix cachedMinEmat;
     private InteractionGraph cachedG;
     private double cachedRT;
+    /**
+     * The rigid matrix is invariant across PACK* corrected-EMAT refits.  Keep
+     * its lambda-only vector tied to the matrix/graph identity so repeated
+     * proposal DPs only rebuild the minimizing vector.
+     */
+    private EnergyMatrix lambdaOnlyRigidSource;
+    private InteractionGraph lambdaOnlyRigidGraph;
 
     // Per (mIdx, lambdaIdx) full energies, lazily computed and cached
     // fullEnergyRigid[mIdx][lambdaIdx], fullEnergyMin[mIdx][lambdaIdx]
@@ -254,16 +298,33 @@ public class RootedTreeEdge {
         }
         dpTable = null;
         childFoldPlans = null;
+        childFoldPlansInitialized = false;
+        childFoldChildrenEnabled = false;
         enumeratedCount = null;
         sortedLambdaIndices = null;
         lambdaOnlyRigid = null;
         lambdaOnlyMin = null;
+        lambdaStateDigits = null;
+        lambdaStateCacheAttempted = false;
+        mCounts = null;
+        lambdaCounts = null;
+        mStrides = null;
+        lambdaStrides = null;
+        lambdaPairFirstSlots = null;
+        lambdaPairSecondSlots = null;
+        lambdaMFirstSlots = null;
+        lambdaMSecondSlots = null;
+        interactionTermCacheGraph = null;
+        gpuLambdaMTermDescriptors = null;
+        gpuLambdaMTermGraph = null;
         fullEnergyRigid = null;
         fullEnergyMin = null;
         fullEnergyTablesMaterialized = false;
         cachedRigidEmat = null;
         cachedMinEmat = null;
         cachedG = null;
+        lambdaOnlyRigidSource = null;
+        lambdaOnlyRigidGraph = null;
 
         // Break the compact/F-set graph too. The ordinary rooted tree is still
         // traversable while postOrderReleaseLargeMemory is running.
@@ -312,6 +373,24 @@ public class RootedTreeEdge {
     }
 
     public void compLlambda(boolean initEnumerationArrays) {
+        // The decomposition topology can be rebuilt for a proposal-only
+        // interaction graph.  Numerical DP arrays are reset separately, but
+        // child-fold plans must be rebuilt when this structural method runs.
+        childFoldPlans = null;
+        childFoldPlansInitialized = false;
+        childFoldChildrenEnabled = false;
+        childFoldHoistInvariant = false;
+        lambdaStateDigits = null;
+        lambdaStateCacheAttempted = false;
+        lambdaPairFirstSlots = null;
+        lambdaPairSecondSlots = null;
+        lambdaMFirstSlots = null;
+        lambdaMSecondSlots = null;
+        interactionTermCacheGraph = null;
+        gpuLambdaMTermDescriptors = null;
+        gpuLambdaMTermGraph = null;
+        lambdaOnlyRigidSource = null;
+        lambdaOnlyRigidGraph = null;
         RootedTreeNode clc = child.getLeftChild();
 
         if (clc == null) {
@@ -378,6 +457,11 @@ public class RootedTreeEdge {
     private void initializeIndexing() {
         mPositionsSorted = M.stream().mapToInt(Integer::intValue).sorted().toArray();
         lambdaPositionsSorted = lambda.stream().mapToInt(Integer::intValue).sorted().toArray();
+
+        mCounts = countsForPositions(mPositionsSorted);
+        lambdaCounts = countsForPositions(lambdaPositionsSorted);
+        mStrides = mixedRadixStrides(mCounts);
+        lambdaStrides = mixedRadixStrides(lambdaCounts);
 
         mStateCount = checkedStateCountLong("M", mPositionsSorted, true);
         mArraySize = mStateCount <= Integer.MAX_VALUE ? (int) mStateCount : -1;
@@ -487,7 +571,7 @@ public class RootedTreeEdge {
         }
     }
 
-    static boolean shouldUseFileBackedDPTable(long mStates) {
+    public static boolean shouldUseFileBackedDPTable(long mStates) {
         String mode = getConfigProperty(DP_TABLE_MODE_PROPERTY, "auto")
                 .trim().toLowerCase(Locale.ROOT);
         if (mode.equals("mmap") || mode.equals("mapped") || mode.equals("file")) {
@@ -526,15 +610,14 @@ public class RootedTreeEdge {
     // ========== M-state indexing ==========
 
     public long computeIndexInA(int[] mRCIndices) {
+        ensureIndexingCaches();
         if (isRootEdge || mRCIndices == null || mPositionsSorted.length == 0) {
             return 0L;
         }
 
         long index = mRCIndices[mPositionsSorted.length - 1];
-        long stride = 1L;
         for (int i = mPositionsSorted.length - 2; i >= 0; i--) {
-            stride *= rcs.getNum(mPositionsSorted[i + 1]);
-            index += (long) mRCIndices[i] * stride;
+            index += (long) mRCIndices[i] * mStrides[i];
         }
         return index;
     }
@@ -574,25 +657,145 @@ public class RootedTreeEdge {
     }
 
     private int[] decodeMState(long mIndex) {
+        ensureIndexingCaches();
         int[] mRCs = new int[mPositionsSorted.length];
-        long remaining = mIndex;
-        for (int i = mPositionsSorted.length - 1; i >= 0; i--) {
-            int numRCs = rcs.getNum(mPositionsSorted[i]);
-            mRCs[i] = (int) (remaining % numRCs);
-            remaining /= numRCs;
-        }
+        decodeMStateInto(mIndex, mRCs);
         return mRCs;
     }
 
     private int[] decodeLambdaState(int lambdaIndex) {
         int[] lambdaRCs = new int[lambdaPositionsSorted.length];
-        int remaining = lambdaIndex;
-        for (int i = lambdaPositionsSorted.length - 1; i >= 0; i--) {
-            int numRCs = rcs.getNum(lambdaPositionsSorted[i]);
-            lambdaRCs[i] = remaining % numRCs;
+        decodeLambdaStateInto(lambdaIndex, lambdaRCs);
+        return lambdaRCs;
+    }
+
+    /** Decode an M-state into caller-owned storage without allocating. */
+    private void decodeMStateInto(long mIndex, int[] mRCs) {
+        ensureIndexingCaches();
+        if (mRCs.length != mPositionsSorted.length) {
+            throw new IllegalArgumentException(
+                    "M-state decode buffer has the wrong length: "
+                            + mRCs.length + " != " + mPositionsSorted.length);
+        }
+        long remaining = mIndex;
+        for (int i = mPositionsSorted.length - 1; i >= 0; i--) {
+            int numRCs = mCounts[i];
+            mRCs[i] = (int) (remaining % numRCs);
             remaining /= numRCs;
         }
-        return lambdaRCs;
+    }
+
+    /** Decode a lambda state into caller-owned storage without allocating. */
+    private void decodeLambdaStateInto(int lambdaIndex, int[] lambdaRCs) {
+        ensureIndexingCaches();
+        if (lambdaIndex < 0 || lambdaIndex >= totalLambdaStates) {
+            throw new IndexOutOfBoundsException(
+                    "lambda state out of range: " + lambdaIndex);
+        }
+        if (lambdaRCs.length != lambdaPositionsSorted.length) {
+            throw new IllegalArgumentException(
+                    "lambda-state decode buffer has the wrong length: "
+                            + lambdaRCs.length + " != "
+                            + lambdaPositionsSorted.length);
+        }
+        ensureLambdaStateDigits();
+        if (lambdaStateDigits != null) {
+            System.arraycopy(lambdaStateDigits,
+                    lambdaIndex * lambdaPositionsSorted.length,
+                    lambdaRCs, 0, lambdaPositionsSorted.length);
+            return;
+        }
+        for (int i = 0; i < lambdaPositionsSorted.length; i++) {
+            lambdaRCs[i] = (int) ((lambdaIndex / lambdaStrides[i])
+                    % lambdaCounts[i]);
+        }
+    }
+
+    /** Per-worker M-state buffer used by full DP; the contents are ephemeral. */
+    private int[] fullDpMDecodeBuffer() {
+        ensureIndexingCaches();
+        int[] buffer = FULL_DP_M_DECODE_BUF.get();
+        if (buffer.length != mPositionsSorted.length) {
+            buffer = new int[mPositionsSorted.length];
+            FULL_DP_M_DECODE_BUF.set(buffer);
+        }
+        return buffer;
+    }
+
+    /** Per-worker lambda-state buffer used by full DP; the contents are ephemeral. */
+    private int[] fullDpLambdaDecodeBuffer() {
+        ensureIndexingCaches();
+        int[] buffer = FULL_DP_LAMBDA_DECODE_BUF.get();
+        if (buffer.length != lambdaPositionsSorted.length) {
+            buffer = new int[lambdaPositionsSorted.length];
+            FULL_DP_LAMBDA_DECODE_BUF.set(buffer);
+        }
+        return buffer;
+    }
+
+    /** Per-worker child-index buffer used by full DP; the contents are ephemeral. */
+    private long[] fullDpChildBaseBuffer(int length) {
+        long[] buffer = FULL_DP_CHILD_BASE_BUF.get();
+        if (buffer.length < length) {
+            buffer = new long[length];
+            FULL_DP_CHILD_BASE_BUF.set(buffer);
+        }
+        return buffer;
+    }
+
+    private void ensureLambdaStateDigits() {
+        ensureIndexingCaches();
+        if (lambdaStateCacheAttempted) return;
+        lambdaStateCacheAttempted = true;
+        long entries = (long) totalLambdaStates
+                * (long) lambdaPositionsSorted.length;
+        long maxBytes = getConfigLong(
+                DP_LAMBDA_DECODE_CACHE_BYTES_PROPERTY,
+                DEFAULT_DP_LAMBDA_DECODE_CACHE_BYTES);
+        if (entries <= 0L || maxBytes <= 0L
+                || entries > Integer.MAX_VALUE
+                || entries > maxBytes / Integer.BYTES) {
+            return;
+        }
+
+        int[] digits = new int[(int) entries];
+        for (int lambdaIndex = 0; lambdaIndex < totalLambdaStates;
+             lambdaIndex++) {
+            int base = lambdaIndex * lambdaPositionsSorted.length;
+            for (int slot = 0; slot < lambdaPositionsSorted.length; slot++) {
+                digits[base + slot] = (int) ((lambdaIndex
+                        / lambdaStrides[slot]) % lambdaCounts[slot]);
+            }
+        }
+        lambdaStateDigits = digits;
+    }
+
+    private int getLambdaLocalRC(int lambdaIndex, int slot) {
+        if (lambdaIndex < 0 || lambdaIndex >= totalLambdaStates
+                || slot < 0 || slot >= lambdaPositionsSorted.length) {
+            throw new IndexOutOfBoundsException(
+                    "lambda state/slot out of range: state=" + lambdaIndex
+                            + ", slot=" + slot);
+        }
+        ensureLambdaStateDigits();
+        if (lambdaStateDigits != null) {
+            return lambdaStateDigits[
+                    lambdaIndex * lambdaPositionsSorted.length + slot];
+        }
+        return (int) ((lambdaIndex / lambdaStrides[slot])
+                % lambdaCounts[slot]);
+    }
+
+    /** Copy one lambda state into a full conformation using cached digits. */
+    public void writeLambdaStateGlobal(int lambdaIndex, int[] conformation) {
+        if (conformation == null) {
+            throw new IllegalArgumentException("conformation must be non-null");
+        }
+        for (int slot = 0; slot < lambdaPositionsSorted.length; slot++) {
+            int pos = lambdaPositionsSorted[slot];
+            conformation[pos] = rcs.get(pos,
+                    getLambdaLocalRC(lambdaIndex, slot));
+        }
     }
 
     // ========== Compact tree ==========
@@ -708,6 +911,42 @@ public class RootedTreeEdge {
         }
         energy += computeHigherOrderEnergy(
                 lambdaPositionsSorted, lambdaRCs, emat);
+        return energy;
+    }
+
+    /**
+     * Pairwise-only lambda energy directly from a mixed-radix index.  This
+     * keeps the full-DP and ancestral-sampling hot paths from allocating a
+     * temporary lambda digit array for every state.  Higher-order matrices
+     * deliberately use the array-based path because their tuple lookup needs
+     * the complete assignment.
+     */
+    private double computeLambdaOnlyEnergyForIndex(
+            int lambdaIndex, EnergyMatrix emat, InteractionGraph G) {
+        if (emat.hasHigherOrderTerms()) {
+            return computeLambdaOnlyEnergy(
+                    decodeLambdaState(lambdaIndex), emat, G);
+        }
+
+        ensureInteractionTermCaches(G);
+        double energy = 0.0;
+        for (int i = 0; i < lambdaPositionsSorted.length; i++) {
+            int pos = lambdaPositionsSorted[i];
+            int rc = rcs.get(pos, getLambdaLocalRC(lambdaIndex, i));
+            energy += emat.getOneBody(pos, rc);
+        }
+        for (int pair = 0; pair < lambdaPairFirstSlots.length; pair++) {
+            int firstSlot = lambdaPairFirstSlots[pair];
+            int secondSlot = lambdaPairSecondSlots[pair];
+            int firstPos = lambdaPositionsSorted[firstSlot];
+            int secondPos = lambdaPositionsSorted[secondSlot];
+            int firstRC = rcs.get(firstPos,
+                    getLambdaLocalRC(lambdaIndex, firstSlot));
+            int secondRC = rcs.get(secondPos,
+                    getLambdaLocalRC(lambdaIndex, secondSlot));
+            energy += emat.getPairwise(
+                    firstPos, firstRC, secondPos, secondRC);
+        }
         return energy;
     }
 
@@ -843,6 +1082,108 @@ public class RootedTreeEdge {
         return computeLocalEnergy(mRCs, lambdaRCs, emat, graph);
     }
 
+    /**
+     * Exact local energy for a lambda index, reusing the cached lambda-only
+     * portion prepared during DP initialization.  This is the hot path used by
+     * PACK* ancestral sampling; it avoids rebuilding a lambda digit array and
+     * avoids recomputing all lambda-lambda terms for every (M,lambda) query.
+     */
+    public double computeLocalEnergyForLambdaIndex(
+            int[] mRCs, int lambdaIndex,
+            EnergyMatrix emat, InteractionGraph graph) {
+        if (mRCs == null) {
+            throw new IllegalArgumentException("M-state digits must be non-null");
+        }
+        if (lambdaIndex < 0 || lambdaIndex >= totalLambdaStates) {
+            throw new IndexOutOfBoundsException(
+                    "lambda state out of range: " + lambdaIndex);
+        }
+        double[] cachedLambdaOnly = null;
+        if (graph == cachedG) {
+            if (emat == cachedMinEmat) {
+                cachedLambdaOnly = lambdaOnlyMin;
+            } else if (emat == cachedRigidEmat) {
+                cachedLambdaOnly = lambdaOnlyRigid;
+            }
+        }
+        if (cachedLambdaOnly != null) {
+            return cachedLambdaOnly[lambdaIndex]
+                    + computeLambdaMEnergyForIndex(
+                    mRCs, lambdaIndex, emat, graph);
+        }
+        int[] lambdaRCs = decodeLambdaState(lambdaIndex);
+        return computeLocalEnergy(mRCs, lambdaRCs, emat, graph);
+    }
+
+    private double computeLambdaMEnergyForIndex(
+            int[] mRCs, int lambdaIndex,
+            EnergyMatrix emat, InteractionGraph graph) {
+        if (emat.hasHigherOrderTerms()) {
+            int[] lambdaRCs = decodeLambdaState(lambdaIndex);
+            return computeLambdaMEnergy(mRCs, lambdaRCs, emat, graph);
+        }
+
+        ensureInteractionTermCaches(graph);
+        double energy = 0.0;
+        for (int pair = 0; pair < lambdaMFirstSlots.length; pair++) {
+            int lambdaSlot = lambdaMFirstSlots[pair];
+            int mSlot = lambdaMSecondSlots[pair];
+            int lambdaPos = lambdaPositionsSorted[lambdaSlot];
+            int mPos = mPositionsSorted[mSlot];
+            int lambdaRC = rcs.get(lambdaPos,
+                    getLambdaLocalRC(lambdaIndex, lambdaSlot));
+            int mRC = rcs.get(mPos, mRCs[mSlot]);
+            energy += emat.getPairwise(
+                    lambdaPos, lambdaRC, mPos, mRC);
+        }
+        return energy;
+    }
+
+    /**
+     * Exact log conditional weight for one lambda state.  Child folding uses
+     * the same mixed-radix plans as full DP, so CPU sampling and DP address the
+     * child tables identically without temporary child-M arrays.
+     */
+    public double computeLambdaLogWeightPublic(
+            long mIdx, int[] mRCs, int lambdaIndex,
+            EnergyMatrix emat, InteractionGraph graph, double RT) {
+        if (!hasFsetChildren()) {
+            // Leaf edges already own the exact M x lambda minimum-energy
+            // accessor.  Keep using it here so streamed/file-backed tables do
+            // not require decoding an M state just for the leaf conditional.
+            return -getFullEnergyMin(mIdx, lambdaIndex) / RT;
+        }
+        // The PACK* sampler queries this once per lambda state.  The backend
+        // properties are run-scoped, so do not re-read them for every query;
+        // structural rebuilds reset childFoldPlansInitialized.
+        if (!childFoldPlansInitialized) {
+            ensureChildFoldPlans();
+        }
+        if (childFoldPlans != null) {
+            double localEnergy = computeLocalEnergyForLambdaIndex(
+                    mRCs, lambdaIndex, emat, graph);
+            double childLogZ = 0.0;
+            for (ChildFoldPlan plan : childFoldPlans) {
+                long childIndex = plan.baseIndex(mRCs)
+                        + lambdaIndexForPlan(plan, lambdaIndex);
+                childLogZ += plan.child.getLogZUpper(childIndex);
+            }
+            return -localEnergy / RT + childLogZ;
+        }
+
+        int[] lambdaRCs = decodeLambdaState(lambdaIndex);
+        double localEnergy = computeLocalEnergy(
+                mRCs, lambdaRCs, emat, graph);
+        double childLogZ = 0.0;
+        for (RootedTreeEdge fEdge : Fset) {
+            int[] childM = getMstateForFullState(
+                    mRCs, lambdaRCs, fEdge);
+            childLogZ += fEdge.getLogZUpper(
+                    fEdge.computeIndexInA(childM));
+        }
+        return -localEnergy / RT + childLogZ;
+    }
+
     // ========== Incremental lambda enumeration ==========
 
     /**
@@ -862,6 +1203,10 @@ public class RootedTreeEdge {
                                             boolean materializeFullEnergyTables) {
         if (!isLambdaEdge) return;
 
+        boolean reuseRigidLambdaOnly = lambdaOnlyRigid != null
+                && lambdaOnlyRigidSource == rigidEmat
+                && lambdaOnlyRigidGraph == G
+                && lambdaOnlyRigid.length == totalLambdaStates;
         this.cachedRigidEmat = rigidEmat;
         this.cachedMinEmat = minEmat;
         this.cachedG = G;
@@ -869,12 +1214,19 @@ public class RootedTreeEdge {
         this.fullEnergyTablesMaterialized = materializeFullEnergyTables;
 
         // Pre-compute lambda-only energies (M-independent)
-        lambdaOnlyRigid = new double[totalLambdaStates];
+        if (!reuseRigidLambdaOnly) {
+            lambdaOnlyRigid = new double[totalLambdaStates];
+            lambdaOnlyRigidSource = rigidEmat;
+            lambdaOnlyRigidGraph = G;
+        }
         lambdaOnlyMin = new double[totalLambdaStates];
         for (int lIdx = 0; lIdx < totalLambdaStates; lIdx++) {
-            int[] lambdaRCs = decodeLambdaState(lIdx);
-            lambdaOnlyRigid[lIdx] = computeLambdaOnlyEnergy(lambdaRCs, rigidEmat, G);
-            lambdaOnlyMin[lIdx] = computeLambdaOnlyEnergy(lambdaRCs, minEmat, G);
+            if (!reuseRigidLambdaOnly) {
+                lambdaOnlyRigid[lIdx] = computeLambdaOnlyEnergyForIndex(
+                        lIdx, rigidEmat, G);
+            }
+            lambdaOnlyMin[lIdx] = computeLambdaOnlyEnergyForIndex(
+                    lIdx, minEmat, G);
         }
 
         fullEnergyRigid = null;
@@ -924,10 +1276,12 @@ public class RootedTreeEdge {
             }
         }
 
-        // Set initial logZ bounds: k=0 for all M-states. Full-DP production
-        // overwrites every mapped entry immediately; skipping this multi-TiB
-        // pre-write is safe only for the non-materialized full-DP path.
-        if (!skipInitialMappedFill(materializeFullEnergyTables)) {
+        // Set initial logZ bounds for materialized incremental callers.  A
+        // non-materialized full-DP sweep overwrites every M-state immediately;
+        // skipping this whole-table pre-write avoids another pass over every
+        // corrected proposal table.
+        if (materializeFullEnergyTables
+                && !skipInitialMappedFill(true)) {
             dpTable.fill(NEG_INF, NEG_INF);
         }
         if (materializeFullEnergyTables) {
@@ -990,7 +1344,8 @@ public class RootedTreeEdge {
             // Best local energy among all lambda-states
             double bestLocalEMin = Double.MAX_VALUE;
             for (int lIdx = 0; lIdx < totalLambdaStates; lIdx++) {
-                int[] mRCs = decodeMState(mIdx);
+                int[] mRCs = fullDpMDecodeBuffer();
+                decodeMStateInto(mIdx, mRCs);
                 int[] lambdaRCs = decodeLambdaState(lIdx);
                 double localE = computeLocalEnergy(mRCs, lambdaRCs, cachedMinEmat, cachedG);
                 bestLocalEMin = Math.min(bestLocalEMin, localE);
@@ -1298,6 +1653,11 @@ public class RootedTreeEdge {
     private double computeFullEnergy(long mIdx, int lambdaIdx,
                                      EnergyMatrix emat, double[] lambdaOnlyEnergies) {
         int[] mRCs = decodeMState(mIdx);
+        if (!emat.hasHigherOrderTerms() && lambdaOnlyEnergies != null) {
+            return lambdaOnlyEnergies[lambdaIdx]
+                    + computeLambdaMEnergyForIndex(
+                    mRCs, lambdaIdx, emat, cachedG);
+        }
         int[] lambdaRCs = decodeLambdaState(lambdaIdx);
         double lambdaOnly = lambdaOnlyEnergies != null
                 ? lambdaOnlyEnergies[lambdaIdx]
@@ -1615,23 +1975,13 @@ public class RootedTreeEdge {
 
     private DPGpuFullDP.Request buildGpuFullDPRequest(long work) {
         long lmTermCount = 0L;
-        List<int[]> lmPairs = new ArrayList<>();
-        for (int li = 0; li < lambdaPositionsSorted.length; li++) {
-            int lambdaPos = lambdaPositionsSorted[li];
-            int lambdaCount = rcs.getNum(lambdaPos);
-            for (int mi = 0; mi < mPositionsSorted.length; mi++) {
-                int mPos = mPositionsSorted[mi];
-                if (!cachedG.hasEdge(lambdaPos, mPos)) {
-                    continue;
-                }
-                int mCount = rcs.getNum(mPos);
-                long terms = (long)lambdaCount*(long)mCount;
-                if (terms < 0 || lmTermCount > Integer.MAX_VALUE - terms) {
-                    return null;
-                }
-                lmPairs.add(new int[]{li, mi, lambdaPos, mPos, lambdaCount, mCount});
-                lmTermCount += terms;
+        int[][] lmPairs = getGpuLambdaMTermDescriptors();
+        for (int[] pair : lmPairs) {
+            long terms = (long)pair[4] * (long)pair[5];
+            if (terms < 0 || lmTermCount > Integer.MAX_VALUE - terms) {
+                return null;
             }
+            lmTermCount += terms;
         }
 
         DPGpuFullDP.Request req = new DPGpuFullDP.Request();
@@ -1641,8 +1991,9 @@ public class RootedTreeEdge {
                 DEFAULT_DP_GPU_BLOCK_THREADS));
         req.invRT = 1.0/cachedRT;
         req.work = work;
-        req.mCounts = countsForPositions(mPositionsSorted);
-        req.lambdaCounts = countsForPositions(lambdaPositionsSorted);
+        ensureIndexingCaches();
+        req.mCounts = mCounts;
+        req.lambdaCounts = lambdaCounts;
         req.lambdaOnlyRigid = lambdaOnlyRigid;
         req.lambdaOnlyMin = lambdaOnlyMin;
         req.childSlicing = DPGpuFullDP.defaultChildSlicingEnabled();
@@ -1775,7 +2126,7 @@ public class RootedTreeEdge {
             req.childChunkOffsets[i] = chunkOffsetList.get(i);
         }
 
-        int nPairs = lmPairs.size();
+        int nPairs = lmPairs.length;
         req.lmLamSlots = new int[nPairs];
         req.lmMSlots = new int[nPairs];
         req.lmMCounts = new int[nPairs];
@@ -1785,7 +2136,7 @@ public class RootedTreeEdge {
 
         int offset = 0;
         for (int p = 0; p < nPairs; p++) {
-            int[] pair = lmPairs.get(p);
+            int[] pair = lmPairs[p];
             int lambdaSlot = pair[0];
             int mSlot = pair[1];
             int lambdaPos = pair[2];
@@ -2074,23 +2425,13 @@ public class RootedTreeEdge {
     /** Build the sampling request: the DP upper/min half + per-sample mIdx (no rigid/lower/dpTable). */
     private SamplingGpuPhase1.Request buildGpuSamplingRequest(long[] mIdxPerSample, long baseSeed, boolean progress) {
         long lmTermCount = 0L;
-        List<int[]> lmPairs = new ArrayList<>();
-        for (int li = 0; li < lambdaPositionsSorted.length; li++) {
-            int lambdaPos = lambdaPositionsSorted[li];
-            int lambdaCount = rcs.getNum(lambdaPos);
-            for (int mi = 0; mi < mPositionsSorted.length; mi++) {
-                int mPos = mPositionsSorted[mi];
-                if (!cachedG.hasEdge(lambdaPos, mPos)) {
-                    continue;
-                }
-                int mCount = rcs.getNum(mPos);
-                long terms = (long)lambdaCount*(long)mCount;
-                if (terms < 0 || lmTermCount > Integer.MAX_VALUE - terms) {
-                    return null;
-                }
-                lmPairs.add(new int[]{li, mi, lambdaPos, mPos, lambdaCount, mCount});
-                lmTermCount += terms;
+        int[][] lmPairs = getGpuLambdaMTermDescriptors();
+        for (int[] pair : lmPairs) {
+            long terms = (long)pair[4] * (long)pair[5];
+            if (terms < 0 || lmTermCount > Integer.MAX_VALUE - terms) {
+                return null;
             }
+            lmTermCount += terms;
         }
 
         SamplingGpuPhase1.Request req = new SamplingGpuPhase1.Request();
@@ -2098,8 +2439,9 @@ public class RootedTreeEdge {
         req.blockThreads = Math.max(1, getConfigInteger(DP_GPU_BLOCK_THREADS_PROPERTY,
                 DEFAULT_DP_GPU_BLOCK_THREADS));
         req.invRT = 1.0/cachedRT;
-        req.mCounts = countsForPositions(mPositionsSorted);
-        req.lambdaCounts = countsForPositions(lambdaPositionsSorted);
+        ensureIndexingCaches();
+        req.mCounts = mCounts;
+        req.lambdaCounts = lambdaCounts;
         req.lambdaOnlyMin = lambdaOnlyMin;
         req.mIdxPerSample = mIdxPerSample;
         req.baseSeed = baseSeed;
@@ -2173,7 +2515,7 @@ public class RootedTreeEdge {
         }
         req.childUpperCacheKey = childUpperKey;
 
-        int nPairs = lmPairs.size();
+        int nPairs = lmPairs.length;
         req.lmLamSlots = new int[nPairs];
         req.lmMSlots = new int[nPairs];
         req.lmMCounts = new int[nPairs];
@@ -2182,7 +2524,7 @@ public class RootedTreeEdge {
 
         int offset = 0;
         for (int p = 0; p < nPairs; p++) {
-            int[] pair = lmPairs.get(p);
+            int[] pair = lmPairs[p];
             int lambdaSlot = pair[0];
             int mSlot = pair[1];
             int lambdaPos = pair[2];
@@ -2294,6 +2636,147 @@ public class RootedTreeEdge {
         return counts;
     }
 
+    private int[][] getGpuLambdaMTermDescriptors() {
+        if (gpuLambdaMTermGraph == cachedG
+                && gpuLambdaMTermDescriptors != null) {
+            return gpuLambdaMTermDescriptors;
+        }
+        List<int[]> descriptors = new ArrayList<>();
+        for (int lambdaSlot = 0;
+             lambdaSlot < lambdaPositionsSorted.length; lambdaSlot++) {
+            int lambdaPos = lambdaPositionsSorted[lambdaSlot];
+            int lambdaCount = rcs.getNum(lambdaPos);
+            for (int mSlot = 0; mSlot < mPositionsSorted.length; mSlot++) {
+                int mPos = mPositionsSorted[mSlot];
+                if (!cachedG.hasEdge(lambdaPos, mPos)) continue;
+                descriptors.add(new int[]{
+                        lambdaSlot, mSlot, lambdaPos, mPos,
+                        lambdaCount, rcs.getNum(mPos)});
+            }
+        }
+        gpuLambdaMTermDescriptors = descriptors.toArray(new int[0][]);
+        gpuLambdaMTermGraph = cachedG;
+        return gpuLambdaMTermDescriptors;
+    }
+
+    /**
+     * Cache the graph-dependent pair-slot lists used by pairwise DP energy
+     * evaluation.  The old nested loops asked the interaction graph about
+     * every possible slot pair for every lambda state.  The graph and the
+     * position sets are immutable for an edge during a DP sweep, so resolving
+     * the sparse topology once removes that lookup from the hot loop while
+     * retaining the original summation order.
+     */
+    private void ensureInteractionTermCaches(InteractionGraph G) {
+        ensureIndexingCaches();
+        if (interactionTermCacheGraph == G
+                && lambdaPairFirstSlots != null
+                && lambdaMFirstSlots != null) {
+            return;
+        }
+
+        long lambdaPairCapacity = (long) lambdaPositionsSorted.length
+                * Math.max(0, lambdaPositionsSorted.length - 1) / 2L;
+        long lambdaMCapacity = (long) lambdaPositionsSorted.length
+                * (long) mPositionsSorted.length;
+        if (lambdaPairCapacity > Integer.MAX_VALUE
+                || lambdaMCapacity > Integer.MAX_VALUE) {
+            throw new IllegalStateException(
+                    "edge interaction slot count exceeds int indexing limits");
+        }
+
+        int pairCount = 0;
+        for (int first = 0; first < lambdaPositionsSorted.length; first++) {
+            int firstPos = lambdaPositionsSorted[first];
+            for (int second = first + 1;
+                 second < lambdaPositionsSorted.length; second++) {
+                if (!G.hasEdge(firstPos, lambdaPositionsSorted[second])) {
+                    continue;
+                }
+                pairCount++;
+            }
+        }
+        int[] pairFirst = new int[pairCount];
+        int[] pairSecond = new int[pairCount];
+        int pairOut = 0;
+        for (int first = 0; first < lambdaPositionsSorted.length; first++) {
+            int firstPos = lambdaPositionsSorted[first];
+            for (int second = first + 1;
+                 second < lambdaPositionsSorted.length; second++) {
+                if (!G.hasEdge(firstPos, lambdaPositionsSorted[second])) {
+                    continue;
+                }
+                pairFirst[pairOut] = first;
+                pairSecond[pairOut] = second;
+                pairOut++;
+            }
+        }
+
+        int crossCount = 0;
+        for (int lambdaSlot = 0;
+             lambdaSlot < lambdaPositionsSorted.length; lambdaSlot++) {
+            int lambdaPos = lambdaPositionsSorted[lambdaSlot];
+            for (int mSlot = 0; mSlot < mPositionsSorted.length; mSlot++) {
+                if (!G.hasEdge(lambdaPos, mPositionsSorted[mSlot])) {
+                    continue;
+                }
+                crossCount++;
+            }
+        }
+        int[] crossLambda = new int[crossCount];
+        int[] crossM = new int[crossCount];
+        int crossOut = 0;
+        for (int lambdaSlot = 0;
+             lambdaSlot < lambdaPositionsSorted.length; lambdaSlot++) {
+            int lambdaPos = lambdaPositionsSorted[lambdaSlot];
+            for (int mSlot = 0; mSlot < mPositionsSorted.length; mSlot++) {
+                if (!G.hasEdge(lambdaPos, mPositionsSorted[mSlot])) {
+                    continue;
+                }
+                crossLambda[crossOut] = lambdaSlot;
+                crossM[crossOut] = mSlot;
+                crossOut++;
+            }
+        }
+
+        lambdaPairFirstSlots = pairFirst;
+        lambdaPairSecondSlots = pairSecond;
+        lambdaMFirstSlots = crossLambda;
+        lambdaMSecondSlots = crossM;
+        interactionTermCacheGraph = G;
+    }
+
+    /**
+     * Reflection-heavy branch-DP tests and a few legacy callers construct an
+     * edge by populating the position arrays directly instead of invoking
+     * compLlambda().  Keep the cached indexing fast path compatible with that
+     * construction style by rebuilding only missing structural arrays lazily.
+     */
+    private void ensureIndexingCaches() {
+        if (mPositionsSorted == null) {
+            mPositionsSorted = M.stream().mapToInt(Integer::intValue)
+                    .sorted().toArray();
+        }
+        if (lambdaPositionsSorted == null) {
+            lambdaPositionsSorted = lambda == null
+                    ? new int[0]
+                    : lambda.stream().mapToInt(Integer::intValue)
+                    .sorted().toArray();
+        }
+        if (mCounts == null) {
+            mCounts = countsForPositions(mPositionsSorted);
+        }
+        if (lambdaCounts == null) {
+            lambdaCounts = countsForPositions(lambdaPositionsSorted);
+        }
+        if (mStrides == null) {
+            mStrides = mixedRadixStrides(mCounts);
+        }
+        if (lambdaStrides == null) {
+            lambdaStrides = mixedRadixStrides(lambdaCounts);
+        }
+    }
+
     private static ThreadFactory daemonThreadFactory(String namePrefix) {
         AtomicLong counter = new AtomicLong(0);
         return runnable -> {
@@ -2309,8 +2792,14 @@ public class RootedTreeEdge {
             return;
         }
 
-        LogSumExpAccumulator lower = new LogSumExpAccumulator();
-        LogSumExpAccumulator upper = new LogSumExpAccumulator();
+        LogSumExpAccumulator lower = FULL_DP_LOWER_ACCUMULATOR.get();
+        LogSumExpAccumulator upper = FULL_DP_UPPER_ACCUMULATOR.get();
+        lower.reset();
+        upper.reset();
+        boolean pairwiseEnergy = cachedRigidEmat != null
+                && cachedMinEmat != null
+                && !cachedRigidEmat.hasHigherOrderTerms()
+                && !cachedMinEmat.hasHigherOrderTerms();
 
         if (!hasFsetChildren()) {
             // Leaf edge: stream lambda states without materializing [M x lambda].
@@ -2328,17 +2817,34 @@ public class RootedTreeEdge {
                 // getFullEnergyRigid/getFullEnergyMin path re-decoded the M-state twice and
                 // the lambda-state twice per element. This is bit-for-bit identical (same
                 // operations, same order) — it only removes redundant decode work/allocations.
-                int[] mRCs = decodeMState(mIdx);
+                int[] mRCs = fullDpMDecodeBuffer();
+                decodeMStateInto(mIdx, mRCs);
                 for (int lIdx = 0; lIdx < totalLambdaStates; lIdx++) {
-                    int[] lambdaRCs = decodeLambdaState(lIdx);
-                    double eRigid = (lambdaOnlyRigid != null
-                            ? lambdaOnlyRigid[lIdx]
-                            : computeLambdaOnlyEnergy(lambdaRCs, cachedRigidEmat, cachedG))
-                            + computeLambdaMEnergy(mRCs, lambdaRCs, cachedRigidEmat, cachedG);
-                    double eMin = (lambdaOnlyMin != null
-                            ? lambdaOnlyMin[lIdx]
-                            : computeLambdaOnlyEnergy(lambdaRCs, cachedMinEmat, cachedG))
-                            + computeLambdaMEnergy(mRCs, lambdaRCs, cachedMinEmat, cachedG);
+                    double eRigid;
+                    double eMin;
+                    if (pairwiseEnergy) {
+                        eRigid = lambdaOnlyRigid[lIdx]
+                                + computeLambdaMEnergyForIndex(
+                                mRCs, lIdx, cachedRigidEmat, cachedG);
+                        eMin = lambdaOnlyMin[lIdx]
+                                + computeLambdaMEnergyForIndex(
+                                mRCs, lIdx, cachedMinEmat, cachedG);
+                    } else {
+                        int[] lambdaRCs = fullDpLambdaDecodeBuffer();
+                        decodeLambdaStateInto(lIdx, lambdaRCs);
+                        eRigid = (lambdaOnlyRigid != null
+                                ? lambdaOnlyRigid[lIdx]
+                                : computeLambdaOnlyEnergy(
+                                lambdaRCs, cachedRigidEmat, cachedG))
+                                + computeLambdaMEnergy(
+                                mRCs, lambdaRCs, cachedRigidEmat, cachedG);
+                        eMin = (lambdaOnlyMin != null
+                                ? lambdaOnlyMin[lIdx]
+                                : computeLambdaOnlyEnergy(
+                                lambdaRCs, cachedMinEmat, cachedG))
+                                + computeLambdaMEnergy(
+                                mRCs, lambdaRCs, cachedMinEmat, cachedG);
+                    }
                     lower.add(-eRigid / cachedRT);
                     upper.add(-eMin / cachedRT);
                 }
@@ -2348,10 +2854,11 @@ public class RootedTreeEdge {
             // The plan replaces the per-element getMstateForFullState() int[]
             // allocation + linear search with a direct mixed-radix index, and
             // hoists each child's M-only ("base") index out of the lambda loop.
-            int[] mRCs = decodeMState(mIdx);
+            int[] mRCs = fullDpMDecodeBuffer();
+            decodeMStateInto(mIdx, mRCs);
             int nChildren = childFoldPlans.length;
 
-            long[] baseIdx = new long[nChildren];
+            long[] baseIdx = fullDpChildBaseBuffer(nChildren);
             double constLower = 0.0;
             double constUpper = 0.0;
             for (int c = 0; c < nChildren; c++) {
@@ -2368,9 +2875,24 @@ public class RootedTreeEdge {
             }
 
             for (int lIdx = 0; lIdx < totalLambdaStates; lIdx++) {
-                int[] lambdaRCs = decodeLambdaState(lIdx);
-                double eRigid = computeLocalEnergy(mRCs, lambdaRCs, cachedRigidEmat, cachedG);
-                double eMin = computeLocalEnergy(mRCs, lambdaRCs, cachedMinEmat, cachedG);
+                int[] lambdaRCs = null;
+                double eRigid;
+                double eMin;
+                if (pairwiseEnergy) {
+                    eRigid = lambdaOnlyRigid[lIdx]
+                            + computeLambdaMEnergyForIndex(
+                            mRCs, lIdx, cachedRigidEmat, cachedG);
+                    eMin = lambdaOnlyMin[lIdx]
+                            + computeLambdaMEnergyForIndex(
+                            mRCs, lIdx, cachedMinEmat, cachedG);
+                } else {
+                    lambdaRCs = fullDpLambdaDecodeBuffer();
+                    decodeLambdaStateInto(lIdx, lambdaRCs);
+                    eRigid = computeLocalEnergy(
+                            mRCs, lambdaRCs, cachedRigidEmat, cachedG);
+                    eMin = computeLocalEnergy(
+                            mRCs, lambdaRCs, cachedMinEmat, cachedG);
+                }
 
                 double fSumLower = constLower;
                 double fSumUpper = constUpper;
@@ -2379,7 +2901,10 @@ public class RootedTreeEdge {
                     if (childFoldHoistInvariant && !plan.lambdaDependent) {
                         continue; // already folded into constLower/constUpper
                     }
-                    long fIdx = baseIdx[c] + plan.lambdaIndex(lambdaRCs);
+                    long lambdaIdx = pairwiseEnergy
+                            ? lambdaIndexForPlan(plan, lIdx)
+                            : plan.lambdaIndex(lambdaRCs);
+                    long fIdx = baseIdx[c] + lambdaIdx;
                     fSumLower += plan.child.getLogZLower(fIdx);
                     fSumUpper += plan.child.getLogZUpper(fIdx);
                 }
@@ -2389,9 +2914,11 @@ public class RootedTreeEdge {
             }
         } else {
             // Non-leaf edge (legacy path): fold disabled or unmapped child slot.
-            int[] mRCs = decodeMState(mIdx);
+            int[] mRCs = fullDpMDecodeBuffer();
+            decodeMStateInto(mIdx, mRCs);
             for (int lIdx = 0; lIdx < totalLambdaStates; lIdx++) {
-                int[] lambdaRCs = decodeLambdaState(lIdx);
+                int[] lambdaRCs = fullDpLambdaDecodeBuffer();
+                decodeLambdaStateInto(lIdx, lambdaRCs);
                 double eRigid = computeLocalEnergy(mRCs, lambdaRCs, cachedRigidEmat, cachedG);
                 double eMin = computeLocalEnergy(mRCs, lambdaRCs, cachedMinEmat, cachedG);
 
@@ -2425,6 +2952,10 @@ public class RootedTreeEdge {
      */
     private void computeFullDPForMStateNative(long mIdx) {
         int n = totalLambdaStates;
+        boolean pairwiseEnergy = cachedRigidEmat != null
+                && cachedMinEmat != null
+                && !cachedRigidEmat.hasHigherOrderTerms()
+                && !cachedMinEmat.hasHigherOrderTerms();
         double[] vLower = NATIVE_LOWER_BUF.get();
         double[] vUpper = NATIVE_UPPER_BUF.get();
         if (vLower.length < n) { vLower = new double[n]; NATIVE_LOWER_BUF.set(vLower); }
@@ -2439,38 +2970,74 @@ public class RootedTreeEdge {
                     vUpper[lIdx] = -minRow[lIdx] / cachedRT;
                 }
             } else {
-                int[] mRCs = decodeMState(mIdx);
+                int[] mRCs = fullDpMDecodeBuffer();
+                decodeMStateInto(mIdx, mRCs);
                 for (int lIdx = 0; lIdx < n; lIdx++) {
-                    int[] lambdaRCs = decodeLambdaState(lIdx);
-                    double eRigid = (lambdaOnlyRigid != null
-                            ? lambdaOnlyRigid[lIdx]
-                            : computeLambdaOnlyEnergy(lambdaRCs, cachedRigidEmat, cachedG))
-                            + computeLambdaMEnergy(mRCs, lambdaRCs, cachedRigidEmat, cachedG);
-                    double eMin = (lambdaOnlyMin != null
-                            ? lambdaOnlyMin[lIdx]
-                            : computeLambdaOnlyEnergy(lambdaRCs, cachedMinEmat, cachedG))
-                            + computeLambdaMEnergy(mRCs, lambdaRCs, cachedMinEmat, cachedG);
+                    double eRigid;
+                    double eMin;
+                    if (pairwiseEnergy) {
+                        eRigid = lambdaOnlyRigid[lIdx]
+                                + computeLambdaMEnergyForIndex(
+                                mRCs, lIdx, cachedRigidEmat, cachedG);
+                        eMin = lambdaOnlyMin[lIdx]
+                                + computeLambdaMEnergyForIndex(
+                                mRCs, lIdx, cachedMinEmat, cachedG);
+                    } else {
+                        int[] lambdaRCs = fullDpLambdaDecodeBuffer();
+                        decodeLambdaStateInto(lIdx, lambdaRCs);
+                        eRigid = (lambdaOnlyRigid != null
+                                ? lambdaOnlyRigid[lIdx]
+                                : computeLambdaOnlyEnergy(
+                                lambdaRCs, cachedRigidEmat, cachedG))
+                                + computeLambdaMEnergy(
+                                mRCs, lambdaRCs, cachedRigidEmat, cachedG);
+                        eMin = (lambdaOnlyMin != null
+                                ? lambdaOnlyMin[lIdx]
+                                : computeLambdaOnlyEnergy(
+                                lambdaRCs, cachedMinEmat, cachedG))
+                                + computeLambdaMEnergy(
+                                mRCs, lambdaRCs, cachedMinEmat, cachedG);
+                    }
                     vLower[lIdx] = -eRigid / cachedRT;
                     vUpper[lIdx] = -eMin / cachedRT;
                 }
             }
         } else {
-            int[] mRCs = decodeMState(mIdx);
+            int[] mRCs = fullDpMDecodeBuffer();
+            decodeMStateInto(mIdx, mRCs);
             if (childFoldPlans != null) {
                 int nChildren = childFoldPlans.length;
-                long[] baseIdx = new long[nChildren];
+                long[] baseIdx = fullDpChildBaseBuffer(nChildren);
                 for (int c = 0; c < nChildren; c++) {
                     baseIdx[c] = childFoldPlans[c].baseIndex(mRCs);
                 }
                 for (int lIdx = 0; lIdx < n; lIdx++) {
-                    int[] lambdaRCs = decodeLambdaState(lIdx);
-                    double eRigid = computeLocalEnergy(mRCs, lambdaRCs, cachedRigidEmat, cachedG);
-                    double eMin = computeLocalEnergy(mRCs, lambdaRCs, cachedMinEmat, cachedG);
+                    int[] lambdaRCs = null;
+                    double eRigid;
+                    double eMin;
+                    if (pairwiseEnergy) {
+                        eRigid = lambdaOnlyRigid[lIdx]
+                                + computeLambdaMEnergyForIndex(
+                                mRCs, lIdx, cachedRigidEmat, cachedG);
+                        eMin = lambdaOnlyMin[lIdx]
+                                + computeLambdaMEnergyForIndex(
+                                mRCs, lIdx, cachedMinEmat, cachedG);
+                    } else {
+                        lambdaRCs = fullDpLambdaDecodeBuffer();
+                        decodeLambdaStateInto(lIdx, lambdaRCs);
+                        eRigid = computeLocalEnergy(
+                                mRCs, lambdaRCs, cachedRigidEmat, cachedG);
+                        eMin = computeLocalEnergy(
+                                mRCs, lambdaRCs, cachedMinEmat, cachedG);
+                    }
                     double fSumLower = 0.0;
                     double fSumUpper = 0.0;
                     for (int c = 0; c < nChildren; c++) {
                         ChildFoldPlan plan = childFoldPlans[c];
-                        long fIdx = baseIdx[c] + plan.lambdaIndex(lambdaRCs);
+                        long lambdaIdx = pairwiseEnergy
+                                ? lambdaIndexForPlan(plan, lIdx)
+                                : plan.lambdaIndex(lambdaRCs);
+                        long fIdx = baseIdx[c] + lambdaIdx;
                         fSumLower += plan.child.getLogZLower(fIdx);
                         fSumUpper += plan.child.getLogZUpper(fIdx);
                     }
@@ -2479,7 +3046,8 @@ public class RootedTreeEdge {
                 }
             } else {
                 for (int lIdx = 0; lIdx < n; lIdx++) {
-                    int[] lambdaRCs = decodeLambdaState(lIdx);
+                    int[] lambdaRCs = fullDpLambdaDecodeBuffer();
+                    decodeLambdaStateInto(lIdx, lambdaRCs);
                     double eRigid = computeLocalEnergy(mRCs, lambdaRCs, cachedRigidEmat, cachedG);
                     double eMin = computeLocalEnergy(mRCs, lambdaRCs, cachedMinEmat, cachedG);
                     double fSumLower = 0.0;
@@ -2532,6 +3100,11 @@ public class RootedTreeEdge {
     private static class LogSumExpAccumulator {
         private double max = NEG_INF;
         private double scaledSum = 0.0;
+
+        void reset() {
+            max = NEG_INF;
+            scaledSum = 0.0;
+        }
 
         void add(double value) {
             if (Double.isNaN(value) || Double.isNaN(max)) {
@@ -2609,6 +3182,7 @@ public class RootedTreeEdge {
         final int[] lamSrcIdx;  // parent lambdaRCs index for each λ-sourced child slot
         final long[] lamStride; // mixed-radix stride for each λ-sourced child slot
         final boolean lambdaDependent;
+        long[] lambdaIndexByState;
 
         ChildFoldPlan(RootedTreeEdge child, int[] mSrcIdx, long[] mStride,
                       int[] lamSrcIdx, long[] lamStride) {
@@ -2635,6 +3209,23 @@ public class RootedTreeEdge {
             }
             return idx;
         }
+
+        long lambdaIndexForState(RootedTreeEdge edge, int lambdaIndex) {
+            if (lambdaIndexByState != null) {
+                return lambdaIndexByState[lambdaIndex];
+            }
+            long idx = 0L;
+            for (int t = 0; t < lamStride.length; t++) {
+                idx += (long) edge.getLambdaLocalRC(
+                        lambdaIndex, lamSrcIdx[t]) * lamStride[t];
+            }
+            return idx;
+        }
+    }
+
+    private long lambdaIndexForPlan(
+            ChildFoldPlan plan, int lambdaIndex) {
+        return plan.lambdaIndexForState(this, lambdaIndex);
     }
 
     /**
@@ -2647,8 +3238,19 @@ public class RootedTreeEdge {
      * unchanged, preserving behavior on malformed/edge-case decompositions).
      */
     private void ensureChildFoldPlans() {
-        childFoldHoistInvariant = getConfigBoolean(DP_FOLD_HOIST_PROPERTY, false);
-        if (!getConfigBoolean(DP_FOLD_CHILDREN_PROPERTY, true) || !hasFsetChildren()) {
+        boolean foldEnabled = getConfigBoolean(
+                DP_FOLD_CHILDREN_PROPERTY, true);
+        boolean hoistInvariant = getConfigBoolean(
+                DP_FOLD_HOIST_PROPERTY, false);
+        if (childFoldPlansInitialized
+                && childFoldChildrenEnabled == foldEnabled
+                && childFoldHoistInvariant == hoistInvariant) {
+            return;
+        }
+        childFoldPlansInitialized = true;
+        childFoldChildrenEnabled = foldEnabled;
+        childFoldHoistInvariant = hoistInvariant;
+        if (!foldEnabled || !hasFsetChildren()) {
             childFoldPlans = null;
             return;
         }
@@ -2663,6 +3265,7 @@ public class RootedTreeEdge {
             }
             plans[ci++] = plan;
         }
+        prepareChildFoldProjectionCache(plans);
         childFoldPlans = plans;
 
         if (getConfigBoolean(DP_PROGRESS_PROPERTY, true)) {
@@ -2675,6 +3278,47 @@ public class RootedTreeEdge {
                     + ", lambdaInvariant=" + invariant
                     + ", lambdaDependent=" + (plans.length - invariant)
                     + ", hoist=" + childFoldHoistInvariant);
+        }
+    }
+
+    /**
+     * Cache each child projection's lambda-only mixed-radix index when the
+     * bounded table is small enough.  A DP row revisits the same projection
+     * for every parent M-state; precomputing it removes another inner-loop
+     * walk over lambda slots without making large edges pay an unbounded heap
+     * cost.  If the cap is exceeded, the direct cached-digit path remains.
+     */
+    private void prepareChildFoldProjectionCache(ChildFoldPlan[] plans) {
+        long maxBytes = getConfigLong(
+                DP_CHILD_FOLD_PROJECTION_CACHE_BYTES_PROPERTY,
+                DEFAULT_DP_CHILD_FOLD_PROJECTION_CACHE_BYTES);
+        if (maxBytes <= 0L || totalLambdaStates <= 0) {
+            return;
+        }
+        long dependentPlans = 0L;
+        for (ChildFoldPlan plan : plans) {
+            if (plan.lambdaDependent) dependentPlans++;
+        }
+        long entries = dependentPlans * (long) totalLambdaStates;
+        if (entries <= 0L
+                || entries > Integer.MAX_VALUE
+                || entries > maxBytes / Long.BYTES) {
+            return;
+        }
+        for (ChildFoldPlan plan : plans) {
+            if (!plan.lambdaDependent) continue;
+            long[] projection = new long[totalLambdaStates];
+            for (int lambdaIndex = 0;
+                 lambdaIndex < totalLambdaStates; lambdaIndex++) {
+                long projected = 0L;
+                for (int t = 0; t < plan.lamStride.length; t++) {
+                    projected += (long) getLambdaLocalRC(
+                            lambdaIndex, plan.lamSrcIdx[t])
+                            * plan.lamStride[t];
+                }
+                projection[lambdaIndex] = projected;
+            }
+            plan.lambdaIndexByState = projection;
         }
     }
 

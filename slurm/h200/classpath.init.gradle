@@ -1,0 +1,10 @@
+gradle.projectsEvaluated {
+    def project = gradle.rootProject
+    project.tasks.register('writeExperimentClasspath') {
+        dependsOn project.tasks.named('test')
+        doLast {
+            def output = new File(System.getenv('PACKSTAR_CLASSPATH_FILE'))
+            output.text = project.sourceSets.test.runtimeClasspath.asPath + '\n'
+        }
+    }
+}

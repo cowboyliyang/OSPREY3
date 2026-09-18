@@ -106,10 +106,15 @@ final class DPGpuOutOfCore {
         final long budgetBytes;
         final boolean multiChildRowTiling;
         final boolean lambdaTiling;
+        /** Parent lambda mixed-radix strides reused for every lambda box. */
+        final long[] lambdaParentStrides;
+        /** Child M projection dimensions reused for every M box. */
+        final int[][] childMUnionDims;
 
         Plan(int[] mTileExtents, int[] lambdaTileExtents, Shape shape,
              long mBoxCount, long lambdaBoxCount, long budgetBytes,
-             boolean multiChildRowTiling, boolean lambdaTiling) {
+             boolean multiChildRowTiling, boolean lambdaTiling,
+             int[] lambdaCounts, int[][] childMUnionDims) {
             this.mTileExtents = mTileExtents;
             this.lambdaTileExtents = lambdaTileExtents;
             this.mBoxCount = mBoxCount;
@@ -124,6 +129,8 @@ final class DPGpuOutOfCore {
             this.budgetBytes = budgetBytes;
             this.multiChildRowTiling = multiChildRowTiling;
             this.lambdaTiling = lambdaTiling;
+            this.lambdaParentStrides = mixedRadixStrides(lambdaCounts);
+            this.childMUnionDims = clone2d(childMUnionDims);
         }
     }
 
@@ -281,18 +288,24 @@ final class DPGpuOutOfCore {
         if (!current.feasible) {
             return null;
         }
+        BigInteger currentTraffic = estimateTrafficBytes(
+                input, mExtents, lambdaExtents, current);
 
         // Coordinate doubling makes planning logarithmic in every cardinality.
-        // At each step choose the feasible growth that removes the most remaining
-        // tile boxes per added byte.  This prevents an early high-cardinality
-        // dimension from consuming the whole budget and starving every other
-        // child/lambda projection.
+        // At each step choose the feasible growth that reduces modeled transfer
+        // traffic per added byte, with tile-box reduction as a secondary term.
+        // The traffic model includes repeated child H2D gathers, lambda-index /
+        // energy uploads, output D2H, and fixed metadata.  This prevents an
+        // early high-cardinality dimension from consuming the whole budget while
+        // creating a plan that looks small by box count but rereads the same
+        // child rows many times.
         int maxSteps = 4 * (mExtents.length + lambdaExtents.length + 1) * 32;
         for (int step = 0; step < maxSteps; step++) {
             boolean bestIsM = false;
             int bestDim = -1;
             int bestExtent = -1;
             Shape bestShape = null;
+            BigInteger bestTraffic = null;
             double bestScore = Double.NEGATIVE_INFINITY;
 
             for (int dim = 0; dim < mExtents.length; dim++) {
@@ -307,11 +320,15 @@ final class DPGpuOutOfCore {
                 if (!candidate.feasible) {
                     continue;
                 }
+                BigInteger candidateTraffic = estimateTrafficBytes(
+                        input, mExtents, lambdaExtents, candidate);
                 double score = growthScore(input.unionMCounts[dim], old, next,
-                        current.estimatedBytes, candidate.estimatedBytes);
+                        current.estimatedBytes, candidate.estimatedBytes,
+                        currentTraffic, candidateTraffic);
                 if (score > bestScore) {
                     bestScore = score;
                     bestShape = candidate;
+                    bestTraffic = candidateTraffic;
                     bestIsM = true;
                     bestDim = dim;
                     bestExtent = next;
@@ -330,11 +347,15 @@ final class DPGpuOutOfCore {
                 if (!candidate.feasible) {
                     continue;
                 }
+                BigInteger candidateTraffic = estimateTrafficBytes(
+                        input, mExtents, lambdaExtents, candidate);
                 double score = growthScore(input.lambdaCounts[dim], old, next,
-                        current.estimatedBytes, candidate.estimatedBytes);
+                        current.estimatedBytes, candidate.estimatedBytes,
+                        currentTraffic, candidateTraffic);
                 if (score > bestScore) {
                     bestScore = score;
                     bestShape = candidate;
+                    bestTraffic = candidateTraffic;
                     bestIsM = false;
                     bestDim = dim;
                     bestExtent = next;
@@ -350,6 +371,7 @@ final class DPGpuOutOfCore {
                 lambdaExtents[bestDim] = bestExtent;
             }
             current = bestShape;
+            currentTraffic = bestTraffic;
         }
 
         long mBoxCount = tileBoxCount(input.unionMCounts, mExtents);
@@ -371,7 +393,8 @@ final class DPGpuOutOfCore {
 
         return new Plan(mExtents.clone(), lambdaExtents.clone(), current,
                 mBoxCount, lambdaBoxCount, budgetBytes,
-                input.numChildren >= 2 && mTiled, lambdaTiled);
+                input.numChildren >= 2 && mTiled, lambdaTiled,
+                input.lambdaCounts, input.childMUnionDims);
     }
 
     static long estimateMinimumDeviceBytes(DPGpuFullDP.Request req) {
@@ -446,7 +469,32 @@ final class DPGpuOutOfCore {
                 .multiply(freeRepeats)
                 .multiply(BigInteger.valueOf(Integer.BYTES
                         + 2L * Double.BYTES)));
+        // Every output state is uploaded once as an M index and downloaded
+        // once as a lower/upper pair.  These terms are constant across tile
+        // shapes, but keeping them in the estimate makes the planner's reported
+        // H2D/D2H accounting complete.
+        BigInteger outputStates = productBig(input.unionMCounts)
+                .multiply(BigInteger.valueOf(input.parentFreeStateCount));
+        traffic = traffic.add(outputStates.multiply(
+                BigInteger.valueOf(Long.BYTES
+                        + 2L * Double.BYTES)));
         return traffic;
+    }
+
+    private static BigInteger estimateTrafficBytes(
+            PlanningInput input, int[] mExtents, int[] lambdaExtents,
+            Shape shape) {
+        if (shape == null || !shape.feasible) {
+            return null;
+        }
+        Plan plan = new Plan(
+                mExtents.clone(), lambdaExtents.clone(), shape,
+                tileBoxCount(input.unionMCounts, mExtents),
+                tileBoxCount(input.lambdaCounts, lambdaExtents),
+                Long.MAX_VALUE,
+                input.numChildren >= 2,
+                false, input.lambdaCounts, input.childMUnionDims);
+        return estimateTrafficBytes(input, plan);
     }
 
     private static boolean supports(DPGpuFullDP.Request req) {
@@ -653,12 +701,31 @@ final class DPGpuOutOfCore {
     }
 
     private static double growthScore(int count, int oldExtent, int newExtent,
-                                      long oldBytes, long newBytes) {
+                                      long oldBytes, long newBytes,
+                                      BigInteger oldTraffic,
+                                      BigInteger newTraffic) {
         long oldTiles = ceilDiv(count, oldExtent);
         long newTiles = ceilDiv(count, newExtent);
-        double benefit = Math.log((double)oldTiles / (double)newTiles);
+        double boxBenefit = Math.log((double)oldTiles / (double)newTiles);
         long added = Math.max(1L, newBytes - oldBytes);
+        double benefit = boxBenefit * 0.1;
+        if (oldTraffic != null && newTraffic != null
+                && oldTraffic.signum() > 0 && newTraffic.signum() > 0) {
+            benefit += logBigInteger(oldTraffic) - logBigInteger(newTraffic);
+        } else {
+            benefit += boxBenefit;
+        }
         return benefit / Math.log1p((double)added);
+    }
+
+    private static double logBigInteger(BigInteger value) {
+        int bitLength = value.bitLength();
+        if (bitLength <= 53) {
+            return Math.log(value.doubleValue());
+        }
+        int shift = bitLength - 53;
+        long leading = value.shiftRight(shift).longValue();
+        return Math.log((double)leading) + shift * Math.log(2.0);
     }
 
     private static int growExtent(int current, int count) {
@@ -748,9 +815,7 @@ final class DPGpuOutOfCore {
                 long rowKey = 0L;
                 int off = req.childMTermOff[c];
                 for (int t = 0; t < req.childMTermCnt[c]; t++) {
-                    int parentSlot = req.childMSrcAll[off + t];
-                    int unionDim = findSlot(req.unionMSlots, parentSlot);
-                    rowKey += (long)unionValues[unionDim]
+                    rowKey += (long)unionValues[plan.childMUnionDims[c][t]]
                             * req.childMPackedStrideAll[off + t];
                 }
                 candidates[c][state] = rowKey;
@@ -833,7 +898,7 @@ final class DPGpuOutOfCore {
         int states = (int)tile.volume;
         int[] lambdaIndices = new int[states];
         long[][] candidates = new long[req.numChildren][states];
-        long[] parentStrides = mixedRadixStrides(req.lambdaCounts);
+        long[] parentStrides = plan.lambdaParentStrides;
         int[] local = new int[tile.sizes.length];
         int[] lambdaValues = new int[tile.sizes.length];
 

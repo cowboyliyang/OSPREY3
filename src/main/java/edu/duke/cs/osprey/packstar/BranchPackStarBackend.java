@@ -82,6 +82,16 @@ final class BranchPackStarBackend implements PackStarBackend {
     }
 
     @Override
+    public void setFunctionalEvent(String name, PackStarFunctionalEvent event) {
+        runInPackStarBackend(() -> delegate.setFunctionalEvent(name, event));
+    }
+
+    @Override
+    public PackStarFunctionalObservableResult getFunctionalObservableResult() {
+        return callInPackStarBackend(delegate::getFunctionalObservableResult);
+    }
+
+    @Override
     public void setReportProgress(boolean val) {
         runInPackStarBackend(() -> delegate.setReportProgress(val));
     }

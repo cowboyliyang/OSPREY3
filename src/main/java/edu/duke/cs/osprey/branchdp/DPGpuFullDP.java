@@ -372,7 +372,6 @@ final class DPGpuFullDP {
         int nGpus = chooseGpuCount(req, gpus.size());
         GpuExecutor[] executors = null;
         try {
-            executors = makeExecutors(req, gpus, nGpus);
             long usableBytes = queryMinUsableVramBytes();
             boolean forceHybrid = getConfigBoolean(DP_GPU_HYBRID_CHILD_TILING_FORCE, false);
             boolean forceOutOfCore = getConfigBoolean(DP_GPU_OUT_OF_CORE_FORCE, false)
@@ -423,6 +422,19 @@ final class DPGpuFullDP {
                         + "one-state tile under budget " + outOfCoreBudget + " B; minimum="
                         + DPGpuOutOfCore.estimateMinimumDeviceBytes(req) + " B");
             }
+
+            // A one-state M domain can still have a very large lambda domain.
+            // The ordinary GPU-count admission is intentionally M-oriented,
+            // but OOC has a safe host merge for disjoint lambda boxes in this
+            // exact shape, so let that path recruit otherwise idle devices.
+            if (outOfCorePlan != null
+                    && outOfCorePlan.mBoxCount == 1L
+                    && req.parentFreeStateCount == 1L
+                    && outOfCorePlan.lambdaBoxCount > 1L) {
+                nGpus = Math.max(nGpus, chooseLambdaBoxGpuCount(
+                        req, gpus.size(), outOfCorePlan.lambdaBoxCount));
+            }
+            executors = makeExecutors(req, gpus, nGpus);
             boolean useChildSlicing = hybridPlan == null && outOfCorePlan == null
                     && canUseChildSlicing(req)
                     && (req.forceChildSlicing || fullExceedsBudget);
@@ -437,6 +449,11 @@ final class DPGpuFullDP {
             } else if (outOfCorePlan != null && nGpus <= 1) {
                 executors[0].runOutOfCore(req, outOfCorePlan, 0L,
                         outOfCorePlan.mBoxCount, 0L, req.parentFreeStateCount);
+            } else if (outOfCorePlan != null
+                    && canSplitOutOfCoreLambdaBoxes(
+                    req, outOfCorePlan, nGpus)) {
+                runMultiGpuOutOfCoreLambdaBoxes(
+                        req, outOfCorePlan, executors, nGpus);
             } else if (outOfCorePlan != null) {
                 runMultiGpuOutOfCore(req, outOfCorePlan, executors, nGpus);
             } else if (nGpus <= 1) {
@@ -494,6 +511,19 @@ final class DPGpuFullDP {
         if (req.minMStatesPerGpu > 0) {
             long byWork = req.mStateCount/req.minMStatesPerGpu;
             cap = (int)Math.min((long)cap, Math.max(1L, byWork));
+        }
+        return Math.max(1, cap);
+    }
+
+    private static int chooseLambdaBoxGpuCount(
+            Request req, int available, long lambdaBoxCount) {
+        if (!req.multiGpu) {
+            return 1;
+        }
+        int cap = Math.min(available,
+                (int)Math.min((long)Integer.MAX_VALUE, lambdaBoxCount));
+        if (req.maxGpus > 0) {
+            cap = Math.min(cap, req.maxGpus);
         }
         return Math.max(1, cap);
     }
@@ -691,6 +721,122 @@ final class DPGpuFullDP {
         }
     }
 
+    /**
+     * Lambda-box parallelism for the regime where M/free-M splitting cannot
+     * expose useful independent output work.  Each GPU computes a disjoint
+     * lambda range for the same single output block; the host merges the
+     * resulting log-sum-exp values before committing the table.
+     *
+     * <p>The one-output-block restriction is deliberate: it keeps the merge
+     * storage bounded by one DP output tile and avoids a global concurrent
+     * accumulator for large production tables.  Larger M domains continue to
+     * use the existing M/free-M decomposition.</p>
+     */
+    private static boolean canSplitOutOfCoreLambdaBoxes(
+            Request req, DPGpuOutOfCore.Plan plan, int nGpus) {
+        return nGpus > 1
+                && plan.lambdaBoxCount > 1L
+                && plan.mBoxCount == 1L
+                && req.parentFreeStateCount == 1L
+                && plan.maxMBoxStates > 0L
+                && plan.maxMBoxStates <= plan.outputStatesPerTile;
+    }
+
+    private static void runMultiGpuOutOfCoreLambdaBoxes(
+            Request req, DPGpuOutOfCore.Plan plan,
+            GpuExecutor[] executors, int nGpus)
+            throws InterruptedException {
+        int workers = (int)Math.min((long)nGpus, plan.lambdaBoxCount);
+        OutOfCorePartial[] partials = new OutOfCorePartial[workers];
+        Throwable[] errors = new Throwable[workers];
+        Thread[] threads = new Thread[workers];
+        long base = plan.lambdaBoxCount / workers;
+        long remainder = plan.lambdaBoxCount % workers;
+        long offset = 0L;
+        long startNanos = System.nanoTime();
+        for (int worker = 0; worker < workers; worker++) {
+            long count = base + (worker < remainder ? 1L : 0L);
+            final long lambdaStart = offset;
+            final long lambdaCount = count;
+            final int index = worker;
+            threads[worker] = new Thread(() -> {
+                try {
+                    partials[index] = executors[index]
+                            .runOutOfCoreLambdaRange(
+                                    req, plan, lambdaStart, lambdaCount);
+                } catch (Throwable t) {
+                    errors[index] = t;
+                }
+            }, "bms-gpu-dp-ooc-lambda-" + worker);
+            threads[worker].start();
+            offset += count;
+        }
+        for (Thread thread : threads) {
+            thread.join();
+        }
+        for (Throwable error : errors) {
+            if (error != null) {
+                throw new RuntimeException(
+                        "multi-GPU OOC lambda-box split failed: "
+                                + error.getMessage(), error);
+            }
+        }
+
+        OutOfCorePartial merged = partials[0];
+        if (merged == null || merged.indices == null) {
+            throw new IllegalStateException(
+                    "multi-GPU OOC lambda split returned no output");
+        }
+        for (int worker = 1; worker < workers; worker++) {
+            OutOfCorePartial partial = partials[worker];
+            if (partial == null || partial.indices == null
+                    || partial.indices.length != merged.indices.length) {
+                throw new IllegalStateException(
+                        "multi-GPU OOC lambda split returned mismatched output");
+            }
+            for (int i = 0; i < merged.indices.length; i++) {
+                if (partial.indices[i] != merged.indices[i]) {
+                    throw new IllegalStateException(
+                            "multi-GPU OOC lambda split changed output ordering");
+                }
+                merged.lower[i] = mergeLogValues(
+                        merged.lower[i], partial.lower[i]);
+                merged.upper[i] = mergeLogValues(
+                        merged.upper[i], partial.upper[i]);
+            }
+        }
+        req.outTable.copyFromIndexed(merged.indices,
+                DoubleBuffer.wrap(merged.lower),
+                DoubleBuffer.wrap(merged.upper), merged.indices.length);
+
+        if (req.progress) {
+            double ms = (System.nanoTime() - startNanos) / 1e6;
+            System.out.println(BranchDpConfig.getBackendLogPrefix()
+                    + " GPU DP bounded out-of-core lambda-box multi-gpu done"
+                    + ", gpus=" + workers
+                    + ", lambdaBoxes=" + plan.lambdaBoxCount
+                    + ", outputStates=" + merged.indices.length
+                    + ", peakDeviceBytes=" + plan.estimatedDeviceBytes
+                    + ", elapsedMs=" + String.format(
+                    java.util.Locale.ROOT, "%.1f", ms));
+        }
+    }
+
+    private static double mergeLogValues(double first, double second) {
+        if (Double.isNaN(first) || Double.isNaN(second)) {
+            return Double.NaN;
+        }
+        if (first == Double.POSITIVE_INFINITY
+                || second == Double.POSITIVE_INFINITY) {
+            return Double.POSITIVE_INFINITY;
+        }
+        if (first == Double.NEGATIVE_INFINITY) return second;
+        if (second == Double.NEGATIVE_INFINITY) return first;
+        double max = Math.max(first, second);
+        return max + Math.log(Math.exp(first - max)
+                + Math.exp(second - max));
+    }
+
     private static void runTiled(Request req, GpuExecutor executor, long rangeStart, long rangeSize) {
         if (rangeSize <= 0) {
             return;
@@ -825,6 +971,17 @@ final class DPGpuFullDP {
                     freeStart, freeCount);
         }
 
+        synchronized OutOfCorePartial runOutOfCoreLambdaRange(
+                Request req, DPGpuOutOfCore.Plan plan,
+                long lambdaStart, long lambdaCount) {
+            context.attachCurrentThread();
+            OutOfCorePartial partial = new OutOfCorePartial();
+            runOnGpuOutOfCore(req, plan, stream,
+                    0L, plan.mBoxCount, 0L, req.parentFreeStateCount,
+                    lambdaStart, lambdaCount, partial);
+            return partial;
+        }
+
         void cleanupIfOwned() {
             if (owned) {
                 cleanup();
@@ -846,6 +1003,28 @@ final class DPGpuFullDP {
             } catch (Throwable t) {
                 t.printStackTrace(System.err);
             }
+        }
+    }
+
+    /** One GPU's log-space partial for a disjoint lambda-box range. */
+    private static final class OutOfCorePartial {
+        long[] indices;
+        double[] lower;
+        double[] upper;
+
+        void record(long[] outputIndices, DoubleBuffer lowerSource,
+                    DoubleBuffer upperSource, int count) {
+            if (indices != null) {
+                throw new IllegalStateException(
+                        "lambda-box split produced more than one output block");
+            }
+            indices = Arrays.copyOf(outputIndices, count);
+            lower = new double[count];
+            upper = new double[count];
+            lowerSource.rewind();
+            upperSource.rewind();
+            lowerSource.get(lower);
+            upperSource.get(upper);
         }
     }
 
@@ -1570,6 +1749,23 @@ final class DPGpuFullDP {
                                           GpuStream stream,
                                           long boxStart, long boxCount,
                                           long freeStart, long freeCount) {
+        runOnGpuOutOfCore(req, plan, stream, boxStart, boxCount,
+                freeStart, freeCount, 0L, plan.lambdaBoxCount, null);
+    }
+
+    /**
+     * Execute a bounded OOC range, optionally returning one output block as a
+     * log-space partial.  The partial form is used only when multiple GPUs
+     * split lambda boxes for one shared output block; the ordinary form writes
+     * directly into the destination table as before.
+     */
+    private static void runOnGpuOutOfCore(Request req,
+                                          DPGpuOutOfCore.Plan plan,
+                                          GpuStream stream,
+                                          long boxStart, long boxCount,
+                                          long freeStart, long freeCount,
+                                          long lambdaStart, long lambdaCount,
+                                          OutOfCorePartial partialOutput) {
         if (boxCount <= 0L || freeCount <= 0L) {
             return;
         }
@@ -1580,6 +1776,14 @@ final class DPGpuFullDP {
                     + boxStart + "," + (boxStart + boxCount) + ")/"
                     + plan.mBoxCount + ", free=[" + freeStart + ","
                     + (freeStart + freeCount) + ")/" + req.parentFreeStateCount);
+        }
+        if (lambdaStart < 0L || lambdaCount <= 0L
+                || lambdaStart + lambdaCount > plan.lambdaBoxCount) {
+            throw new IndexOutOfBoundsException(
+                    "Invalid bounded out-of-core lambda range: ["
+                            + lambdaStart + ","
+                            + (lambdaStart + lambdaCount) + ")/"
+                            + plan.lambdaBoxCount);
         }
 
         stream.getContext().attachCurrentThread();
@@ -1750,6 +1954,8 @@ final class DPGpuFullDP {
                         + " GPU DP bounded out-of-core start"
                         + ", boxRange=[" + boxStart + "," + boxEnd + ")"
                         + ", freeRange=[" + freeStart + "," + freeEnd + ")"
+                        + ", lambdaBoxRange=[" + lambdaStart + ","
+                        + (lambdaStart + lambdaCount) + ")"
                         + ", mBoxes=" + plan.mBoxCount
                         + ", lambdaBoxes=" + plan.lambdaBoxCount
                         + ", mTileExtents=" + Arrays.toString(plan.mTileExtents)
@@ -1787,8 +1993,8 @@ final class DPGpuFullDP {
                     putLongs(mIdxList, output.mIndices);
                     mIdxList.uploadAsync((long)outputCount * Long.BYTES);
 
-                    for (long lambdaOrdinal = 0L;
-                         lambdaOrdinal < plan.lambdaBoxCount;
+                    for (long lambdaOrdinal = lambdaStart;
+                         lambdaOrdinal < lambdaStart + lambdaCount;
                          lambdaOrdinal++) {
                         DPGpuOutOfCore.LambdaBox lambdaBox =
                                 DPGpuOutOfCore.buildLambdaBox(req, plan,
@@ -1824,9 +2030,9 @@ final class DPGpuFullDP {
                         int lambdaStates = lambdaBox.lambdaIndices.length;
                         int[] lambdaTileStatesArg = {lambdaStates};
                         int[] firstLambdaTileArg = {
-                                lambdaOrdinal == 0L ? 1 : 0};
+                                lambdaOrdinal == lambdaStart ? 1 : 0};
                         int[] lastLambdaTileArg = {
-                                lambdaOrdinal + 1L == plan.lambdaBoxCount
+                                lambdaOrdinal + 1L == lambdaStart + lambdaCount
                                         ? 1 : 0};
                         func.numBlocks = outputCount;
                         func.setArgs(Pointer.to(
@@ -1898,9 +2104,15 @@ final class DPGpuFullDP {
                         gpuWaitNanos += System.nanoTime() - gpuWaitStartNanos;
                         if (lastLambdaTileArg[0] != 0) {
                             long copyOutStartNanos = System.nanoTime();
-                            req.outTable.copyFromIndexed(output.mIndices,
-                                    outLower.getHostBuffer(),
-                                    outUpper.getHostBuffer(), outputCount);
+                            if (partialOutput != null) {
+                                partialOutput.record(output.mIndices,
+                                        outLower.getHostBuffer(),
+                                        outUpper.getHostBuffer(), outputCount);
+                            } else {
+                                req.outTable.copyFromIndexed(output.mIndices,
+                                        outLower.getHostBuffer(),
+                                        outUpper.getHostBuffer(), outputCount);
+                            }
                             copyOutNanos += System.nanoTime() - copyOutStartNanos;
                         }
                     }

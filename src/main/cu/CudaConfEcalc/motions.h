@@ -32,6 +32,10 @@ namespace osprey {
 			T min;
 			T max;
 			T initial_step_size;
+			// Size of the final wall-jump probe in this DOF's native units.
+			// Match the corresponding compiled CPU objective's unit-sized probe.
+			// Its dihedral DOFs use radians, unlike ordinary residue CCD.
+			T wall_jump_size;
 			DofSetter<T> setter;
 			Array<PosInter<T>> * inters;
 

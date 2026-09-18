@@ -16,10 +16,11 @@
 # For "all", designs are round-robined across the two partitions for max throughput.
 #
 # Usage: bash bench_packstar.sh [design_id or "all"]
-#   env overrides: PACKSTAR_SAMPLES=1000  PACKSTAR_CONFIDENCE=0.05  PACKSTAR_RESIDUAL_BOUND=1.0
+#   env overrides: PACKSTAR_SAMPLES=1000  PACKSTAR_CONFIDENCE=0.05
 #                  PACKSTAR_TRAIN_SAMPLES= PACKSTAR_PILOT_SAMPLES= PACKSTAR_MAX_EST_SAMPLES=
-#                  PACKSTAR_SAMPLING_BATCHED=true PACKSTAR_SAMPLING_GPU=false PACKSTAR_SAMPLING_THREADS= PACKSTAR_SAMPLING_LARGE_LAMBDA=65536
-#                  PACKSTAR_CLIP=true PACKSTAR_CLIP_QUANTILE=0.85 PACKSTAR_ITERATE=true PACKSTAR_ITERATE_MAX_ROUNDS=4 PACKSTAR_SIZE_SAFETY=0.9
+#                  PACKSTAR_SAMPLING_GPU=false PACKSTAR_SAMPLING_THREADS= PACKSTAR_SAMPLING_LARGE_LAMBDA=65536
+#                  PACKSTAR_FREQUENCY_SEVERITY_TRIPLE_ETA=true PACKSTAR_FREQUENCY_SEVERITY_CAP=20
+#                  PACKSTAR_FREQUENCY_SEVERITY_SIZE_SAFETY=0.9
 #                  ROOT_SPLIT=memory
 #                  GRISMAN_CPUS=104  COMPSCI_CPUS=128
 #                  GRISMAN_MEM=400G   COMPSCI_MEM=256G
@@ -28,7 +29,6 @@
 #                  GRISMAN_FULL_NODE=false GRISMAN_EXCLUDE="" GRISMAN_CONSTRAINT=a5000
 #                  (set GRISMAN_CONSTRAINT= to allow any grisman node)
 #                  TARGET=both|grisman|compsci   (default: grisman)
-# Compatibility: bench_pac.sh and old PAC_* env vars remain accepted for old commands.
 # ===================================================================
 set -euo pipefail
 cd /home/users/lz280/IdeaProjects/OSPREY3
@@ -40,22 +40,18 @@ PDBDIR=/usr/xtmp/lz280/dance_bench/pdbs_prepped
 DESIGN=${1:-2q1e}
 
 # --- tunables ---
-PACKSTAR_SAMPLES=${PACKSTAR_SAMPLES:-${PAC_SAMPLES:-1000}}       # packstar.pac.samples (budget: train 50% / pilot 10% / est rest)
-PACKSTAR_CONFIDENCE=${PACKSTAR_CONFIDENCE:-${PAC_CONFIDENCE:-0.05}} # delta; 0.05 => 95% confidence
-PACKSTAR_RESIDUAL_BOUND=${PACKSTAR_RESIDUAL_BOUND:-${PAC_RESIDUAL_BOUND:-1.0}} # deterministic |xi| bound, kcal/mol
-PACKSTAR_TARGET_EPSILON=${PACKSTAR_TARGET_EPSILON:-${PAC_TARGET_EPSILON:-}}
-PACKSTAR_TRAIN_SAMPLES=${PACKSTAR_TRAIN_SAMPLES:-${PAC_TRAIN_SAMPLES:-}}
-PACKSTAR_PILOT_SAMPLES=${PACKSTAR_PILOT_SAMPLES:-${PAC_PILOT_SAMPLES:-}}
-PACKSTAR_MAX_EST_SAMPLES=${PACKSTAR_MAX_EST_SAMPLES:-${PAC_MAX_EST_SAMPLES:-4000}}   # generous cap so hard seqs never undersize (6/7: N* up to 2305)
-PACKSTAR_SAMPLING_BATCHED=${PACKSTAR_SAMPLING_BATCHED:-${PAC_SAMPLING_BATCHED:-true}}
-PACKSTAR_SAMPLING_GPU=${PACKSTAR_SAMPLING_GPU:-${PAC_SAMPLING_GPU:-false}}
-PACKSTAR_SAMPLING_THREADS=${PACKSTAR_SAMPLING_THREADS:-${PAC_SAMPLING_THREADS:-}}
-PACKSTAR_SAMPLING_LARGE_LAMBDA=${PACKSTAR_SAMPLING_LARGE_LAMBDA:-${PAC_SAMPLING_LARGE_LAMBDA:-65536}}
-PACKSTAR_CLIP=${PACKSTAR_CLIP:-${PAC_CLIP:-true}}              # packstar.pac.clip (6/7 behavior = true)
-PACKSTAR_CLIP_QUANTILE=${PACKSTAR_CLIP_QUANTILE:-${PAC_CLIP_QUANTILE:-0.85}}
-PACKSTAR_ITERATE=${PACKSTAR_ITERATE:-${PAC_ITERATE:-true}}
-PACKSTAR_ITERATE_MAX_ROUNDS=${PACKSTAR_ITERATE_MAX_ROUNDS:-${PAC_ITERATE_MAX_ROUNDS:-4}}
-PACKSTAR_SIZE_SAFETY=${PACKSTAR_SIZE_SAFETY:-${PAC_SIZE_SAFETY:-0.9}}
+PACKSTAR_SAMPLES=${PACKSTAR_SAMPLES:-1000}       # packstar.pac.samples (budget: train 50% / pilot 10% / est rest)
+PACKSTAR_CONFIDENCE=${PACKSTAR_CONFIDENCE:-0.05} # delta; 0.05 => 95% confidence
+PACKSTAR_TARGET_EPSILON=${PACKSTAR_TARGET_EPSILON:-}
+PACKSTAR_TRAIN_SAMPLES=${PACKSTAR_TRAIN_SAMPLES:-}
+PACKSTAR_PILOT_SAMPLES=${PACKSTAR_PILOT_SAMPLES:-}
+PACKSTAR_MAX_EST_SAMPLES=${PACKSTAR_MAX_EST_SAMPLES:-4000}   # generous cap so hard seqs never undersize (6/7: N* up to 2305)
+PACKSTAR_SAMPLING_GPU=${PACKSTAR_SAMPLING_GPU:-false}
+PACKSTAR_SAMPLING_THREADS=${PACKSTAR_SAMPLING_THREADS:-}
+PACKSTAR_SAMPLING_LARGE_LAMBDA=${PACKSTAR_SAMPLING_LARGE_LAMBDA:-65536}
+PACKSTAR_FREQUENCY_SEVERITY_TRIPLE_ETA=${PACKSTAR_FREQUENCY_SEVERITY_TRIPLE_ETA:-true}
+PACKSTAR_FREQUENCY_SEVERITY_CAP=${PACKSTAR_FREQUENCY_SEVERITY_CAP:-20}
+PACKSTAR_FREQUENCY_SEVERITY_SIZE_SAFETY=${PACKSTAR_FREQUENCY_SEVERITY_SIZE_SAFETY:-0.9}
 GRISMAN_CPUS=${GRISMAN_CPUS:-104}      # max out fennario
 COMPSCI_CPUS=${COMPSCI_CPUS:-128}      # max out fitz
 GRISMAN_MEM=${GRISMAN_MEM:-400G}
@@ -134,7 +130,6 @@ submit_one() {
             -Dosprey.bench.designId=$did \
             -Dosprey.bench.outputDir=$OUTDIR/results \
             -Dosprey.bench.numCPUs=\$RUN_CPUS \
-            -Dpackstar.pac.residualBound=$PACKSTAR_RESIDUAL_BOUND \
             -Dpackstar.rootSplit=$ROOT_SPLIT \
             -Dpackstar.dp.cache=$DP_CACHE \
             -Dpackstar.pac.samples=$PACKSTAR_SAMPLES \
@@ -143,15 +138,12 @@ submit_one() {
             -Dpackstar.pac.trainSamples=$PACKSTAR_TRAIN_SAMPLES \
             -Dpackstar.pac.pilotSamples=$PACKSTAR_PILOT_SAMPLES \
             -Dpackstar.pac.maxEstSamples=$PACKSTAR_MAX_EST_SAMPLES \
-            -Dpackstar.pac.sampling.batched=$PACKSTAR_SAMPLING_BATCHED \
             -Dpackstar.pac.sampling.gpu=$PACKSTAR_SAMPLING_GPU \
             -Dpackstar.pac.sampling.threads=$PACKSTAR_SAMPLING_THREADS \
             -Dpackstar.pac.sampling.largeLambdaThreshold=$PACKSTAR_SAMPLING_LARGE_LAMBDA \
-            -Dpackstar.pac.clip=$PACKSTAR_CLIP \
-            -Dpackstar.pac.clipQuantile=$PACKSTAR_CLIP_QUANTILE \
-            -Dpackstar.pac.iterate=$PACKSTAR_ITERATE \
-            -Dpackstar.pac.iterate.maxRounds=$PACKSTAR_ITERATE_MAX_ROUNDS \
-            -Dpackstar.pac.sizeSafety=$PACKSTAR_SIZE_SAFETY \
+            -Dpackstar.pac.frequencySeverity.tripleEta=$PACKSTAR_FREQUENCY_SEVERITY_TRIPLE_ETA \
+            -Dpackstar.pac.frequencySeverity.severityCap=$PACKSTAR_FREQUENCY_SEVERITY_CAP \
+            -Dpackstar.pac.frequencySeverity.sizeSafety=$PACKSTAR_FREQUENCY_SEVERITY_SIZE_SAFETY \
             -cp \"\$(cat $LOGDIR/.classpath_bench.txt)\" $MAIN 2>&1" \
         | awk '{print $4}')
     if [ "$part" = "grisman" ] && [ "$GRISMAN_FULL_NODE" = "true" ]; then

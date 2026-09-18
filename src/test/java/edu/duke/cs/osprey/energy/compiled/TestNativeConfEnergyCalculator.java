@@ -9,11 +9,14 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import edu.duke.cs.osprey.confspace.Conf;
 import edu.duke.cs.osprey.confspace.compiled.*;
 import edu.duke.cs.osprey.gpu.Structs;
+import edu.duke.cs.osprey.parallelism.Parallelism;
 import edu.duke.cs.osprey.tools.MathTools;
 import org.joml.Vector3d;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -528,6 +531,72 @@ public class TestNativeConfEnergyCalculator {
 		}
 	}
 
+	private List<ConfEnergyCalculator.MinimizationJob> makeBenchmarkJobs(
+			ConfSpace confSpace, int[][] confs, int copies) {
+		List<ConfEnergyCalculator.MinimizationJob> jobs = new ArrayList<>(confs.length*copies);
+		for (int copy=0; copy<copies; copy++) {
+			for (int[] conf : confs) {
+				jobs.add(new ConfEnergyCalculator.MinimizationJob(
+					conf, PosInterDist.all(confSpace, conf)
+				));
+			}
+		}
+		return jobs;
+	}
+
+	/**
+	 * Measure native CPU versus native CUDA throughput separately.  The
+	 * consistency audit above intentionally interleaves the two calculators,
+	 * so its elapsed time is not a speed comparison.
+	 */
+	@Test
+	public void benchmark_native_cuda_f64_throughput() {
+		assumeTrue(CudaConfEnergyCalculator.isSupported());
+		final int copies = 4;
+		final int repeats = 3;
+		final int numJobs = confs_2RL0.length*copies;
+
+		List<ConfEnergyCalculator.MinimizationJob> cpuJobs =
+			makeBenchmarkJobs(confSpace_2RL0, confs_2RL0, copies);
+		List<ConfEnergyCalculator.MinimizationJob> gpuJobs =
+			makeBenchmarkJobs(confSpace_2RL0, confs_2RL0, copies);
+
+		long nativeNanos;
+		long cudaNanos;
+		try (var nativeCpu = new NativeConfEnergyCalculator(
+				confSpace_2RL0, Structs.Precision.Float64);
+				var cuda = new CudaConfEnergyCalculator(confSpace_2RL0,
+					Structs.Precision.Float64, Parallelism.make(1, 1))) {
+			// Warm up both the native call path and the CUDA context/kernel.
+			nativeCpu.minimizeEnergies(cpuJobs);
+			cuda.minimizeEnergies(gpuJobs);
+
+			long start = System.nanoTime();
+			for (int repeat=0; repeat<repeats; repeat++) {
+				nativeCpu.minimizeEnergies(cpuJobs);
+			}
+			nativeNanos = System.nanoTime() - start;
+
+			start = System.nanoTime();
+			for (int repeat=0; repeat<repeats; repeat++) {
+				cuda.minimizeEnergies(gpuJobs);
+			}
+			cudaNanos = System.nanoTime() - start;
+		}
+
+		double nativeSeconds = nativeNanos/1.0e9;
+		double cudaSeconds = cudaNanos/1.0e9;
+		double nativeOpsPerSecond = numJobs*repeats/nativeSeconds;
+		double cudaOpsPerSecond = numJobs*repeats/cudaSeconds;
+		System.out.println("[NATIVE-CUDA-BENCH] jobs=" + numJobs
+				+ " repeats=" + repeats
+				+ " nativeCpuMs=" + nativeNanos/1.0e6
+				+ " cudaGpuMs=" + cudaNanos/1.0e6
+				+ " nativeCpuOpsPerSec=" + nativeOpsPerSecond
+				+ " cudaGpuOpsPerSec=" + cudaOpsPerSecond
+				+ " speedup=" + nativeSeconds/cudaSeconds);
+	}
+
 	private void minimizeEnergies_cpu_all(ConfSpace confSpace, int[][] confs, double[] energies, double epsilon) {
 		try (var confEcalc = new CPUConfEnergyCalculator(confSpace)) {
 			minimizeEnergies_all(confEcalc, confs, energies, epsilon);
@@ -556,6 +625,54 @@ public class TestNativeConfEnergyCalculator {
 	@Test public void minimizeEnergies_cuda_2RL0_f64() { minimizeEnergies_cuda_all(confSpace_2RL0, confs_2RL0, minimize_all_2RL0, Structs.Precision.Float64, 1e-5); }
 	@Test public void minimizeEnergies_cuda_1DG9_6f_f32() { minimizeEnergies_cuda_all(confSpace_1DG9_6f, confs_1DG9_6f, minimize_all_1DG9_6f, Structs.Precision.Float32, 1e-2); }
 	@Test public void minimizeEnergies_cuda_1DG9_6f_f64() { minimizeEnergies_cuda_all(confSpace_1DG9_6f, confs_1DG9_6f, minimize_all_1DG9_6f, Structs.Precision.Float64, 1e-3); }
+
+	/** Report per-conformation native CPU/GPU agreement instead of hiding it in
+	 * an aggregate checksum.  The target for production-sized audits is p99
+	 * <=1e-3 kcal/mol with matching finite/abort state; this small fixture is a
+	 * diagnostic and therefore records the measured distribution without making
+	 * a size-independent pass/fail claim. */
+	@Test
+	public void audit_cuda_cpu_f64_consistency() {
+		assumeTrue(CudaConfEnergyCalculator.isSupported());
+		List<Double> absErrors = new ArrayList<>();
+		int stateMatches = 0;
+		long startNanos = System.nanoTime();
+		try (var cpu = new CPUConfEnergyCalculator(confSpace_2RL0);
+				var gpu = new CudaConfEnergyCalculator(confSpace_2RL0,
+						Structs.Precision.Float64,
+						Parallelism.make(1, 1))) {
+			for (int[] conf : confs_2RL0) {
+				var inters = PosInterDist.all(confSpace_2RL0, conf);
+				double cpuEnergy = cpu.minimizeEnergy(conf, inters);
+				double gpuEnergy = gpu.minimizeEnergy(conf, inters);
+				boolean cpuFinite = Double.isFinite(cpuEnergy);
+				boolean gpuFinite = Double.isFinite(gpuEnergy);
+				if (cpuFinite == gpuFinite) stateMatches++;
+				if (cpuFinite && gpuFinite) {
+					absErrors.add(Math.abs(cpuEnergy - gpuEnergy));
+				}
+			}
+		}
+		long elapsedNanos = System.nanoTime() - startNanos;
+		Collections.sort(absErrors);
+		int p99Index = absErrors.isEmpty() ? 0
+				: Math.min(absErrors.size() - 1,
+						(int)Math.ceil(absErrors.size() * 0.99) - 1);
+		double p99 = absErrors.isEmpty() ? Double.NaN : absErrors.get(p99Index);
+		double max = absErrors.isEmpty() ? Double.NaN
+				: absErrors.get(absErrors.size() - 1);
+		System.out.println("[NATIVE-CUDA-AUDIT] n=" + confs_2RL0.length
+				+ " finiteStateMatch=" + stateMatches + "/" + confs_2RL0.length
+				+ " p99AbsKcal=" + p99 + " maxAbsKcal=" + max
+				+ " elapsedMs=" + elapsedNanos / 1.0e6);
+		assertThat("native CUDA audit produced no finite comparisons",
+				absErrors.isEmpty(), is(false));
+		double stateRate = stateMatches / (double) confs_2RL0.length;
+		assertThat("native CUDA finite/abort-state agreement",
+				stateRate, greaterThanOrEqualTo(0.999));
+		assertThat("native CUDA f64 p99 absolute error",
+				p99, lessThanOrEqualTo(1.0e-3));
+	}
 
 
 	public static void main(String[] args) {

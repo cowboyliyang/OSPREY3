@@ -17,7 +17,7 @@
 # instead of 100 serialized full-node jobs.
 #
 # env overrides: NUM_FLEXIBLE=10  PACKSTAR_SAMPLES=1000  PACKSTAR_CONFIDENCE=0.05
-#                GROUND_TRUTH_EPSILON=0.02  PACKSTAR_RESIDUAL_BOUND=1.0
+#                GROUND_TRUTH_EPSILON=0.02
 #                NUM_SEEDS=100  GRISMAN_GPUS_TOTAL=48
 #                SEED_CPUS=12  SEED_MEM=45G
 #                GRISMAN_CPUS=104  GRISMAN_MEM=400G  GRISMAN_GPUS=8   (ground_truth job only)
@@ -32,7 +32,6 @@ MODE=${1:-all}
 NUM_FLEXIBLE=${NUM_FLEXIBLE:-10}
 PACKSTAR_SAMPLES=${PACKSTAR_SAMPLES:-1000}
 PACKSTAR_CONFIDENCE=${PACKSTAR_CONFIDENCE:-0.05}
-PACKSTAR_RESIDUAL_BOUND=${PACKSTAR_RESIDUAL_BOUND:-1.0}
 GROUND_TRUTH_EPSILON=${GROUND_TRUTH_EPSILON:-0.02}
 NUM_SEEDS=${NUM_SEEDS:-100}
 GRISMAN_GPUS_TOTAL=${GRISMAN_GPUS_TOTAL:-48}
@@ -81,8 +80,8 @@ submit_ground_truth() {
 submit_seeds() {
     local EXTRA_JVM_ARGS="${EXTRA_JVM_ARGS:-} -XX:-UseSuperWord -XX:+UseParallelGC -Dpackstar.dp.gpu=true -Dpackstar.dp.gpu.multiGpu=false -Dpackstar.dp.gpu.persistentContext=true"
     local JARGS="--add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.lang.invoke=ALL-UNNAMED -Xmx$SEED_JAVA_XMX -Xms$SEED_JAVA_XMS $EXTRA_JVM_ARGS"
-    # Same fix as bench_sample_size_convergence.sh: force the N*-sizing estimation
-    # round to actually use the full n_s-derived budget (n_2 = n_s - n_1 - n_0)
+    # Force the N*-sizing estimation round to use the full n_s-derived budget
+    # (n_2 = n_s - n_1 - n_0)
     # instead of stopping early once it predicts hitting the loose 0.683 target.
     local N1=$(( PACKSTAR_SAMPLES * 5 / 10 )) N0=$(( PACKSTAR_SAMPLES / 10 ))
     local ESTCAP=$(( PACKSTAR_SAMPLES - N1 - N0 ))
@@ -102,8 +101,6 @@ submit_seeds() {
             -Dosprey.scalingpac.numCPUs=$SEED_CPUS \
             -Dpackstar.pac.samples=$PACKSTAR_SAMPLES \
             -Dpackstar.pac.confidence=$PACKSTAR_CONFIDENCE \
-            -Dpackstar.pac.residualBound=$PACKSTAR_RESIDUAL_BOUND \
-            -Dpackstar.pac.etaEnabled=true \
             -Dpackstar.pac.maxEstSamples=$ESTCAP \
             -Dpackstar.pac.unreachableCap=$ESTCAP \
             -Dpackstar.pac.targetEpsilon=$TARGET_EPS_TIGHT \
