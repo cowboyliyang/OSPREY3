@@ -16,6 +16,8 @@ def main():
         raise SystemExit('Submit through Slurm')
     parser = argparse.ArgumentParser()
     parser.add_argument('--cohort', choices=['frontier', 'baseline38'], default='frontier')
+    parser.add_argument('--frontier-manifest', type=Path,
+                        help='Separate frozen add-on manifest; leaves the original build/cohort unchanged')
     parser.add_argument('--index', type=int, default=int(os.environ.get('SLURM_ARRAY_TASK_ID', '0')))
     parser.add_argument('--mode', choices=['preflight', 'full', 'pfunc'], default='full')
     parser.add_argument('--arm', choices=['budget-forward', 'decomposition-cost', 'pair-only', 'no-learning'], default='budget-forward')
@@ -28,8 +30,11 @@ def main():
     build = Path(os.environ['BUILD_ROOT']).resolve()
     data = Path(os.environ['INPUT_ROOT']).resolve()
     config = build / 'source/slurm/h200'
+    if args.frontier_manifest and args.cohort != 'frontier':
+        raise ValueError('--frontier-manifest requires the frontier cohort')
     if args.cohort == 'frontier':
-        rows = list(csv.DictReader((config / 'frontier.tsv').open(), delimiter='\t'))
+        manifest_path = args.frontier_manifest or config / 'frontier.tsv'
+        rows = list(csv.DictReader(manifest_path.open(), delimiter='\t'))
         package_rows = list(csv.DictReader((data / 'designs.tsv').open(), delimiter='\t'))
         if rows != package_rows:
             raise ValueError('Transferred frontier manifest differs from the frozen configuration')
@@ -54,7 +59,8 @@ def main():
     reserved_mib = int(os.environ.get('SLURM_MEM_PER_NODE', '0'))
     if reserved_mib and args.heap_gib * 1024 >= reserved_mib:
         raise ValueError('Heap must leave native/OS memory within the Slurm allocation')
-    out = Path(os.environ['RESULT_ROOT']).resolve() / (
+    # Preserve the approved /usr/xtmp spelling required by Duke production builds.
+    out = Path(os.environ['RESULT_ROOT']).absolute() / (
         f"{row['design_id']}_{args.mode}_{args.arm}_s{args.seed}_"
         f"J{os.environ['SLURM_JOB_ID']}_T{args.index}")
     # Refuse to reuse caches or overwrite a completed/partial experiment.
@@ -108,12 +114,17 @@ def main():
     command += [f'-D{k}={v}' for k, v in sorted(properties.items())]
     command += ['-cp', (build / 'test_classpath.txt').read_text().strip(),
                 'edu.duke.cs.osprey.markstar.bench.GenericPDBBench']
-    manifest = dict(design=row, pdb_sha256=checksum, options=vars(args),
+    options = vars(args).copy()
+    options['frontier_manifest'] = str(args.frontier_manifest) if args.frontier_manifest else None
+    manifest = dict(design=row, pdb_sha256=checksum, options=options,
                     properties=properties, cpus=cpus, node=os.environ.get('SLURMD_NODENAME'),
                     slurm_job_id=os.environ['SLURM_JOB_ID'], build_root=str(build),
                     git_head=(build / 'git_head.txt').read_text().strip(),
                     status='RUNNING', start_epoch=time.time(), energy_matrices='fresh',
                     precision='FP64', ccd='CPU')
+    manifest['runner_sha256'] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    if args.cohort == 'frontier':
+        manifest['frontier_manifest_sha256'] = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
     (out / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     shutil.copy2(build / 'source.sha256', out / 'build-source.sha256')
     (out / 'command.sh').write_text(shlex.join(command) + '\n')

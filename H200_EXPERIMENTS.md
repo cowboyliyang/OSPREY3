@@ -1,5 +1,165 @@
 # PACK* H200 实验执行说明
 
+## 2026-09-19 更新：两批共追加八系统、41 个 design
+
+**原 12 系统 / 46 项，加上 2026-09-18 的四系统 / 25 项，再加本次四系统 / 16 项，合计 20 系统 / 87 项。** 这是设计清单总数，包含已取消的两项 Duke MARK* 3k3q 设计；取消记录见下文。H200 的八个追加系统分成两个独立 manifest、输入包和结果目录。已经运行第一批追加的 H200 用户只需新增第二批 16 项。
+
+| 批次 | 系统 | H200 manifest | 独立 index | design 数 | 入口 |
+|---|---|---|---|---:|---|
+| 原始 | 原 12 系统 | `slurm/h200/frontier.tsv` | 0–45 | 46 | `run.slurm` |
+| 追加一，09-18 | 2rfd、3u7y、3gxu、3bua | `slurm/h200/frontier_add4.tsv` | 0–24 | 25 | `run_add4.slurm` |
+| 追加二，09-19 | 3bu8、4wem、2rf9、5it3 | `slurm/h200/frontier_small4.tsv` | 0–15 | 16 | `run_small4.slurm` |
+
+**三个 index 空间相互独立，以 design_id 对齐结果。** 第一批追加的 25 项精确配置、作业与输入包见下文 09-18 章节；本节记录第二批。原两个 manifest、已验证 BUILD_ROOT、输入和结果目录继续保留。
+
+| 系统 | 第二批 index / MARK* task | flex delta | 实际总位点数（含 mutable） | design 数 | 每档序列数 | Duke MARK* 作业 | MARK* 内存 / heap |
+|---|---|---|---|---:|---:|---|---|
+| 3bu8 | 0–3 | +7、+8、+9、+10 | 11、12、13、14 | 4 | 20 | `12643021_0–3` | 128 / 96 GiB |
+| 4wem | 4–7 | +6、+7、+8、+9 | 11、12、13、14 | 4 | 21 | `12643021_4–7` | 128 / 96 GiB |
+| 2rf9 | 8–11 | +7、+8、+9、+10 | 13、14、15、16 | 4 | 39 | `12643021_8–11` | 128 / 96 GiB |
+| 5it3 | 12–15 | +7、+8、+9、+10 | 13、14、15、16 | 4 | 20 | `12643021_12–15` | 128 / 96 GiB |
+
+四系统是剩余 22 系统中原始配置列表总位点最少的四个：3bu8=4、4wem=5、2rf9=6、5it3=6。2rf9 历史表格名义点数为 8，但完整 mutable/flexible 列表实际为 6；本批以实际 OSPREY 预检为准。按历史 MARK* 时间乘以 3 的新增位点数次方选取四个连续档，最低档粗估超过一天；高档可能远超两周，正式时限统一为 14 天，超时仅作右删失下界。加点顺序沿用 `frontier_dcc_20260805_v2/config/expansion_scans` 的冻结几何顺序。该启发式不保证实际耗时、完整估计或较大加速比。
+
+**4wem 序列例外：** mutable B347 的 WT 是 HID，允许突变字母表中有独立的 HIS。因此每档是 WT HID 加 20 种替换，共 21 条，不能套用 1 + 19 × mutable 数。保持 WT、允许字母表和序列顺序，H200 按 manifest 的 expected_sequences=21 验证。第一次预检 `12643005` 因错误预期 20 条而中止；该包不用于正式实验。修正后的 `12643020` 完成全部 16 项实际位点和序列预检。
+
+### 第二批冻结输入、结果与 H200 传输包
+
+Duke MARK* 输入：
+
+```
+/usr/xtmp/lz280/packstar_flex_frontier20_20260919/prep_12643020/package
+```
+
+Duke 结果：
+
+```
+/usr/xtmp/lz280/packstar_flex_frontier20_20260919/A12643021/T<task>/
+```
+
+正式数组 `12643021_0–15`，每项 16 CPU、128 GiB 内存、96 GiB heap、FP64、CPU CCD、无 GPU、epsilon=0.683、关闭 stability filter、新建独立 EMAT，14 天时限。账户 `grisman`，分区 `grisman,compsci`，排除 `fennario-[01-06]`。提交后首次状态核对：16 项全部 RUNNING，其中 grisman 非 fennario 10 项、compsci 6 项。各档独立调度。实际节点、分区、资源及结果状态记录在各任务目录；COMPLETED 还需结合每条序列 P/L/PL 的 Estimated 状态解释。
+
+H200 第二批独立传输包：
+
+```
+/usr/xtmp/lz280/packstar_flex_frontier20_20260919/handoff_12643037/package
+```
+
+包内 `designs.tsv` 与仓库 `frontier_small4.tsv` 一致，记录全部精确 mutable/flexible 位点、PDB SHA256、序列数和 MARK* job；另有四个 PDB、16 项序列清单及预检日志、protocol、加点扫描和 SHA256SUMS。四个 PDB 共 2,044,944 bytes，16 项合计 400 条序列工作负载。完整包为 **46 个文件、2,184,978 bytes**。审计 `12643037` 核验输入校验和并通过 portable runner 完成 16 项新增配置及 1 项原配置的真实 CPU sequence_dump 预检；这不是 H200 GPU 验证。
+
+通过 Slurm 数据搬运作业把该 package 原样传到 `$SCRATCH/frontier-small4-package`，传后核验 SHA256SUMS。只传包，不传 Duke build、缓存和输出。保留第一批 `$SCRATCH/frontier-add4-package` 和原始 `frontier12-package`。
+
+### H200 追加第二批 16 项
+
+更新工作 checkout 的 `slurm/h200/run.py`、`run_small4.slurm`、`frontier_small4.tsv`。复用原已验证的 BUILD_ROOT；入口为每项冻结独立 runner 和 manifest，使用原 build 的 classpath 与 production.properties。下面示例使用原文的 2 H200 / 64 CPU / 960 GiB；如果 H200 正在运行的实验采用其他统一配额，第二批也使用该配额及对应 heap/host 参数。Duke 的 128 GiB 配额不适用于 H200 PACK*。
+
+```bash
+export REPO=/path/to/updated/OSPREY3
+export INPUT_ROOT="$SCRATCH/frontier-small4-package"
+export RESULT_ROOT="$SCRATCH/results/frontier-small4"
+# BUILD_ROOT 保持为正在使用的已验证 build；日志路径在 scratch 下。
+mkdir -p "$SCRATCH/logs"
+
+# 16 项全部预检成功后再提交正式计算。
+sbatch --account="$ACCOUNT" --partition="$GPU_PARTITION" \
+  --cpus-per-task=4 --mem=16G --time=00:30:00 --array=0-15 \
+  --output="$SCRATCH/logs/small4_preflight_%A_%a.out" \
+  --error="$SCRATCH/logs/small4_preflight_%A_%a.err" \
+  "$REPO/slurm/h200/run_small4.slurm" --mode preflight --heap-gib 8 --host-gib 4
+
+sbatch --account="$ACCOUNT" --partition="$GPU_PARTITION" --gres=gpu:h200:2 \
+  --cpus-per-task=64 --mem=960G --time=2-00:00:00 --array=0-15%4 \
+  --output="$SCRATCH/logs/small4_frontier_%A_%a.out" \
+  --error="$SCRATCH/logs/small4_frontier_%A_%a.err" \
+  "$REPO/slurm/h200/run_small4.slurm"
+```
+
+第二批示例的 4 路并发需要与原始及追加一共同核算 GPU、内存和 scratch，不能把各批并发上限直接相加。每项 mapped workspace 上限 512 GiB，第二批 4 路最多 2 TiB，另计日志、EMAT 和其他批次输出。Duke 仅提交 MARK*；H200 正式实验由 H200 端执行。第一批追加仍按下文原命令运行。
+
+## 2026-09-18 Duke MARK* 取消记录
+
+用户要求释放 CPU 给完整 CCD 穷举，已取消 `3k3q_flex_p1`
+（`12631847_14`）和 `3k3q_flex_p2`（`12631847_15`）；两项均在运行
+14:38:15 后取消。`3k3q_flex_p0` 保留。两项原日志、部分结果和冻结配置
+继续保留，结果汇总标为用户取消，不能作为完整耗时或成功基线。
+此操作仅针对 Duke MARK*，没有取消 H200 上对应的 PACK* 作业。
+
+实际释放节点为 `grisman-40`，合计 32 CPU / 384 GiB；已将 CCD 穷举
+数组 `12633943` 的待运行任务 417–480 转到该节点，初次检查 417–424
+共八项已运行，使用全部新释放的 32 CPU。
+
+## 2026-09-18 追加：四系统、25 个 design（原 12 系统已启动）
+
+**本次是独立追加批次，不替换正在运行的 12 系统 / 46 项实验。** 新增 **2rfd、3u7y、3gxu、3bua**，共 25 项；合计为 **16 系统 / 71 项**。原 `frontier.tsv`、H200 index 0–45、输入包、已验证 BUILD_ROOT 和结果目录全部保留。下文原 12 系统章节继续描述原批次，不要重新提交那 46 项。
+
+新增完整配置见 `slurm/h200/frontier_add4.tsv`，采用独立的 **index 0–24**，不是原数组的 46–70。结果必须按 `design_id` 对齐，两个批次的 index 不可直接混用。没有逐档运行依赖，各档独立参与调度。
+
+| 系统 | 追加 index | flex delta | 实际总位点数 | design 数 | 每档序列数 | Duke MARK* 作业 | MARK* 内存 / heap |
+|---|---|---|---|---:|---:|---|---|
+| 2rfd | 0–4 | +0～+4，连续 | 8～12 | 5 | 39 | `12633776_0–4` | 128 / 96 GiB |
+| 3u7y | 5–11 | +0～+6，连续 | 5～11 | 7 | 39 | `12633776_5–11` | 128 / 96 GiB |
+| 3gxu | 12–21 | +0～+9，连续 | 4～13 | 10 | 20 | `12633776_12–21` | 128 / 96 GiB |
+| 3bua | 22–24 | −2、−1、0 | 16、17、18 | 3 | 39 | `12633775_22–24` | 96 / 64 GiB |
+
+前三个系统沿用冻结的几何加点顺序，上限参考历史 MARK* 耗时、每加一点约 3 倍的粗略增长和 14 天预算，保留每个中间档。这是预先选定的探索边界，不是已测出的 frontier。3bua 按用户指定取 −2、−1、0：mutable 固定 `C447;C450`，−1 移出蛋白侧 WT-flex `C446`，−2 再移出 `C444`，保留全部配体侧 flex。
+
+**2rfd 位点计数修正：** 历史列表包含 `B552`，但同一冻结 PDB 中该残基无法匹配 OSPREY 模板，会被自动删除。预检发现原列表实际只产生 8 个活跃位点，而非之前统计的 9 个。本批显式移除无效 flex 请求 `B552`，保留 PDB、mutable 和其余顺序；+0～+4 因而对应 8～12 点。此归一化记录在包内 `config/input_normalizations.json`。不改写原始 38 系统历史文件，也不将历史名义计数当成本轮实际规模。
+
+3bua 的历史 MARK* job `11899111` 是 **14 天 TIMEOUT**，64 GiB heap、MaxRSS 39,681,640 KiB（约 37.8 GiB），不是 OOM。历史 PACK* `12509108_15` 的失败是另一原因：预计 host storage 285.4 GiB 超过 260.8 GiB heap 预算。追加 H200 仍沿用原 12 系统实际使用的统一 PACK* 资源与算法设置；表中的 96/128 GiB 仅为 Duke MARK* 配额，不能拿来替换 H200 PACK* 配额。
+
+### 独立追加包与验证
+
+Duke MARK* 冻结输入：
+
+```
+/usr/xtmp/lz280/packstar_flex_frontier16_20260918/prep_12633774/package
+```
+
+25 项 OSPREY 实际位置/序列预检已通过：请求位点全部生效、完整序列数正确、同系统各档序列及顺序一致。全部 MARK* 使用 16 CPU、FP64、CPU CCD、epsilon=0.683、关闭 stability filter、新建 EMAT、14 天时限。最初预检 job `12633764` 因 B552 无效请求失败，修正后以新包 `12633774` 冻结；失败包不用于正式任务。
+
+后续调度调整：`12633776_12–21`（3gxu 十档）排队期间，从仅 compsci 扩展为 `compsci,grisman`，继续排除 `fennario-[01-06]`，以利用 jerry7 空闲 CPU。作业 ID、输入、128 GiB 内存 / 96 GiB heap 和 16 CPU 均保持不变；没有取消重跑已有计算。原冻结 protocol 的 partition 字段保留提交时的 compsci，实际分区与节点以每项运行的 `run_manifest.json` / `slurm_job.txt` 为准。
+
+随后按用户授权，为尚未启动的 `12633776_15–21` 仅放开 **fennario-02**，排除列表改为 `fennario-01,fennario-[03-06]`；仍允许 `compsci,grisman` 两分区调度。单台 fennario 的 104 CPU 可容纳六个 16 CPU 任务，剩余任务继续在两分区排队。MARK* 不申请 GPU，算法、输入及内存配额不变；记录实际节点型号以解释跨硬件计时差异。原冻结文件保持提交时内容。
+
+此次调度后，task 15–20 已在 fennario-02 启动；task 21 随 jerry7 空位释放也已启动，没有剩余排队项。
+
+H200 独立传输包：
+
+```
+/usr/xtmp/lz280/packstar_flex_frontier16_20260918/handoff_12633791/package
+```
+
+只传该目录到新的 scratch 路径，例如 `$SCRATCH/frontier-add4-package`，不要覆盖原 `frontier12-package`。包中 `designs.tsv` 对应仓库 `frontier_add4.tsv`，包含全部精确位点、PDB SHA256、序列数和 MARK* job；同时包含 4 个 PDB（共 3,314,655 bytes）、25 项序列清单/预检日志以及 `SHA256SUMS`，合计 785 个序列工作负载。完整包为 64 个文件、3,468,853 bytes。审计 job `12633791` 已成功完成：核验输入 SHA256，通过新版 portable runner 完成全部 25 项追加配置及 1 项原批次配置的真实 CPU sequence_dump 预检；这是入口兼容性与输入验证，不是 H200 GPU 测试。传输和 checksum 验证通过 Slurm 数据搬运任务执行。H200 仍须运行本地预检。
+
+### H200 已开跑时如何追加
+
+保留当前已验证的 `BUILD_ROOT`，**不要编辑其 source 快照、原 frontier.tsv 或原输入目录，也不需要为了新增配置重跑已有实验。** 追加入口 `run_add4.slurm` 在新结果目录中为每个任务保存新版 Python runner 和新增 TSV 的独立快照，复用原 build 的 Java/CUDA classpath 及 `production.properties`，并记录 runner 与新增 manifest 的 SHA256。代码更新仅增加独立 manifest 入口；生产算法参数不变。
+
+更新工作 checkout 中的 `slurm/h200/run.py`、`run_add4.slurm`、`frontier_add4.tsv`，设置 `REPO` 指向该 checkout。原实验仍从原 build 快照执行。以下使用原文默认的 2 H200 / 64 CPU / 960 GiB；若原 12 系统实际已采用统一的其他配额，追加批次必须使用那个实际配额及对应 heap/host 参数，并记录在结果中。
+
+```bash
+export REPO=/path/to/updated/OSPREY3
+# BUILD_ROOT 保持为原 12 系统使用的已验证 H200 build
+export INPUT_ROOT="$SCRATCH/frontier-add4-package"
+export RESULT_ROOT="$SCRATCH/results/frontier-add4"
+
+# 全部 25 项先预检；确认全部成功，再执行下面的正式提交。
+sbatch --account="$ACCOUNT" --partition="$GPU_PARTITION" \
+  --cpus-per-task=4 --mem=16G --time=00:30:00 --array=0-24 \
+  --output="$SCRATCH/logs/add4_preflight_%A_%a.out" \
+  --error="$SCRATCH/logs/add4_preflight_%A_%a.err" \
+  "$REPO/slurm/h200/run_add4.slurm" --mode preflight --heap-gib 8 --host-gib 4
+
+# 仅追加这 25 项；不要重新提交原 0–45 数组。
+sbatch --account="$ACCOUNT" --partition="$GPU_PARTITION" --gres=gpu:h200:2 \
+  --cpus-per-task=64 --mem=960G --time=2-00:00:00 --array=0-24%4 \
+  --output="$SCRATCH/logs/add4_frontier_%A_%a.out" \
+  --error="$SCRATCH/logs/add4_frontier_%A_%a.err" \
+  "$REPO/slurm/h200/run_add4.slurm"
+```
+
+上例 4 路是新增批次的并发上限，需和原批次一起核对 GPU、内存及 scratch 容量；不是两个批次合计 4 路。追加 4 路 mapped workspace 预算最多 2 TiB，另加旧任务和其他输出。Duke 只提交了 MARK*，以上 H200 命令由 H200 端执行。
+
 ## 固定版本与实验顺序
 
 先固定本次提交的 Git commit，再编译和提交任务。所有编译、预检、实验和结果分析均通过 Slurm；源码可以放 home，依赖缓存、构建快照、PDB、EMAT、临时文件和结果必须放集群 scratch。以下命令中的账号、partition、GPU 类型名称和 scratch 路径需要按 H200 集群填写。
@@ -17,7 +177,7 @@
 
 ## 12 系统、46 个 frontier design
 
-当前正式集合为 7 个保留系统的 20 个 design，加上 5 个新增系统的 26 个 design，共 46 项。旧集合的 4z80、2rl0、2q2a 已取消，不纳入本次 H200 正式对照。`slurm/h200/frontier.tsv` 与下表对应，包含完整 mutable/flexible 位点、PDB SHA256、期望序列数、MARK* job 和逐项资源配置；H200 使用连续 index 0–45。不要沿用旧版 32 项的 array 范围，也不要重新选择加点顺序。
+已启动的原批次为 7 个保留系统的 20 个 design，加上此前 5 个新增系统的 26 个 design，共 46 项。本节只描述该原批次；两批共八系统追加见文首，合计为 87 项。旧集合的 4z80、2rl0、2q2a 已取消，不纳入本次 H200 正式对照。`slurm/h200/frontier.tsv` 与下表对应，包含完整 mutable/flexible 位点、PDB SHA256、期望序列数、MARK* job 和逐项资源配置；H200 使用连续 index 0–45。不要沿用旧版 32 项的 array 范围，也不要重新选择加点顺序。
 
 同系统所有 design 固定 mutable 位点及其顺序，允许标准 20 种氨基酸，枚举 WT 加至多一个同时突变，序列数为 1 + 19 × mutable 位点数；两算法都关闭 stability filter，逐序列计算 Protein、Ligand、Complex 三个状态。flexible 位点保留 WT 氨基酸身份；负 delta 从原列表末端按蛋白侧顺序移除 WT flex，正 delta 使用已经冻结的加点顺序。以下完整列表为最终实际 specs。4znc 的原列表重复出现 F731，本次只保留其第一次出现，因此原始 WT flex 为 7 个。
 
