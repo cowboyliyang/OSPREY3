@@ -1,0 +1,38 @@
+{
+  "prep_root": "/usr/xtmp/lz280/packstar_flex_frontier38_20260920/prep_12651495",
+  "jobs": {
+    "compsci": "12651516",
+    "grisman": "12651522",
+    "fennario": "12651523"
+  },
+  "designs": 52,
+  "systems": 22,
+  "cpus": 16,
+  "memory_gib": 96,
+  "heap_gib": 64,
+  "time_limit_days": 14,
+  "account": "grisman",
+  "normalizations": [
+    {
+      "original_design_id": "3cal_flex_p2",
+      "design_id": "3cal_flex_p3",
+      "removed_invalid": "D210",
+      "added": "C127",
+      "reason": "D210 automatically deleted by OSPREY template matching; preserve approved actual position count using next frozen scan residue. Normalized baseline is 10 positions."
+    },
+    {
+      "original_design_id": "3cal_flex_p3",
+      "design_id": "3cal_flex_p4",
+      "removed_invalid": "D210",
+      "added": "C146",
+      "reason": "D210 automatically deleted by OSPREY template matching; preserve approved actual position count using next frozen scan residue. Normalized baseline is 10 positions."
+    },
+    {
+      "original_design_id": "3cal_flex_p4",
+      "design_id": "3cal_flex_p5",
+      "removed_invalid": "D210",
+      "added": "C112",
+      "reason": "D210 automatically deleted by OSPREY template matching; preserve approved actual position count using next frozen scan residue. Normalized baseline is 10 positions."
+    }
+  ]
+}

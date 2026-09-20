@@ -1,5 +1,52 @@
 # PACK* H200 实验执行说明
 
+## 2026-09-20 正式追加：52 项，覆盖全部 38 系统
+
+用户批准四小时 cutoff：历史耗时超过 4 小时的 4z80、2rl0、2rfe、2q2a、1gwc、1b6c 去掉原高档，其他剩余系统保留三档；另给 4znc、3gxu、4wem、2rfd 各追加 +1 点。新增 52 项，清单合计 **38 系统 / 139 项**（沿用包含原两项用户取消设计的统计口径）。所有档位统一 **14 天、16 CPU、Slurm 96 GiB、Java heap 64 GiB、account=grisman**。FP64、CPU CCD、epsilon=0.683、关闭 stability filter、每项独立新建 EMAT、无 GPU。
+
+精确设计与作业映射见 [frontier_remaining18_plus4.tsv](slurm/h200/frontier_remaining18_plus4.tsv)，独立 index 0–51，不与旧三个 manifest 混用。提交审计见 [frontier_remaining18_plus4.audit.json](slurm/h200/frontier_remaining18_plus4.audit.json)。审核历史见 [FRONTIER_APPEND_REVIEW_20260920.md](FRONTIER_APPEND_REVIEW_20260920.md)。此前待确认与一天时限建议已被用户的正式提交和统一 14 天指令取代。
+
+| 调度组 | 正式数组 | 本批 task index | 项数 | 首次状态核验 |
+|---|---|---|---:|---|
+| compsci：两个高档与四个 +1 | `12651516` | 6、9、48–51 | 6 | 全部 RUNNING，linux31–34 |
+| grisman，排除全部 fennario | `12651522` | 12、15、24、27、30、33、36、39、44、47 | 10 | 全部 RUNNING，grisman-40、jerry1、jerry4–7 |
+| grisman，仅 fennario | `12651523` | 0–5、7–8、10–11、13–14、16–23、25–26、28–29、31–32、34–35、37–38、40–43、45–46 | 36 | 24 RUNNING、12 PENDING |
+
+12 个高档与四个 +1 已全部同时在非 fennario 运行。fennario 组通过排除 `grisman-[37,40],jerry[1-7]` 限定于当前 grisman 分区的六台 fennario；允许排队，无逐档运行依赖。首次核验共 40 RUNNING / 12 PENDING，不是完成结果。
+
+| 系统 | 本批 index | 实际总点数（按 index 顺序） |
+|---|---|---|
+| 1b6c | 0–1 | 14、15 |
+| 1gwc | 2–3 | 13、14 |
+| 2hnu | 4–6 | 13、14、15 |
+| 2hnv | 7–9 | 12、13、14 |
+| 2p4a | 10–12 | 12、13、14 |
+| 2q1e | 13–15 | 12、13、14 |
+| 2q2a | 16–17 | 13、14 |
+| 2rfe | 18–19 | 13、14 |
+| 2rl0 | 20–21 | 12、13 |
+| 2xxm | 22–24 | 12、13、14 |
+| 3cal | 25–27 | 13、14、15 |
+| 3eb6 | 28–30 | 12、13、14 |
+| 4hem | 31–33 | 13、14、15 |
+| 4kt6 | 34–36 | 10、11、12 |
+| 4pxf | 37–39 | 13、14、15 |
+| 4z80 | 40–41 | 12、13 |
+| 5d68 | 42–44 | 12、13、14 |
+| 5em2 | 45–47 | 10、11、12 |
+| 4znc_flex_p6 | 48 | 14 |
+| 3gxu_flex_p10 | 49 | 14 |
+| 4wem_flex_p10 | 50 | 15 |
+| 2rfd_flex_p5 | 51 | 13 |
+
+冻结输入：`/usr/xtmp/lz280/packstar_flex_frontier38_20260920/prep_12651495/package`。
+运行结果：`/usr/xtmp/lz280/packstar_flex_frontier38_20260920/A<array>/T<task>/`。
+预检 `12651495` COMPLETED / 0:0，全部 52 项 OSPREY 实际位点、序列数及同系统序列顺序通过；注册审计 `12651560` 校验包内 SHA256 并生成小型版本化映射。复用此前已验证的 MARK* 协议 overlay/classpath，不修改旧冻结输入和编译产物。序列预检不证明 64 GiB heap 足够完成全部搜索，运行 OOM/超时需分别保留。
+
+首次预检 `12651450` 在 3cal 发现 D210 自动删除而停止，该失败包不用于正式任务。修正显式移除 D210，并按冻结顺序补下一残基，保持批准的 13、14、15 个实际点；归一化原始配置为 10 点，因此最终 ID 为 `3cal_flex_p3/p4/p5`，而非草案 p2/p3/p4。详见包内 `config/input_normalizations.json`。4wem 仍为 21 条序列，2rfd 继续排除 B552。
+
+本次已提交的是 Duke MARK*。新 TSV 记录完整位点、PDB SHA256 和对应任务；尚未创建或验证本批独立 H200 传输包，也未提交 H200 作业。原有 H200 三批入口、输入和结果保持不变。
+
 ## 2026-09-19 更新：两批共追加八系统、41 个 design
 
 **原 12 系统 / 46 项，加上 2026-09-18 的四系统 / 25 项，再加本次四系统 / 16 项，合计 20 系统 / 87 项。** 这是设计清单总数，包含已取消的两项 Duke MARK* 3k3q 设计；取消记录见下文。H200 的八个追加系统分成两个独立 manifest、输入包和结果目录。已经运行第一批追加的 H200 用户只需新增第二批 16 项。
