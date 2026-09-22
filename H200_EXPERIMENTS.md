@@ -1,5 +1,82 @@
 # PACK* H200 实验执行说明
 
+## 2026-09-22 当前执行清单：38 系统 / 162 项
+
+**H200 后续实验统一以 [frontier_active.tsv](slurm/h200/frontier_active.tsv) 为准。** 原 139 项移除用户确定不补的 `3k3q_flex_p1`、`3k3q_flex_p2`，再加入下表 25 项，得到 **162 项**。`3k3q_flex_p0` 保留。下面各日期章节和旧四个 manifest 保留提交历史与原 index；它们不再代表当前待执行清单，也不要直接拼接用于新提交。已有结果按 `design_id` 对齐，无需重复计算。
+
+Duke MARK* 补档已提交为 **`12686144_0–24`**，首次核验 **25 项全部 RUNNING**，分布在 compsci 的 fitz-35/36/37/38/39/43/44。每项 **16 CPU、192 GiB 内存、160 GiB Java heap、14 天、account=grisman、partition=compsci**，没有数组并发上限或逐档依赖；合计 400 CPU / 4800 GiB。FP64、CPU CCD、epsilon=0.683、关闭 stability filter、独立新建 EMAT，沿用已验证编译协议。Duke 的内存配额不替代 H200 PACK* 的统一资源设置。
+
+| 系统 | 新增 flex delta | MARK* task / 补档清单 index | 当前 H200 index |
+|---|---|---|---|
+| 2P4A | +7、+8、+9 | 0–2 | 137–139 |
+| 2RFD | +6、+7、+8 | 3–5 | 140–142 |
+| 4Z80 | 0、+1 | 6–7 | 143–144 |
+| 5EM2 | +5、+6 | 8–9 | 145–146 |
+| 2HNV | +4、+5 | 10–11 | 147–148 |
+| 2Q2A | +2、+3 | 12–13 | 149–150 |
+| 1GWC | +2、+3 | 14–15 | 151–152 |
+| 2RL0 | +1、+2 | 16–17 | 153–154 |
+| 2RFE | +2 | 18 | 155 |
+| 2HNU | +5 | 19 | 156 |
+| 2RF9 | +11 | 20 | 157 |
+| 2XXM | +3 | 21 | 158 |
+| 3EB6 | +6 | 22 | 159 |
+| 1B6C | +2 | 23 | 160 |
+| 3BU8 | +11 | 24 | 161 |
+
+新增精确位点、PDB SHA256、序列数和 Duke 作业映射见 [frontier_backfill25.tsv](slurm/h200/frontier_backfill25.tsv)。此表 index 0–24 仅用于新增批次审计；**`run_active.slurm` 使用总表 index 0–161**。总表另记录 `h200_source_manifest`、`h200_source_index` 供旧结果映射，`source_task_id` 则是原 Duke MARK* task，三个 index 不混用。
+
+| 当前 H200 index | 来源 | 保留项数 |
+|---|---|---:|
+| 0–43 | 原 `frontier.tsv`，去掉 3K3Q +1/+2 | 44 |
+| 44–68 | `frontier_add4.tsv` | 25 |
+| 69–84 | `frontier_small4.tsv` | 16 |
+| 85–136 | `frontier_remaining18_plus4.tsv` | 52 |
+| 137–161 | 本次 `frontier_backfill25.tsv` | 25 |
+
+2RFD +5 的旧 MARK* 失败记录保留，本次只上扩 +6/+7/+8，不重跑 +5。2RFD 继续显式排除无效残基 B552；3CAL 与 4WEM 沿用此前实际位点和序列归一化。撤回 3K3Q 两项不删除其历史日志或已产生结果，也没有在此操作远端 H200 调度器。
+
+### 当前输入包与验证
+
+- Duke 新增 25 项冻结输入：`/usr/xtmp/lz280/markstar_backfill_20260922/prep_12686118/package`。
+- Duke 新增任务输出：`/usr/xtmp/lz280/markstar_backfill_20260922/A12686144/T<task>/`。
+- **H200 当前全部 162 项传输包**：`/usr/xtmp/lz280/markstar_backfill_20260922/handoff_12686177/package`。
+- 版本化审计：[frontier_active.audit.json](slurm/h200/frontier_active.audit.json)。
+
+预检 `12686118` COMPLETED / 0:0，25 项实际位点、完整序列和同系统序列顺序均通过，并逐项确认扩展顺序与既有所有同系统设计一致。H200 输入包审计 `12686177` COMPLETED / 0:0，核对全部 162 项位点、PDB checksum 和序列清单，再通过新入口对全部 25 项新增设计及原始配置、3CAL、4WEM 共 28 项执行真实 CPU sequence_dump。此验证不代表 H200 GPU 正式运行；H200 端继续使用本地已验证的 PACK* BUILD_ROOT，并完成本地预检。
+
+完整包共 **366 个文件、29,625,359 bytes**，包含 38 个 PDB（合计 28,954,639 bytes）、162 项序列/位点预检和 SHA256SUMS，不包含 Duke build 或搜索缓存。通过 Slurm 数据搬运作业原样传至新的 `$SCRATCH/frontier-active-20260922-package`，并在搬运作业内执行 `sha256sum -c SHA256SUMS`。包内 `designs.tsv` 与仓库 `frontier_active.tsv` 完全一致；不要把新总表覆盖进任何旧冻结输入包。
+
+### H200 按更新清单继续实验
+
+更新工作 checkout 后使用 [run_active.slurm](slurm/h200/run_active.slurm)。复用原已验证 BUILD_ROOT 和原实验统一的 GPU/CPU/内存/heap/host 参数。先按 `design_id` 排除已完成或正在运行的任务：若此前四批均已安排，仅新增 **137–161**；若此前只安排到 small4，需安排 **85–161**。这些范围是总表索引；更零散的缺项可传逗号分隔索引。
+
+下面示例沿用旧文档的 2 H200 / 64 CPU / 960 GiB / 4 路并发；若当前 H200 实验配额不同，继续沿用当前配额及相应 heap/host 参数。
+
+```bash
+export REPO=/path/to/updated/OSPREY3
+export INPUT_ROOT="$SCRATCH/frontier-active-20260922-package"
+export RESULT_ROOT="$SCRATCH/results/frontier-active-20260922"
+export ACTIVE_INDICES=137-161
+# BUILD_ROOT 保持为已有的已验证 H200 build。
+mkdir -p "$SCRATCH/logs"
+
+sbatch --account=grisman --partition="$GPU_PARTITION" \
+  --cpus-per-task=4 --mem=16G --time=00:30:00 --array="$ACTIVE_INDICES" \
+  --output="$SCRATCH/logs/active_preflight_%A_%a.out" \
+  --error="$SCRATCH/logs/active_preflight_%A_%a.err" \
+  "$REPO/slurm/h200/run_active.slurm" --mode preflight --heap-gib 8 --host-gib 4
+
+# 所选任务全部预检成功后，使用相同 ACTIVE_INDICES 提交。
+sbatch --account=grisman --partition="$GPU_PARTITION" --gres=gpu:h200:2 \
+  --cpus-per-task=64 --mem=960G --time=2-00:00:00 --array="${ACTIVE_INDICES}%4" \
+  --output="$SCRATCH/logs/active_frontier_%A_%a.out" \
+  --error="$SCRATCH/logs/active_frontier_%A_%a.err" \
+  "$REPO/slurm/h200/run_active.slurm"
+```
+
+并发额度与 H200 已在运行的旧批次共同核算；每项 mapped workspace 上限仍为 512 GiB。执行入口为每项冻结 runner、总表及提交脚本，并核对传输包清单与 PDB checksum。结果始终按 `design_id` 对齐。
+
 ## 2026-09-20 正式追加：52 项，覆盖全部 38 系统
 
 用户批准四小时 cutoff：历史耗时超过 4 小时的 4z80、2rl0、2rfe、2q2a、1gwc、1b6c 去掉原高档，其他剩余系统保留三档；另给 4znc、3gxu、4wem、2rfd 各追加 +1 点。新增 52 项，清单合计 **38 系统 / 139 项**（沿用包含原两项用户取消设计的统计口径）。所有档位统一 **14 天、16 CPU、Slurm 96 GiB、Java heap 64 GiB、account=grisman**。FP64、CPU CCD、epsilon=0.683、关闭 stability filter、每项独立新建 EMAT、无 GPU。

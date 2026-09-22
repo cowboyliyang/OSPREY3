@@ -1,0 +1,35 @@
+{
+  "designs": 162,
+  "systems": 38,
+  "source_packages": {
+    "frontier.tsv": "/usr/xtmp/lz280/packstar_flex_frontier12_20260918/handoff_12632294/package",
+    "frontier_add4.tsv": "/usr/xtmp/lz280/packstar_flex_frontier16_20260918/handoff_12633791/package",
+    "frontier_small4.tsv": "/usr/xtmp/lz280/packstar_flex_frontier20_20260919/handoff_12643037/package",
+    "frontier_remaining18_plus4.tsv": "/usr/xtmp/lz280/packstar_flex_frontier38_20260920/prep_12651495/package",
+    "frontier_backfill25.tsv": "/usr/xtmp/lz280/markstar_backfill_20260922/prep_12686118/package"
+  },
+  "excluded_designs": [
+    "3k3q_flex_p1",
+    "3k3q_flex_p2"
+  ],
+  "retained_3k3q": "3k3q_flex_p0",
+  "added_markstar_array": "12686144",
+  "h200_index": "Independent contiguous 0..161; align old results by design_id.",
+  "h200_resources": "Use the already validated H200 PACK* build and its uniform resource/protocol settings.",
+  "markstar_backfill_resources": {
+    "cpus": 16,
+    "memory_gib": 192,
+    "heap_gib": 160,
+    "partition": "compsci",
+    "account": "grisman",
+    "days": 14
+  },
+  "prep_root": "/usr/xtmp/lz280/markstar_backfill_20260922/prep_12686118",
+  "handoff_root": "/usr/xtmp/lz280/markstar_backfill_20260922/handoff_12686177",
+  "validation_job": "12686177",
+  "validation": "All 162 frozen position lists, PDB checksums and sequence lists verified; 28 actual CPU preflights through run_active.slurm, including all 25 additions, 3CAL and 4WEM. No H200 GPU execution.",
+  "package_files": 366,
+  "package_bytes": 29625359,
+  "sequences": 4746,
+  "active_manifest_sha256": "4b14dbef3e3ef9c3fcf957f78d4968203875167fd47575ba620a021959f3eea6"
+}
