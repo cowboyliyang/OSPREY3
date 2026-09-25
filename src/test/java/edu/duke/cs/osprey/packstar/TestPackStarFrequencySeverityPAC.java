@@ -148,7 +148,7 @@ public class TestPackStarFrequencySeverityPAC {
     }
 
     @Test
-    public void independentSeverityMonitorCanRejectButNotValidate() {
+    public void freshSeverityBatchCanRejectButNotValidate() {
         double[] hugeTail = new double[10];
         for (int i = 0; i < hugeTail.length; i++) {
             hugeTail[i] = Math.log1p(100.0);
@@ -166,6 +166,81 @@ public class TestPackStarFrequencySeverityPAC {
                         noTail, 0.0, 1.0, 0.05);
         assertFalse(inconclusive.sufficientTailSamples);
         assertFalse(inconclusive.rejected);
+    }
+
+    @Test
+    public void finalBatchSuppliesBothIntervalAndSeverityTest() {
+        double[] finalWeights = new double[4000];
+        Arrays.fill(finalWeights, Math.log(0.5));
+        Arrays.fill(finalWeights, 0, 13, Math.log1p(1445.0));
+        PackStarFrequencySeverityPAC.Interval interval =
+                PackStarFrequencySeverityPAC.evaluate(
+                        finalWeights, 0.0, 20.0, 0.025, 0.025);
+        PackStarFrequencySeverityPAC.SeverityTest test =
+                PackStarFrequencySeverityPAC.testConditionalSeverity(
+                        finalWeights, 0.0, 20.0, 0.05);
+        assertEquals(13, interval.tailCount);
+        assertEquals(interval.tailCount, test.tailCount);
+        assertTrue(test.rejected);
+        assertTrue(test.logEValue >= Math.log(20.0));
+    }
+
+    @Test
+    public void oneLargeTailAmongSmallTailsDoesNotImplyRejection() {
+        double[] finalWeights = new double[4000];
+        Arrays.fill(finalWeights, Math.log(0.5));
+        Arrays.fill(finalWeights, 0, 12, Math.log1p(0.1));
+        finalWeights[12] = Math.log1p(3875.0);
+        PackStarFrequencySeverityPAC.Interval interval =
+                PackStarFrequencySeverityPAC.evaluate(
+                        finalWeights, 0.0, 20.0, 0.025, 0.025);
+        PackStarFrequencySeverityPAC.SeverityTest test =
+                PackStarFrequencySeverityPAC.testConditionalSeverity(
+                        finalWeights, 0.0, 20.0, 0.05);
+        assertTrue(interval.empiricalConditionalSeverity > 200.0);
+        assertTrue(test.sufficientTailSamples);
+        assertFalse(test.rejected);
+    }
+
+    @Test
+    public void singleTailRemainsInconclusiveUnlessCapIsZero() {
+        double[] weights = {Math.log(0.5), Math.log1p(1.0e9)};
+        PackStarFrequencySeverityPAC.SeverityTest positiveCap =
+                PackStarFrequencySeverityPAC.testConditionalSeverity(
+                        weights, 0.0, 20.0, 0.05);
+        assertEquals(1, positiveCap.tailCount);
+        assertFalse(positiveCap.sufficientTailSamples);
+        assertFalse(positiveCap.rejected);
+        PackStarFrequencySeverityPAC.SeverityTest zeroCap =
+                PackStarFrequencySeverityPAC.testConditionalSeverity(
+                        weights, 0.0, 0.0, 0.05);
+        assertTrue(zeroCap.logicalViolation);
+        assertTrue(zeroCap.rejected);
+    }
+
+    @Test
+    public void fixedBatchEvalueHasUnitExpectationUnderFiniteNull() {
+        // U=1 with probability .9, U=191 with probability .1: E[U]=20.
+        // Enumerate the whole four-draw experiment rather than simulate it.
+        double expectedE = 0.0;
+        double rejectionProbability = 0.0;
+        for (int mask = 0; mask < 16; mask++) {
+            double[] weights = new double[4];
+            double probability = 1.0;
+            for (int i = 0; i < weights.length; i++) {
+                boolean high = (mask & (1 << i)) != 0;
+                weights[i] = Math.log1p(high ? 191.0 : 1.0);
+                probability *= high ? 0.1 : 0.9;
+            }
+            PackStarFrequencySeverityPAC.SeverityTest test =
+                    PackStarFrequencySeverityPAC.testConditionalSeverity(
+                            weights, 0.0, 20.0, 0.05);
+            expectedE += probability * Math.exp(test.logEValue);
+            if (test.rejected) rejectionProbability += probability;
+        }
+        assertEquals(1.0, expectedE, 1.0e-12);
+        assertTrue(rejectionProbability > 0.0);
+        assertTrue(rejectionProbability <= 0.05);
     }
 
     @Test

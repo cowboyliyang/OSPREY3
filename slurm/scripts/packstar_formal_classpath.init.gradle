@@ -1,0 +1,17 @@
+// Compile and export the verified classpath in one Gradle invocation.
+gradle.projectsEvaluated {
+    def project = gradle.rootProject
+    project.tasks.register('writeFormalCaseClasspath') {
+        dependsOn project.tasks.named('test')
+        doLast {
+            def className = 'edu/duke/cs/osprey/packstar/PackStar4wyuFormalCase.class'
+            def javaOutput = project.tasks.named('compileTestJava').get().destinationDirectory.get().asFile
+            if (!new File(javaOutput, className).isFile()) {
+                throw new GradleException("Formal runner missing from compileTestJava output: ${javaOutput}")
+            }
+            def output = new File(System.getenv('PACKSTAR_FORMAL_CLASSPATH_FILE'))
+            output.text = project.sourceSets.test.runtimeClasspath.asPath
+            println "Verified formal runner: ${javaOutput}/${className}"
+        }
+    }
+}

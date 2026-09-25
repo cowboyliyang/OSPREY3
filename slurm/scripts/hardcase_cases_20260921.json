@@ -1,0 +1,10 @@
+{
+  "seeds": [42, 43, 44],
+  "arms": ["no-learning", "pair-only", "budget-forward"],
+  "cases": [
+    {"id": "3cal_arg", "design": "3cal", "state": "complex", "seq_index": 2, "sequence": "ARG", "residual_budget": "1", "rescue_case_id": "21", "historical_class": "failed_then_rescued_with_final_triples", "historical_final_path": "/usr/xtmp/lz280/packstar_rescue_20260905/newproposal_array_12505435/case_21_3cal_complex_seq2/adaptive_frequency_severity/state-982fe587e2320d49/frequency_severity_final_interval.tsv"},
+    {"id": "1b6c_arg", "design": "1b6c", "state": "complex", "seq_index": 2, "sequence": "ARG", "residual_budget": "1", "rescue_case_id": "0", "historical_class": "failed_then_rescued_with_final_triples", "historical_final_path": "/usr/xtmp/lz280/packstar_adaptive_frequency_severity/newproposal_joint_moment_dedup_38_A12509108/runs/1b6c_A12509108_T1/adaptive_frequency_severity/state-ec09759759d3d24d/frequency_severity_final_interval.tsv"},
+    {"id": "2rfe_leu", "design": "2rfe", "state": "complex", "seq_index": 11, "sequence": "LEU", "residual_budget": "1", "rescue_case_id": "7", "historical_class": "failed_then_rescued_with_final_triples", "historical_final_path": "/usr/xtmp/lz280/packstar_adaptive_frequency_severity/newproposal_joint_moment_dedup_38_A12509108/runs/2rfe_A12509108_T10/adaptive_frequency_severity/state-7a94ca86edd8620d/frequency_severity_final_interval.tsv"},
+    {"id": "3ma2_trp_tyr", "design": "3ma2", "state": "complex", "seq_index": 36, "sequence": "TRP TYR", "residual_budget": "1", "rescue_case_id": "27", "historical_class": "failed_then_rescued_with_final_triples", "historical_final_path": "/usr/xtmp/lz280/packstar_adaptive_frequency_severity/newproposal_joint_moment_dedup_38_A12509108/runs/3ma2_A12509108_T20/adaptive_frequency_severity/state-412ee76167c12a44/frequency_severity_final_interval.tsv"}
+  ]
+}

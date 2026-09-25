@@ -1,0 +1,34 @@
+{
+  "seeds": [42, 43, 44],
+  "arms": ["no-learning", "pair-only", "budget-forward"],
+  "selection": "Historical eta-only Aborted, later Estimated with nonzero FINAL triples in the August 24-29 triple development series. Historical versions differ; the new experiment supplies current-version matched controls.",
+  "cases": [
+    {
+      "id": "3cal_protein_seq10_leu",
+      "design": "3cal", "state": "protein", "seq_index": 10, "sequence": "LEU", "residual_budget": "1",
+      "historical_class": "eta_only_failure_then_final_triple_success",
+      "historical_pair_run": "/usr/xtmp/lz280/packstar_frequency_severity_v21/scientific_retest_20260824/build12422229/runs/3cal_A12422300_T16",
+      "historical_pair_state_dir": "frequency_severity_v21/state-d1b4a16e9c4d4a45",
+      "historical_triple_run": "/usr/xtmp/lz280/packstar_adaptive_frequency_severity/selected_signed_triple_shift_gate_off_hardcases_20260829/build_12445268/runs/3cal_A12445271_T16",
+      "historical_triple_state_dir": "adaptive_frequency_severity/state-d1b4a16e9c4d4a45"
+    },
+    {
+      "id": "3cal_complex_seq11_lys",
+      "design": "3cal", "state": "complex", "seq_index": 11, "sequence": "LYS", "residual_budget": "1",
+      "historical_class": "eta_only_failure_then_final_triple_success",
+      "historical_pair_run": "/usr/xtmp/lz280/packstar_frequency_severity_v21/formal_old_abortions_20260824/runs/3cal_A12420215_T16",
+      "historical_pair_state_dir": "frequency_severity_v21/state-163f479715f652ac",
+      "historical_triple_run": "/usr/xtmp/lz280/packstar_adaptive_frequency_severity/selected_signed_triple_shift_gate_off_hardcases_20260829/build_12445268/runs/3cal_A12445272_T16",
+      "historical_triple_state_dir": "adaptive_frequency_severity/state-163f479715f652ac"
+    },
+    {
+      "id": "3cal_complex_seq13_phe",
+      "design": "3cal", "state": "complex", "seq_index": 13, "sequence": "PHE", "residual_budget": "1",
+      "historical_class": "eta_only_failure_then_final_triple_success",
+      "historical_pair_run": "/usr/xtmp/lz280/packstar_frequency_severity_v21/scientific_retest_20260824/build12422229/runs/3cal_A12422301_T16",
+      "historical_pair_state_dir": "frequency_severity_v21/state-dc97f174276ef564",
+      "historical_triple_run": "/usr/xtmp/lz280/packstar_adaptive_frequency_severity/selected_signed_triple_shift_gate_off_hardcases_20260829/build_12445268/runs/3cal_A12445274_T16",
+      "historical_triple_state_dir": "adaptive_frequency_severity/state-dc97f174276ef564"
+    }
+  ]
+}

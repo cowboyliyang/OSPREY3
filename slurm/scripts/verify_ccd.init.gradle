@@ -1,0 +1,15 @@
+// Audit all selected cases even when a historical golden-energy check fails.
+// Require the explicitly built native library in the test JVM, not a packaged copy.
+gradle.projectsEvaluated {
+  gradle.rootProject.allprojects { project ->
+    project.tasks.withType(org.gradle.api.tasks.testing.Test).configureEach {
+        failFast = false
+        if (System.getProperty('jna.library.path')) {
+            systemProperty 'jna.library.path', System.getProperty('jna.library.path')
+        }
+        if (System.getenv('TMPDIR')) {
+            systemProperty 'java.io.tmpdir', System.getenv('TMPDIR')
+        }
+    }
+  }
+}

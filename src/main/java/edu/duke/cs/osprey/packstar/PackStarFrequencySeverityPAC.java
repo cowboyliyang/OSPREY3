@@ -264,7 +264,7 @@ public final class PackStarFrequencySeverityPAC {
         }
     }
 
-    /** Independent monitor result that can reject, but never validate, S0. */
+    /** Fixed-batch test result that can reject, but never validate, S0. */
     public static final class SeverityTest {
         public final int tailCount;
         public final boolean sufficientTailSamples;
@@ -485,8 +485,12 @@ public final class PackStarFrequencySeverityPAC {
     }
 
     /**
-     * Test the conditional severity premise on an independent monitor batch.
-     * Failure to reject is never interpreted as validation.
+     * Test the conditional severity premise on a fresh, fixed-size IID batch.
+     * The proposal, clipping scale, cap, and sample count must be fixed before
+     * drawing it. The same batch may also supply the partition-function
+     * interval: rejection merely suppresses an otherwise reported estimate.
+     * Failure to reject is never interpreted as validation. This statistic
+     * includes a sample-mean component and is not an anytime-valid e-process.
      */
     public static SeverityTest testConditionalSeverity(
             double[] logRelativeWeights,

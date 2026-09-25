@@ -1,0 +1,10 @@
+// Export the tested classpath in the same Gradle invocation that builds/tests.
+gradle.projectsEvaluated {
+    def project = gradle.rootProject
+    project.tasks.named('test').configure {
+        doLast {
+            new File(System.getenv('PACKSTAR_TEST_CLASSPATH_FILE')).text =
+                project.sourceSets.test.runtimeClasspath.asPath + '\n'
+        }
+    }
+}

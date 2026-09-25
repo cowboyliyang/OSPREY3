@@ -66,7 +66,7 @@ import java.nio.file.StandardOpenOption;
  *   The sole production path selects a count/context-regularized eta by
  *   cross-fitting one q_m training batch with alpha and triple-residual gamma
  *   both fixed at one, repairs proposal support with bounded on-policy refits,
- *   and draws independent pilot, monitor, and final samples.  Its tail upper
+ *   and draws independent pilot and final samples. Its tail upper
  *   bound is conditional on a frozen external severity premise.
  */
 public class PackStarEstimator {
@@ -92,11 +92,9 @@ public class PackStarEstimator {
     private static final String PAC_PILOT_SAMPLES_PROPERTY = "packstar.pac.pilotSamples";
     private static final String PAC_MAX_EST_SAMPLES_PROPERTY = "packstar.pac.maxEstSamples";
     private static final String PAC_NSTAR_INFLATE_PROPERTY = "packstar.pac.nstarInflate";
-    private static final String PAC_MONITOR_SAMPLES_PROPERTY =
-            "packstar.pac.monitorSamples";
     // Adaptive frequency/severity: choose a count/context-shrunk eta, repair
     // proposal-support shift with bounded on-policy refits, then freeze the
-    // proposal before monitor/final samples.
+    // proposal before final samples and the final severity test.
     private static final String PAC_FREQUENCY_SEVERITY_RELATIVE_BOUND_PROPERTY =
             "packstar.pac.frequencySeverity.relativeBoundKcal";
     private static final String PAC_FREQUENCY_SEVERITY_CAP_PROPERTY =
@@ -161,7 +159,6 @@ public class PackStarEstimator {
     private static final double DEFAULT_PILOT_FRACTION = 0.1;
     private static final int DEFAULT_MAX_EST_SAMPLES = 4000;
     private static final double DEFAULT_NSTAR_INFLATE = 1.3;
-    private static final int DEFAULT_MONITOR_SAMPLES = 100;
     private static final int DEFAULT_PAC_CCD_SUBMISSION_BATCH_SIZE = 512;
     private static final boolean DEFAULT_PAC_CCD_INSTRUMENTATION = false;
     private static final String DEFAULT_FREQUENCY_SEVERITY_OUTPUT_DIR =
@@ -268,7 +265,6 @@ public class PackStarEstimator {
     private final int maxEstSamples;
     private final int sampleBudget;
     private final double nstarInflate;
-    private final int monitorSamples;
     private final double frequencySeverityRelativeBoundKcal;
     private final double frequencySeverityCap;
     private final String frequencySeverityPremiseId;
@@ -475,9 +471,6 @@ public class PackStarEstimator {
                 Math.max(2, getConfigInteger(PAC_MAX_EST_SAMPLES_PROPERTY, defaultMaxEstSamples)),
                 2);
         this.nstarInflate = Math.max(1.0, getConfigDouble(PAC_NSTAR_INFLATE_PROPERTY, DEFAULT_NSTAR_INFLATE));
-        this.monitorSamples = capSampleCount(Math.max(2,
-                getConfigInteger(PAC_MONITOR_SAMPLES_PROPERTY,
-                        DEFAULT_MONITOR_SAMPLES)), 2);
         this.frequencySeverityRelativeBoundKcal = getConfigDouble(
                 PAC_FREQUENCY_SEVERITY_RELATIVE_BOUND_PROPERTY,
                 DEFAULT_FREQUENCY_SEVERITY_RELATIVE_BOUND_KCAL);
@@ -1155,7 +1148,7 @@ public class PackStarEstimator {
         System.out.println("[PACK*-adaptive-frequency-severity] fixed production route"
                 + ", samples(train/pilot/maxEst)="
                 + trainSamples + "/" + pilotSamples + "/" + maxEstSamples
-                + ", monitorSamples=" + monitorSamples
+                + ", severityTestStage=final"
                 + ", sampleBudget="
                 + (sampleBudget == Integer.MAX_VALUE ? "unbounded" : sampleBudget)
                 + ", B_rel=" + frequencySeverityRelativeBoundKcal
@@ -1193,15 +1186,16 @@ public class PackStarEstimator {
      *
      * The q_m training batch is cross-fitted to choose a count/context-shrunk
      * eta.  Bounded on-policy discovery refits repair proposal-support shift;
-     * the selected proposal is then frozen before validation, monitor, and
-     * final samples.  The pilot sizes the fresh final sample once the proposal
+     * the selected proposal is then frozen before validation and final
+     * samples. The pilot sizes the fresh final sample once the proposal
      * is frozen; there is no alternate conditional/unconditional estimator and
      * no proposal restore after the final selection.
      *
      * Sample-splitting: eta and p_eta depend only on training/adaptation data,
-     * while monitor/final samples are fresh.  Conditional on the frozen
+     * while final samples are fresh. Conditional on the frozen
      * severity premise and the pilot, the final sample size is fixed for the
-     * empirical-Bernstein PAC calculation.
+     * empirical-Bernstein PAC calculation. The same fixed final batch also
+     * supplies one severity e-value test; rejection suppresses the estimate.
      */
     private static class FrequencySeverityEtaCoverage {
         final int[][] unaryDistinctContexts;
@@ -2515,7 +2509,7 @@ public class PackStarEstimator {
      * proposals in the same evidence-gated family.
      * Reachability and sparse-cell coverage are deliberately not required:
      * the probe exists to obtain the on-policy data those q_m diagnostics
-     * cannot supply, and it can never reach monitor/final without a fresh
+     * cannot supply, and it can never reach final sampling without a fresh
      * on-policy validation batch.
      */
     private FrequencySeverityCandidateScore selectFrequencySeverityDiscoveryProbe(
@@ -3468,56 +3462,6 @@ public class PackStarEstimator {
                 + ", finalN=" + validation.sizing.finalSamples
                 + ", proposalDpSweeps=" + proposalDpSweeps);
 
-        String monitorStage = "adaptive-frequency-severity-monitor";
-        List<CCDResult> monitorCCD = runParallelCCD(
-                sampleConformationsFromDP(
-                        monitorSamples, stageRandom(monitorStage)),
-                null, Double.NaN, null);
-        if (monitorCCD.size() != monitorSamples
-                || !validateObservedLowerBound(monitorCCD, monitorStage)) {
-            writeFrequencySeverityFailureArtifactQuietly(
-                    artifactDir, "invalid or incomplete independent monitor",
-                    trainCCD.size(), discoveryCCDCalls
-                            + validationCCD.size(), monitorCCD.size(), 0);
-            failCertificate("AdaptiveFrequencySeverityPAC: independent monitor"
-                    + " observed an implementation-integrity failure", startTime);
-            return;
-        }
-        double[] monitorLogR = computeFrequencySeverityLogRelativeWeights(
-                monitorCCD, selectedEta, selectedLogMu);
-        PackStarFrequencySeverityPAC.Interval monitorInterval;
-        PackStarFrequencySeverityPAC.SeverityTest severityTest;
-        try {
-            monitorInterval = PackStarFrequencySeverityPAC.evaluate(
-                    monitorLogR, frequencySeverityRelativeBoundKcal / RT,
-                    frequencySeverityCap, frequencySeverityEventDelta(),
-                    frequencySeverityEventDelta());
-            severityTest = PackStarFrequencySeverityPAC.testConditionalSeverity(
-                    monitorLogR, frequencySeverityRelativeBoundKcal / RT,
-                    frequencySeverityCap, frequencySeverityTestAlpha);
-            writeFrequencySeverityStageArtifact(
-                    artifactDir, "monitor", monitorInterval,
-                    severityTest, null, selectedLogMu, selectedLogZ);
-            writeFrequencySeveritySamplesArtifact(
-                    artifactDir, "monitor", monitorCCD,
-                    selectedEta, selectedLogMu);
-        } catch (RuntimeException ex) {
-            failCertificate("AdaptiveFrequencySeverityPAC monitor statistics/artifact"
-                    + " failed: " + sanitizeTsv(ex.getMessage()), startTime);
-            return;
-        }
-        if (severityTest.rejected) {
-            writeFrequencySeverityFailureArtifactQuietly(
-                    artifactDir,
-                    "independent monitor rejected the external severity premise",
-                    trainCCD.size(), discoveryCCDCalls
-                            + validationCCD.size(), monitorCCD.size(), 0);
-            failCertificate("AdaptiveFrequencySeverityPAC: independent monitor"
-                    + " rejected severity premise "
-                    + frequencySeverityPremiseId, startTime);
-            return;
-        }
-
         String finalStage = "adaptive-frequency-severity-final";
         List<CCDResult> finalCCD = runParallelCCD(
                 sampleConformationsFromDP(
@@ -3529,7 +3473,7 @@ public class PackStarEstimator {
             writeFrequencySeverityFailureArtifactQuietly(
                     artifactDir, "invalid or incomplete fresh final sample",
                     trainCCD.size(), discoveryCCDCalls
-                            + validationCCD.size(), monitorCCD.size(),
+                            + validationCCD.size(), 0,
                     finalCCD.size());
             failCertificate("AdaptiveFrequencySeverityPAC: invalid or incomplete"
                     + " fresh final sample", startTime);
@@ -3539,31 +3483,30 @@ public class PackStarEstimator {
                 finalCCD, selectedEta, selectedLogMu);
         computeFunctionalObservable(finalCCD, finalLogR);
         PackStarFrequencySeverityPAC.Interval finalInterval;
+        PackStarFrequencySeverityPAC.SeverityTest finalSeverityTest;
         try {
             finalInterval = PackStarFrequencySeverityPAC.evaluate(
                     finalLogR, frequencySeverityRelativeBoundKcal / RT,
                     frequencySeverityCap, frequencySeverityEventDelta(),
                     frequencySeverityEventDelta());
+            // One fixed-time test on the same fresh batch as the interval.
+            // No additional samples, repeated looks, or post-final adaptation.
+            finalSeverityTest = PackStarFrequencySeverityPAC.testConditionalSeverity(
+                    finalLogR, frequencySeverityRelativeBoundKcal / RT,
+                    frequencySeverityCap, frequencySeverityTestAlpha);
             writeFrequencySeveritySamplesArtifact(
                     artifactDir, "final", finalCCD,
                     selectedEta, selectedLogMu);
+            // Preserve the evidence even when the test suppresses the estimate.
+            writeFrequencySeverityStageArtifact(
+                    artifactDir, "final", finalInterval,
+                    finalSeverityTest, validation.sizing,
+                    selectedLogMu, selectedLogZ);
         } catch (RuntimeException ex) {
             failCertificate("AdaptiveFrequencySeverityPAC final statistics failed: "
                     + sanitizeTsv(ex.getMessage()), startTime);
             return;
         }
-        if (frequencySeverityCap == 0.0 && finalInterval.tailCount > 0) {
-            writeFrequencySeverityFailureArtifactQuietly(
-                    artifactDir,
-                    "final sample logically violates zero severity premise",
-                    trainCCD.size(), discoveryCCDCalls
-                            + validationCCD.size(), monitorCCD.size(),
-                    finalCCD.size());
-            failCertificate("AdaptiveFrequencySeverityPAC: final sample logically"
-                    + " violates the zero severity premise", startTime);
-            return;
-        }
-
         double logScale = selectedLogZ + selectedLogMu
                 + frequencySeverityRelativeBoundKcal / RT;
         logZLowerPAC = finalInterval.normalizedMeanLower > 0.0
@@ -3581,16 +3524,27 @@ public class PackStarEstimator {
                 && isValidCertificate(zLower, zUpper, epsilon);
         certificateFailureReason = certificateValid ? ""
                 : "AdaptiveFrequencySeverityPAC final interval failed validation";
+        if (finalSeverityTest.rejected) {
+            String reason = finalSeverityTest.logicalViolation
+                    ? "AdaptiveFrequencySeverityPAC: final sample logically violates zero severity premise"
+                    : "AdaptiveFrequencySeverityPAC: final severity e-value rejected premise "
+                            + frequencySeverityPremiseId;
+            reason += ", tail=" + finalSeverityTest.tailCount
+                    + "/" + finalInterval.sampleCount
+                    + ", empiricalSeverity=" + finalInterval.empiricalConditionalSeverity
+                    + ", logE=" + finalSeverityTest.logEValue
+                    + ", alpha=" + frequencySeverityTestAlpha;
+            writeFrequencySeverityFailureArtifactQuietly(
+                    artifactDir, reason, trainCCD.size(),
+                    discoveryCCDCalls + validationCCD.size(), 0, finalCCD.size());
+            failCertificate(reason, -1L);
+        }
         try {
-            writeFrequencySeverityStageArtifact(
-                    artifactDir, "final", finalInterval,
-                    null, validation.sizing,
-                    selectedLogMu, selectedLogZ);
             writeFrequencySeverityRunSummaryArtifact(
                     artifactDir, selected, validation.sizing,
-                    finalInterval, trainCCD.size(),
+                    finalInterval, finalSeverityTest, trainCCD.size(),
                     discoveryCCDCalls, validationCCD.size(),
-                    monitorCCD.size(), finalCCD.size(),
+                    0, finalCCD.size(),
                     proposalDpSweeps, certificateValid);
         } catch (RuntimeException ex) {
             failCertificate("AdaptiveFrequencySeverityPAC final artifact failed: "
@@ -4051,7 +4005,7 @@ public class PackStarEstimator {
                     "FP64-grouped-feature-masses-max-shifted-Kahan-cached-gradient-masses;pair-fit-sequential-logadd");
             writeFrequencySeverityKey(writer, "fixedProposalCalibration",
                     frequencySeverityProposalLearning ? "not-applicable"
-                            : "same-train-discovery-validation-monitor-final-budgets;gauge-only-adaptation;zero-corrected-DP-sweeps");
+                            : "same-train-discovery-validation-final-budgets;gauge-only-adaptation;zero-corrected-DP-sweeps");
             writeFrequencySeverityKey(writer, "proposalLearningObjective",
                     !frequencySeverityProposalLearning ? "none-fixed-qm"
                             : frequencySeverityJointMomentLearning
@@ -4180,7 +4134,8 @@ public class PackStarEstimator {
                     frequencySeverityMaxRefits);
             writeFrequencySeverityKey(writer, "validationSamples",
                     frequencySeverityValidationSamples);
-            writeFrequencySeverityKey(writer, "monitorSamples", monitorSamples);
+            // Retain this audit key for readers of historical run artifacts.
+            writeFrequencySeverityKey(writer, "monitorSamples", 0);
             writeFrequencySeverityKey(writer, "maxFinalSamples", maxEstSamples);
             writeFrequencySeverityKey(writer, "unreachableFinalSamples",
                     configuredFrequencySeverityUnreachableSamples());
@@ -4200,6 +4155,9 @@ public class PackStarEstimator {
                     frequencySeverityMaxUndertrainedAmplification);
             writeFrequencySeverityKey(writer, "sizingSafety", frequencySeveritySizeSafety);
             writeFrequencySeverityKey(writer, "severityTestAlpha", frequencySeverityTestAlpha);
+            writeFrequencySeverityKey(writer, "severityTestStage", "final");
+            writeFrequencySeverityKey(writer, "severityTestDataReuse",
+                    "same-fixed-final-batch-as-partition-function-interval");
             writeFrequencySeverityKey(writer, "severityTest",
                     "equal-mixture-of-sample-mean-and-fixed-betting-products");
             writeFrequencySeverityKey(writer, "severityBettingLambdas",
@@ -5005,6 +4963,7 @@ public class PackStarEstimator {
             File dir, FrequencySeverityCandidateScore winner,
             PackStarFrequencySeverityPAC.Sizing sizing,
             PackStarFrequencySeverityPAC.Interval interval,
+            PackStarFrequencySeverityPAC.SeverityTest severityTest,
             int trainCount, int discoveryCount, int validationCount,
             int monitorCount, int finalCount,
             int proposalDpSweeps, boolean valid) {
@@ -5015,9 +4974,19 @@ public class PackStarEstimator {
                     "packstar-adaptive-frequency-severity-final-v3");
             writeFrequencySeverityKey(writer, "selectedCandidate", winner.id);
             writeFrequencySeverityKey(writer, "certificateValid", valid);
+            writeFrequencySeverityKey(writer, "certificateFailureReason", certificateFailureReason);
             writeFrequencySeverityKey(writer, "assumptionConditional", "true");
             writeFrequencySeverityKey(writer, "severityPremiseId", frequencySeverityPremiseId);
             writeFrequencySeverityKey(writer, "severityCapS0", frequencySeverityCap);
+            writeFrequencySeverityKey(writer, "severityTestStage", "final");
+            writeFrequencySeverityKey(writer, "severityTestAlpha", frequencySeverityTestAlpha);
+            writeFrequencySeverityKey(writer, "severityTestTailCount", severityTest.tailCount);
+            writeFrequencySeverityKey(writer, "severityTestSufficient", severityTest.sufficientTailSamples);
+            writeFrequencySeverityKey(writer, "severityTestRejected", severityTest.rejected);
+            writeFrequencySeverityKey(writer, "severityTestLogE", severityTest.logEValue);
+            writeFrequencySeverityKey(writer, "severityTestPUpper", severityTest.pValueUpper);
+            writeFrequencySeverityKey(writer, "empiricalConditionalSeverity",
+                    interval.empiricalConditionalSeverity);
             writeFrequencySeverityKey(writer, "relativeBoundKcal", frequencySeverityRelativeBoundKcal);
             writeFrequencySeverityKey(writer, "trainCcd", trainCount);
             writeFrequencySeverityKey(writer, "discoveryCcd", discoveryCount);
@@ -5110,7 +5079,7 @@ public class PackStarEstimator {
             writeFrequencySeverityKey(writer, "epsilon", epsilon);
             writeFrequencySeverityKey(writer, "targetEpsilon", targetEpsilon);
             writeFrequencySeverityKey(writer, "targetReached",
-                    epsilon <= targetEpsilon + 1.0e-12);
+                    valid && epsilon <= targetEpsilon + 1.0e-12);
             writeFrequencySeverityKey(writer, "logZLower", logZLowerPAC);
             writeFrequencySeverityKey(writer, "logZUpper", logZUpperPAC);
         } catch (Exception ex) {
@@ -6123,7 +6092,7 @@ public class PackStarEstimator {
     /**
      * Run CCD while retaining the exact proposal provenance of this batch.
      * The source energy and log normalizer are later used only by adaptation
-     * to reweight samples to a selected proposal; monitor/final remain fresh.
+     * to reweight samples to a selected proposal; final samples remain fresh.
      */
     private List<CCDResult> runParallelCCD(
             List<int[]> conformations,
@@ -6281,9 +6250,15 @@ public class PackStarEstimator {
 
     private SampleFeatures buildSampleFeatures(CCDResult result) {
         int[] conf = result.conf;
+        // The general-DOF CUDA backend evaluates energies on the GPU, but
+        // proposal features need the CPU forcefield's residue-subset view.
+        // Reuse exactly the same parameters, interactions, and minimized pose.
         ResidueForcefieldEnergy efunc =
-                (ResidueForcefieldEnergy) minimizingEcalc.ecalc
-                        .makeEnergyFunction(result.epmol);
+                minimizingEcalc.ecalc.type == EnergyCalculator.Type.ResidueCuda
+                        ? new ResidueForcefieldEnergy(minimizingEcalc.ecalc.resPairCache,
+                                result.epmol.inters, result.epmol.pmol.mol)
+                        : (ResidueForcefieldEnergy) minimizingEcalc.ecalc
+                                .makeEnergyFunction(result.epmol);
         double[] oneBody = new double[conf.length];
         Arrays.fill(oneBody, Double.NaN);
         for (int pos = 0; pos < conf.length; pos++) {

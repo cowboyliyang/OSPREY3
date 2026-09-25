@@ -1,0 +1,11 @@
+// Register the task after the Java plugin and source sets have been applied.
+// This is an init script, so registering the task at top level would run too
+// early on Gradle 7.x.
+gradle.projectsEvaluated {
+    def project = gradle.rootProject
+    project.tasks.register('printTestClasspath') {
+        doLast {
+            println project.sourceSets.test.runtimeClasspath.asPath
+        }
+    }
+}

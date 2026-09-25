@@ -22,6 +22,8 @@ def main():
     parser.add_argument('--mode', choices=['preflight', 'full', 'pfunc'], default='full')
     parser.add_argument('--arm', choices=['budget-forward', 'decomposition-cost', 'pair-only', 'no-learning'], default='budget-forward')
     parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--rb', type=int, choices=[1, 2, 4],
+                        help='Override residual budget for the RB sweep')
     parser.add_argument('--gpus', type=int, default=2)
     parser.add_argument('--heap-gib', type=int, default=850)
     parser.add_argument('--host-gib', type=int, default=800)
@@ -98,6 +100,8 @@ def main():
         'osprey.packstarPfunc.seqIndex': '0',
     })
     prefix = 'packstar.pac.frequencySeverity.'
+    if args.rb is not None:
+        properties['branchdp.cutoff.residualBudget'] = str(args.rb)
     if args.arm == 'decomposition-cost':
         properties[prefix + 'tripleEtaSelectionStrategy'] = args.arm
     elif args.arm in ('pair-only', 'no-learning'):
