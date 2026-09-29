@@ -2,7 +2,18 @@ package edu.duke.cs.osprey.packstar;
 
 import java.util.*;
 
-/** Source-weighted fitting utilities. All inputs are adaptation data only. */
+/**
+ * Graph-preserving proposal fitting from adaptation data.
+ *
+ * <p>Residuals are target CCD energies minus proposal energies. Constant,
+ * unary, and retained-pair corrections fit E_eta without changing the target
+ * E_t. Source importance weights account for the proposal that generated each
+ * observation. Repeated assignments remain in the same cross-fit fold.</p>
+ *
+ * <p>Coefficient caps below constrain fitted energy corrections; they are
+ * unrelated to the conditional mean-excess bound used for certification.
+ * No final-sample observation is used here.</p>
+ */
 final class PackStarProposalLearning {
     private PackStarProposalLearning() {}
 

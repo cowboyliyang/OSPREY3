@@ -2,10 +2,10 @@
 # ===================================================================
 # PACK* PAC-mode benchmark on dance_bench PDBs
 #
-# PAC = Probably Approximately Correct partition-function estimation via
-# Rao-Blackwellized importance sampling on the branch-decomposition DP tree.
-# It is CPU-bound in both DP-proposal sampling (Phase 1) and CCD minimization
-# (Phase 2), so we run on the highest-core nodes available. CPU node survey:
+# PACK* uses learned-proposal importance sampling (free-energy perturbation).
+# Branch-decomposition DP normalization and proposal sampling support CPU/GPU
+# backends; CCD target evaluations use the configured minimization engine.
+# The resource choices below are historical Duke benchmark allocations:
 #   grisman:  fennario-01..06 = 104 CPUs (+8x A5000)   <-- used here
 #             jerry1..7 / grisman-37/40 = only 48 CPUs
 #   compsci:  compsci-cluster-fitz-35..44 = 128 CPUs   (alt, set PARTITION=compsci)

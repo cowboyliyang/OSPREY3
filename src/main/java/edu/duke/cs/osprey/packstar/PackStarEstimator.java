@@ -50,24 +50,27 @@ import java.nio.file.Files;
 import java.nio.file.StandardOpenOption;
 
 /**
- * PAC (Probably Approximately Correct) Partition Function Estimation
- * via Rao-Blackwellized Importance Sampling.
+ * PACK* ensemble partition-function estimation by learned-proposal
+ * importance sampling (classical free-energy perturbation).
  *
- * Algorithm:
- *   Z = Z_min * E_p[phi(c)]
- *   where phi(c) = exp(-g(c)/kT), g(c) = E_true(c) - E_min(c)
+ * <p>Manuscript mapping: E_t is the energy returned by the fixed target CCD
+ * protocol, E_eta is the fitted proposal energy, and xi = E_t - E_eta.
+ * Branch-decomposition tables normalize the proposal and draw independent
+ * samples from p_eta. With w = exp(-xi/RT), q_t = q_eta * E_p_eta[w].
+ * Learning changes E_eta, not E_t; it aims to improve proposal overlap.</p>
  *
- *   Rao-Blackwellization: decompose g(c) = f_pair(c) + residual(c)
- *   where f_pair is pair-decomposable (eta corrections learned from CCD samples).
+ * <p>Training and on-policy refits precede the frozen final proposal. The
+ * pilot selects the final sample size; fresh final samples supply the
+ * empirical-Bernstein interval for the clipped component y and the
+ * Clopper-Pearson upper bound for the exceedance probability pi.
+ * The externally supplied conditional mean-excess bound m_u controls the
+ * remaining contribution through m_u * piUpper. The same fixed final batch
+ * supplies a rejection diagnostic, not validation of that assumption.</p>
  *
- *   Z = Z_corrected * E_p'[psi(c)]
- *   where psi(c) = exp(-residual(c)/kT), with much lower variance than phi.
- *
- *   The sole production path selects a count/context-regularized eta by
- *   cross-fitting one q_m training batch with alpha and triple-residual gamma
- *   both fixed at one, repairs proposal support with bounded on-policy refits,
- *   and draws independent pilot and final samples. Its tail upper
- *   bound is conditional on a frozen external severity premise.
+ * <p>Historical configuration keys and serialized diagnostic column names
+ * are retained for reproducibility; internal names use manuscript terminology.
+ * Exact proposal operations refer to the finite factorized model; the
+ * implementation uses floating-point arithmetic.</p>
  */
 public class PackStarEstimator {
 
@@ -87,67 +90,67 @@ public class PackStarEstimator {
             "packstar.pac.ccd.submissionBatchSize";
     private static final String PAC_CCD_INSTRUMENTATION_PROPERTY =
             "packstar.pac.ccd.instrumentation";
-    // Train/adaptation/final sizing for the adaptive frequency/severity route.
+    // Train/adaptation/final sizing for the adaptive mean-excess route.
     private static final String PAC_TRAIN_SAMPLES_PROPERTY = "packstar.pac.trainSamples";
     private static final String PAC_PILOT_SAMPLES_PROPERTY = "packstar.pac.pilotSamples";
     private static final String PAC_MAX_EST_SAMPLES_PROPERTY = "packstar.pac.maxEstSamples";
     private static final String PAC_NSTAR_INFLATE_PROPERTY = "packstar.pac.nstarInflate";
-    // Adaptive frequency/severity: choose a count/context-shrunk eta, repair
+    // Adaptive mean-excess: choose a count/context-shrunk eta, repair
     // proposal-support shift with bounded on-policy refits, then freeze the
-    // proposal before final samples and the final severity test.
-    private static final String PAC_FREQUENCY_SEVERITY_RELATIVE_BOUND_PROPERTY =
+    // proposal before final samples and the final conditional mean-excess rejection diagnostic.
+    private static final String PAC_MEAN_EXCESS_RELATIVE_BOUND_PROPERTY =
             "packstar.pac.frequencySeverity.relativeBoundKcal";
-    private static final String PAC_FREQUENCY_SEVERITY_CAP_PROPERTY =
+    private static final String PAC_CONDITIONAL_MEAN_EXCESS_BOUND_PROPERTY =
             "packstar.pac.frequencySeverity.severityCap";
-    private static final String PAC_FREQUENCY_SEVERITY_PREMISE_ID_PROPERTY =
+    private static final String PAC_MEAN_EXCESS_PREMISE_ID_PROPERTY =
             "packstar.pac.frequencySeverity.severityPremiseId";
-    private static final String PAC_FREQUENCY_SEVERITY_SHRINK_GRID_PROPERTY =
+    private static final String PAC_MEAN_EXCESS_SHRINK_GRID_PROPERTY =
             "packstar.pac.frequencySeverity.shrinkGrid";
-    private static final String PAC_FREQUENCY_SEVERITY_ALPHA_GRID_PROPERTY =
+    private static final String PAC_MEAN_EXCESS_ALPHA_GRID_PROPERTY =
             "packstar.pac.frequencySeverity.alphaGrid";
-    private static final String PAC_FREQUENCY_SEVERITY_FOLDS_PROPERTY =
+    private static final String PAC_MEAN_EXCESS_FOLDS_PROPERTY =
             "packstar.pac.frequencySeverity.folds";
-    private static final String PAC_FREQUENCY_SEVERITY_MIN_SHIFT_ESS_FRACTION_PROPERTY =
+    private static final String PAC_MEAN_EXCESS_MIN_SHIFT_ESS_FRACTION_PROPERTY =
             "packstar.pac.frequencySeverity.minShiftEssFraction";
-    private static final String PAC_FREQUENCY_SEVERITY_DISCOVERY_MIN_SHIFT_ESS_FRACTION_PROPERTY =
+    private static final String PAC_MEAN_EXCESS_DISCOVERY_MIN_SHIFT_ESS_FRACTION_PROPERTY =
             "packstar.pac.frequencySeverity.discoveryMinShiftEssFraction";
-    private static final String PAC_FREQUENCY_SEVERITY_MAX_REFITS_PROPERTY =
+    private static final String PAC_MEAN_EXCESS_MAX_REFITS_PROPERTY =
             "packstar.pac.frequencySeverity.maxRefits";
-    private static final String PAC_FREQUENCY_SEVERITY_DISCOVERY_SAMPLES_PROPERTY =
+    private static final String PAC_MEAN_EXCESS_DISCOVERY_SAMPLES_PROPERTY =
             "packstar.pac.frequencySeverity.discoverySamples";
-    private static final String PAC_FREQUENCY_SEVERITY_DISCOVERY_MAX_SAMPLES_PROPERTY =
+    private static final String PAC_MEAN_EXCESS_DISCOVERY_MAX_SAMPLES_PROPERTY =
             "packstar.pac.frequencySeverity.discoveryMaxSamples";
-    private static final String PAC_FREQUENCY_SEVERITY_VALIDATION_SAMPLES_PROPERTY =
+    private static final String PAC_MEAN_EXCESS_VALIDATION_SAMPLES_PROPERTY =
             "packstar.pac.frequencySeverity.validationSamples";
-    private static final String PAC_FREQUENCY_SEVERITY_TRIPLE_ETA_PROPERTY =
+    private static final String PAC_MEAN_EXCESS_TRIPLE_ETA_PROPERTY =
             "packstar.pac.frequencySeverity.tripleEta";
-    private static final String PAC_FREQUENCY_SEVERITY_TRIPLE_ETA_SCALE_PROPERTY =
+    private static final String PAC_MEAN_EXCESS_TRIPLE_ETA_SCALE_PROPERTY =
             "packstar.pac.frequencySeverity.tripleEtaScale";
-    private static final String PAC_FREQUENCY_SEVERITY_TRIPLE_ETA_SCALE_GRID_PROPERTY =
+    private static final String PAC_MEAN_EXCESS_TRIPLE_ETA_SCALE_GRID_PROPERTY =
             "packstar.pac.frequencySeverity.tripleEtaScaleGrid";
-    private static final String PAC_FREQUENCY_SEVERITY_TRIPLE_ETA_MAX_ASSIGNMENTS_PROPERTY =
+    private static final String PAC_MEAN_EXCESS_TRIPLE_ETA_MAX_ASSIGNMENTS_PROPERTY =
             "packstar.pac.frequencySeverity.tripleEtaMaxAssignments";
-    private static final String PAC_FREQUENCY_SEVERITY_TRIPLE_ETA_MAX_POSITION_TRIPLES_PROPERTY =
+    private static final String PAC_MEAN_EXCESS_TRIPLE_ETA_MAX_POSITION_TRIPLES_PROPERTY =
             "packstar.pac.frequencySeverity.tripleEtaMaxPositionTriples";
-    private static final String PAC_FREQUENCY_SEVERITY_TRIPLE_ETA_MAX_FILL_EDGES_PROPERTY =
+    private static final String PAC_MEAN_EXCESS_TRIPLE_ETA_MAX_FILL_EDGES_PROPERTY =
             "packstar.pac.frequencySeverity.tripleEtaMaxFillEdges";
-    private static final String PAC_FREQUENCY_SEVERITY_TRIPLE_ETA_MIN_CELL_CONTEXTS_PROPERTY =
+    private static final String PAC_MEAN_EXCESS_TRIPLE_ETA_MIN_CELL_CONTEXTS_PROPERTY =
             "packstar.pac.frequencySeverity.tripleEtaMinCellContexts";
-    private static final String PAC_FREQUENCY_SEVERITY_TRIPLE_ETA_PRIOR_STRENGTH_PROPERTY =
+    private static final String PAC_MEAN_EXCESS_TRIPLE_ETA_PRIOR_STRENGTH_PROPERTY =
             "packstar.pac.frequencySeverity.tripleEtaPriorStrength";
-    private static final String PAC_FREQUENCY_SEVERITY_TRIPLE_ETA_LOCAL_CAP_PROPERTY =
+    private static final String PAC_MEAN_EXCESS_TRIPLE_ETA_LOCAL_CAP_PROPERTY =
             "packstar.pac.frequencySeverity.tripleEtaLocalCapKcal";
-    private static final String PAC_FREQUENCY_SEVERITY_TRIPLE_ETA_RESIDUAL_CAP_PROPERTY =
+    private static final String PAC_MEAN_EXCESS_TRIPLE_ETA_RESIDUAL_CAP_PROPERTY =
             "packstar.pac.frequencySeverity.tripleEtaResidualCapKcal";
-    private static final String PAC_FREQUENCY_SEVERITY_MIN_TRAIN_COUNT_PROPERTY =
+    private static final String PAC_MEAN_EXCESS_MIN_TRAIN_COUNT_PROPERTY =
             "packstar.pac.frequencySeverity.minTrainCount";
-    private static final String PAC_FREQUENCY_SEVERITY_MAX_UNDERTRAINED_AMPLIFICATION_PROPERTY =
+    private static final String PAC_MEAN_EXCESS_MAX_UNDERTRAINED_AMPLIFICATION_PROPERTY =
             "packstar.pac.frequencySeverity.maxUndertrainedAmplification";
-    private static final String PAC_FREQUENCY_SEVERITY_SIZE_SAFETY_PROPERTY =
+    private static final String PAC_MEAN_EXCESS_SIZE_SAFETY_PROPERTY =
             "packstar.pac.frequencySeverity.sizeSafety";
-    private static final String PAC_FREQUENCY_SEVERITY_TEST_ALPHA_PROPERTY =
+    private static final String PAC_MEAN_EXCESS_TEST_ALPHA_PROPERTY =
             "packstar.pac.frequencySeverity.severityTestAlpha";
-    private static final String PAC_FREQUENCY_SEVERITY_OUTPUT_DIR_PROPERTY =
+    private static final String PAC_MEAN_EXCESS_OUTPUT_DIR_PROPERTY =
             "packstar.pac.frequencySeverity.outputDir";
     private static final String DP_PARALLEL_THREADS_PROPERTY = "packstar.dp.parallel.threads";
     private static final int DEFAULT_SAMPLES = 1000;
@@ -161,38 +164,38 @@ public class PackStarEstimator {
     private static final double DEFAULT_NSTAR_INFLATE = 1.3;
     private static final int DEFAULT_PAC_CCD_SUBMISSION_BATCH_SIZE = 512;
     private static final boolean DEFAULT_PAC_CCD_INSTRUMENTATION = false;
-    private static final String DEFAULT_FREQUENCY_SEVERITY_OUTPUT_DIR =
+    private static final String DEFAULT_MEAN_EXCESS_OUTPUT_DIR =
             "/usr/xtmp/lz280/packstar_adaptive_frequency_severity/default";
-    private static final double DEFAULT_FREQUENCY_SEVERITY_RELATIVE_BOUND_KCAL = 1.0;
-    private static final double DEFAULT_FREQUENCY_SEVERITY_CAP = 20.0;
-    private static final String DEFAULT_FREQUENCY_SEVERITY_PREMISE_ID =
+    private static final double DEFAULT_MEAN_EXCESS_RELATIVE_BOUND_KCAL = 1.0;
+    private static final double DEFAULT_CONDITIONAL_MEAN_EXCESS_BOUND = 20.0;
+    private static final String DEFAULT_MEAN_EXCESS_PREMISE_ID =
             "conditional-relative-gauge-S0-20-not-externally-recalibrated";
-    private static final String DEFAULT_FREQUENCY_SEVERITY_SHRINK_GRID =
+    private static final String DEFAULT_MEAN_EXCESS_SHRINK_GRID =
             "0:0,2:5,5:10,10:20";
-    private static final String DEFAULT_FREQUENCY_SEVERITY_ALPHA_GRID = "1";
-    private static final int DEFAULT_FREQUENCY_SEVERITY_FOLDS = 2;
-    // Defaults copied from the successful 42-case frequency/severity run;
+    private static final String DEFAULT_MEAN_EXCESS_ALPHA_GRID = "1";
+    private static final int DEFAULT_MEAN_EXCESS_FOLDS = 2;
+    // Defaults copied from the successful 42-case mean-excess run;
     // its source-shift diagnostics used permissive 1e-12 ESS thresholds.
-    private static final double DEFAULT_FREQUENCY_SEVERITY_MIN_SHIFT_ESS_FRACTION = 1.0e-12;
-    private static final double DEFAULT_FREQUENCY_SEVERITY_DISCOVERY_MIN_SHIFT_ESS_FRACTION = 1.0e-12;
-    private static final int DEFAULT_FREQUENCY_SEVERITY_MAX_REFITS = 8;
-    private static final int DEFAULT_FREQUENCY_SEVERITY_DISCOVERY_SAMPLES = 100;
-    private static final int DEFAULT_FREQUENCY_SEVERITY_DISCOVERY_MAX_SAMPLES = 400;
-    private static final int DEFAULT_FREQUENCY_SEVERITY_VALIDATION_SAMPLES = 400;
-    private static final boolean DEFAULT_FREQUENCY_SEVERITY_TRIPLE_ETA = true;
-    private static final double DEFAULT_FREQUENCY_SEVERITY_TRIPLE_ETA_SCALE = 1.0;
-    private static final String DEFAULT_FREQUENCY_SEVERITY_TRIPLE_ETA_SCALE_GRID = "1";
-    private static final long DEFAULT_FREQUENCY_SEVERITY_TRIPLE_ETA_MAX_ASSIGNMENTS = 500_000L;
-    private static final int DEFAULT_FREQUENCY_SEVERITY_TRIPLE_ETA_MAX_POSITION_TRIPLES = 3;
-    private static final int DEFAULT_FREQUENCY_SEVERITY_TRIPLE_ETA_MAX_FILL_EDGES = 3;
-    private static final int DEFAULT_FREQUENCY_SEVERITY_TRIPLE_ETA_MIN_CELL_CONTEXTS = 1;
-    private static final double DEFAULT_FREQUENCY_SEVERITY_TRIPLE_ETA_PRIOR_STRENGTH = 4.0;
-    private static final double DEFAULT_FREQUENCY_SEVERITY_TRIPLE_ETA_LOCAL_CAP_KCAL = 2.0;
-    private static final double DEFAULT_FREQUENCY_SEVERITY_TRIPLE_ETA_RESIDUAL_CAP_KCAL = 3.0;
-    private static final int DEFAULT_FREQUENCY_SEVERITY_MIN_TRAIN_COUNT = 5;
-    private static final double DEFAULT_FREQUENCY_SEVERITY_MAX_UNDERTRAINED_AMPLIFICATION = 1.25;
-    private static final double DEFAULT_FREQUENCY_SEVERITY_SIZE_SAFETY = 0.9;
-    private static final double DEFAULT_FREQUENCY_SEVERITY_TEST_ALPHA = 0.10;
+    private static final double DEFAULT_MEAN_EXCESS_MIN_SHIFT_ESS_FRACTION = 1.0e-12;
+    private static final double DEFAULT_MEAN_EXCESS_DISCOVERY_MIN_SHIFT_ESS_FRACTION = 1.0e-12;
+    private static final int DEFAULT_MEAN_EXCESS_MAX_REFITS = 8;
+    private static final int DEFAULT_MEAN_EXCESS_DISCOVERY_SAMPLES = 100;
+    private static final int DEFAULT_MEAN_EXCESS_DISCOVERY_MAX_SAMPLES = 400;
+    private static final int DEFAULT_MEAN_EXCESS_VALIDATION_SAMPLES = 400;
+    private static final boolean DEFAULT_MEAN_EXCESS_TRIPLE_ETA = true;
+    private static final double DEFAULT_MEAN_EXCESS_TRIPLE_ETA_SCALE = 1.0;
+    private static final String DEFAULT_MEAN_EXCESS_TRIPLE_ETA_SCALE_GRID = "1";
+    private static final long DEFAULT_MEAN_EXCESS_TRIPLE_ETA_MAX_ASSIGNMENTS = 500_000L;
+    private static final int DEFAULT_MEAN_EXCESS_TRIPLE_ETA_MAX_POSITION_TRIPLES = 3;
+    private static final int DEFAULT_MEAN_EXCESS_TRIPLE_ETA_MAX_FILL_EDGES = 3;
+    private static final int DEFAULT_MEAN_EXCESS_TRIPLE_ETA_MIN_CELL_CONTEXTS = 1;
+    private static final double DEFAULT_MEAN_EXCESS_TRIPLE_ETA_PRIOR_STRENGTH = 4.0;
+    private static final double DEFAULT_MEAN_EXCESS_TRIPLE_ETA_LOCAL_CAP_KCAL = 2.0;
+    private static final double DEFAULT_MEAN_EXCESS_TRIPLE_ETA_RESIDUAL_CAP_KCAL = 3.0;
+    private static final int DEFAULT_MEAN_EXCESS_MIN_TRAIN_COUNT = 5;
+    private static final double DEFAULT_MEAN_EXCESS_MAX_UNDERTRAINED_AMPLIFICATION = 1.25;
+    private static final double DEFAULT_MEAN_EXCESS_SIZE_SAFETY = 0.9;
+    private static final double DEFAULT_MEAN_EXCESS_TEST_ALPHA = 0.10;
     // Inputs
     private RootedTreeNode rootedRoot;
     private RootedTreeEdge rootedRootEdge;
@@ -265,42 +268,42 @@ public class PackStarEstimator {
     private final int maxEstSamples;
     private final int sampleBudget;
     private final double nstarInflate;
-    private final double frequencySeverityRelativeBoundKcal;
-    private final double frequencySeverityCap;
-    private final String frequencySeverityPremiseId;
-    private final FrequencySeverityShrinkPair[] frequencySeverityShrinkGrid;
-    private final double[] frequencySeverityAlphaGrid;
-    private final int frequencySeverityFolds;
-    private final double frequencySeverityMinShiftEssFraction;
-    private final double frequencySeverityDiscoveryMinShiftEssFraction;
-    private final int frequencySeverityMaxRefits;
-    private final int frequencySeverityDiscoverySamples;
-    private final int frequencySeverityDiscoveryMaxSamples;
-    private final int frequencySeverityValidationSamples;
-    private final boolean frequencySeverityTripleEtaEnabled;
+    private final double meanExcessRelativeBoundKcal;
+    private final double conditionalMeanExcessBound;
+    private final String meanExcessPremiseId;
+    private final MeanExcessShrinkPair[] meanExcessShrinkGrid;
+    private final double[] meanExcessAlphaGrid;
+    private final int meanExcessFolds;
+    private final double meanExcessMinShiftEssFraction;
+    private final double meanExcessDiscoveryMinShiftEssFraction;
+    private final int meanExcessMaxRefits;
+    private final int meanExcessDiscoverySamples;
+    private final int meanExcessDiscoveryMaxSamples;
+    private final int meanExcessValidationSamples;
+    private final boolean meanExcessTripleEtaEnabled;
     // Controlled ablation: keep q_m fixed while retaining calibration and PAC stages.
-    private final boolean frequencySeverityProposalLearning;
-    private final boolean frequencySeverityJointMomentLearning;
-    private final boolean frequencySeverityBudgetForward;
-    private final boolean frequencySeverityDecompositionCostSelection;
-    private final PackStarTripleDecompositionCosts.Limits frequencySeverityDecompositionLimits;
-    private PackStarTripleDecompositionCosts.Cache frequencySeverityDecompositionCache;
-    private final double frequencySeverityTripleEtaScale;
-    private final double[] frequencySeverityTripleEtaScaleGrid;
-    private final long frequencySeverityTripleEtaMaxAssignments;
-    private final int frequencySeverityTripleEtaMaxPositionTriples;
-    private final int frequencySeverityTripleEtaMaxFillEdges;
-    private final int frequencySeverityTripleEtaMinCellContexts;
-    private final double frequencySeverityTripleEtaPriorStrength;
-    private final double frequencySeverityTripleEtaLocalCapKcal;
-    private final double frequencySeverityTripleEtaResidualCapKcal;
-    private PackStarTripleEtaCorrections frequencySeverityTripleEta = null;
-    private String frequencySeverityTripleEtaFallbackReason = null;
-    private final int frequencySeverityMinTrainCount;
-    private final double frequencySeverityMaxUndertrainedAmplification;
-    private final double frequencySeveritySizeSafety;
-    private final double frequencySeverityTestAlpha;
-    private final String frequencySeverityOutputDir;
+    private final boolean meanExcessProposalLearning;
+    private final boolean meanExcessJointMomentLearning;
+    private final boolean meanExcessBudgetForward;
+    private final boolean meanExcessDecompositionCostSelection;
+    private final PackStarTripleDecompositionCosts.Limits meanExcessDecompositionLimits;
+    private PackStarTripleDecompositionCosts.Cache meanExcessDecompositionCache;
+    private final double meanExcessTripleEtaScale;
+    private final double[] meanExcessTripleEtaScaleGrid;
+    private final long meanExcessTripleEtaMaxAssignments;
+    private final int meanExcessTripleEtaMaxPositionTriples;
+    private final int meanExcessTripleEtaMaxFillEdges;
+    private final int meanExcessTripleEtaMinCellContexts;
+    private final double meanExcessTripleEtaPriorStrength;
+    private final double meanExcessTripleEtaLocalCapKcal;
+    private final double meanExcessTripleEtaResidualCapKcal;
+    private PackStarTripleEtaCorrections meanExcessTripleEta = null;
+    private String meanExcessTripleEtaFallbackReason = null;
+    private final int meanExcessMinTrainCount;
+    private final double meanExcessMaxUndertrainedAmplification;
+    private final double meanExcessSizeSafety;
+    private final double meanExcessTestAlpha;
+    private final String meanExcessOutputDir;
 
     // Results
     private BigDecimal zLower;
@@ -471,98 +474,98 @@ public class PackStarEstimator {
                 Math.max(2, getConfigInteger(PAC_MAX_EST_SAMPLES_PROPERTY, defaultMaxEstSamples)),
                 2);
         this.nstarInflate = Math.max(1.0, getConfigDouble(PAC_NSTAR_INFLATE_PROPERTY, DEFAULT_NSTAR_INFLATE));
-        this.frequencySeverityRelativeBoundKcal = getConfigDouble(
-                PAC_FREQUENCY_SEVERITY_RELATIVE_BOUND_PROPERTY,
-                DEFAULT_FREQUENCY_SEVERITY_RELATIVE_BOUND_KCAL);
-        this.frequencySeverityCap = getConfigDouble(
-                PAC_FREQUENCY_SEVERITY_CAP_PROPERTY,
-                DEFAULT_FREQUENCY_SEVERITY_CAP);
-        this.frequencySeverityPremiseId = getConfigProperty(
-                PAC_FREQUENCY_SEVERITY_PREMISE_ID_PROPERTY,
-                DEFAULT_FREQUENCY_SEVERITY_PREMISE_ID).trim();
-        this.frequencySeverityShrinkGrid = parseFrequencySeverityShrinkGrid(getConfigProperty(
-                PAC_FREQUENCY_SEVERITY_SHRINK_GRID_PROPERTY,
-                DEFAULT_FREQUENCY_SEVERITY_SHRINK_GRID));
-        this.frequencySeverityAlphaGrid = parseFixedOneGrid(
-                getConfigProperty(PAC_FREQUENCY_SEVERITY_ALPHA_GRID_PROPERTY,
-                        DEFAULT_FREQUENCY_SEVERITY_ALPHA_GRID),
-                "PACK* frequency/severity alpha grid");
-        this.frequencySeverityFolds = getConfigInteger(
-                PAC_FREQUENCY_SEVERITY_FOLDS_PROPERTY, DEFAULT_FREQUENCY_SEVERITY_FOLDS);
-        this.frequencySeverityMinShiftEssFraction = getConfigDouble(
-                PAC_FREQUENCY_SEVERITY_MIN_SHIFT_ESS_FRACTION_PROPERTY,
-                DEFAULT_FREQUENCY_SEVERITY_MIN_SHIFT_ESS_FRACTION);
-        this.frequencySeverityDiscoveryMinShiftEssFraction = getConfigDouble(
-                PAC_FREQUENCY_SEVERITY_DISCOVERY_MIN_SHIFT_ESS_FRACTION_PROPERTY,
-                DEFAULT_FREQUENCY_SEVERITY_DISCOVERY_MIN_SHIFT_ESS_FRACTION);
-        this.frequencySeverityMaxRefits = getConfigInteger(
-                PAC_FREQUENCY_SEVERITY_MAX_REFITS_PROPERTY,
-                DEFAULT_FREQUENCY_SEVERITY_MAX_REFITS);
-        this.frequencySeverityDiscoverySamples = capSampleCount(Math.max(2,
-                getConfigInteger(PAC_FREQUENCY_SEVERITY_DISCOVERY_SAMPLES_PROPERTY,
-                        DEFAULT_FREQUENCY_SEVERITY_DISCOVERY_SAMPLES)), 2);
-        this.frequencySeverityDiscoveryMaxSamples = capSampleCount(Math.max(2,
-                getConfigInteger(PAC_FREQUENCY_SEVERITY_DISCOVERY_MAX_SAMPLES_PROPERTY,
-                        DEFAULT_FREQUENCY_SEVERITY_DISCOVERY_MAX_SAMPLES)), 2);
-        this.frequencySeverityValidationSamples = capSampleCount(Math.max(2,
-                getConfigInteger(PAC_FREQUENCY_SEVERITY_VALIDATION_SAMPLES_PROPERTY,
-                        DEFAULT_FREQUENCY_SEVERITY_VALIDATION_SAMPLES)), 2);
-        this.frequencySeverityProposalLearning = getConfigBoolean(
+        this.meanExcessRelativeBoundKcal = getConfigDouble(
+                PAC_MEAN_EXCESS_RELATIVE_BOUND_PROPERTY,
+                DEFAULT_MEAN_EXCESS_RELATIVE_BOUND_KCAL);
+        this.conditionalMeanExcessBound = getConfigDouble(
+                PAC_CONDITIONAL_MEAN_EXCESS_BOUND_PROPERTY,
+                DEFAULT_CONDITIONAL_MEAN_EXCESS_BOUND);
+        this.meanExcessPremiseId = getConfigProperty(
+                PAC_MEAN_EXCESS_PREMISE_ID_PROPERTY,
+                DEFAULT_MEAN_EXCESS_PREMISE_ID).trim();
+        this.meanExcessShrinkGrid = parseFrequencySeverityShrinkGrid(getConfigProperty(
+                PAC_MEAN_EXCESS_SHRINK_GRID_PROPERTY,
+                DEFAULT_MEAN_EXCESS_SHRINK_GRID));
+        this.meanExcessAlphaGrid = parseFixedOneGrid(
+                getConfigProperty(PAC_MEAN_EXCESS_ALPHA_GRID_PROPERTY,
+                        DEFAULT_MEAN_EXCESS_ALPHA_GRID),
+                "PACK* mean-excess alpha grid");
+        this.meanExcessFolds = getConfigInteger(
+                PAC_MEAN_EXCESS_FOLDS_PROPERTY, DEFAULT_MEAN_EXCESS_FOLDS);
+        this.meanExcessMinShiftEssFraction = getConfigDouble(
+                PAC_MEAN_EXCESS_MIN_SHIFT_ESS_FRACTION_PROPERTY,
+                DEFAULT_MEAN_EXCESS_MIN_SHIFT_ESS_FRACTION);
+        this.meanExcessDiscoveryMinShiftEssFraction = getConfigDouble(
+                PAC_MEAN_EXCESS_DISCOVERY_MIN_SHIFT_ESS_FRACTION_PROPERTY,
+                DEFAULT_MEAN_EXCESS_DISCOVERY_MIN_SHIFT_ESS_FRACTION);
+        this.meanExcessMaxRefits = getConfigInteger(
+                PAC_MEAN_EXCESS_MAX_REFITS_PROPERTY,
+                DEFAULT_MEAN_EXCESS_MAX_REFITS);
+        this.meanExcessDiscoverySamples = capSampleCount(Math.max(2,
+                getConfigInteger(PAC_MEAN_EXCESS_DISCOVERY_SAMPLES_PROPERTY,
+                        DEFAULT_MEAN_EXCESS_DISCOVERY_SAMPLES)), 2);
+        this.meanExcessDiscoveryMaxSamples = capSampleCount(Math.max(2,
+                getConfigInteger(PAC_MEAN_EXCESS_DISCOVERY_MAX_SAMPLES_PROPERTY,
+                        DEFAULT_MEAN_EXCESS_DISCOVERY_MAX_SAMPLES)), 2);
+        this.meanExcessValidationSamples = capSampleCount(Math.max(2,
+                getConfigInteger(PAC_MEAN_EXCESS_VALIDATION_SAMPLES_PROPERTY,
+                        DEFAULT_MEAN_EXCESS_VALIDATION_SAMPLES)), 2);
+        this.meanExcessProposalLearning = getConfigBoolean(
                 "packstar.pac.frequencySeverity.proposalLearning", true);
-        this.frequencySeverityTripleEtaEnabled = frequencySeverityProposalLearning && getConfigBoolean(
-                PAC_FREQUENCY_SEVERITY_TRIPLE_ETA_PROPERTY,
-                DEFAULT_FREQUENCY_SEVERITY_TRIPLE_ETA);
-        this.frequencySeverityJointMomentLearning = frequencySeverityProposalLearning && getConfigBoolean(
+        this.meanExcessTripleEtaEnabled = meanExcessProposalLearning && getConfigBoolean(
+                PAC_MEAN_EXCESS_TRIPLE_ETA_PROPERTY,
+                DEFAULT_MEAN_EXCESS_TRIPLE_ETA);
+        this.meanExcessJointMomentLearning = meanExcessProposalLearning && getConfigBoolean(
                 "packstar.pac.frequencySeverity.jointMomentLearning", true);
-        this.frequencySeverityDecompositionCostSelection = frequencySeverityJointMomentLearning
+        this.meanExcessDecompositionCostSelection = meanExcessJointMomentLearning
                 && PackStarTripleDecompositionCosts.configuredEnabled();
-        this.frequencySeverityBudgetForward = frequencySeverityJointMomentLearning
+        this.meanExcessBudgetForward = meanExcessJointMomentLearning
                 && PackStarTripleDecompositionCosts.configuredStrategy().equals("budget-forward");
-        this.frequencySeverityDecompositionLimits = frequencySeverityDecompositionCostSelection
+        this.meanExcessDecompositionLimits = meanExcessDecompositionCostSelection
                 ? PackStarTripleDecompositionCosts.Limits.configured() : null;
-        this.frequencySeverityTripleEtaScale = getConfigDouble(
-                PAC_FREQUENCY_SEVERITY_TRIPLE_ETA_SCALE_PROPERTY,
-                DEFAULT_FREQUENCY_SEVERITY_TRIPLE_ETA_SCALE);
-        this.frequencySeverityTripleEtaScaleGrid = parseFixedOneGrid(
+        this.meanExcessTripleEtaScale = getConfigDouble(
+                PAC_MEAN_EXCESS_TRIPLE_ETA_SCALE_PROPERTY,
+                DEFAULT_MEAN_EXCESS_TRIPLE_ETA_SCALE);
+        this.meanExcessTripleEtaScaleGrid = parseFixedOneGrid(
                 getConfigProperty(
-                        PAC_FREQUENCY_SEVERITY_TRIPLE_ETA_SCALE_GRID_PROPERTY,
-                        DEFAULT_FREQUENCY_SEVERITY_TRIPLE_ETA_SCALE_GRID),
-                "PACK* frequency/severity triple eta scale grid");
-        this.frequencySeverityTripleEtaMaxAssignments = getConfigLong(
-                PAC_FREQUENCY_SEVERITY_TRIPLE_ETA_MAX_ASSIGNMENTS_PROPERTY,
-                DEFAULT_FREQUENCY_SEVERITY_TRIPLE_ETA_MAX_ASSIGNMENTS);
-        this.frequencySeverityTripleEtaMaxPositionTriples = getConfigInteger(
-                PAC_FREQUENCY_SEVERITY_TRIPLE_ETA_MAX_POSITION_TRIPLES_PROPERTY,
-                DEFAULT_FREQUENCY_SEVERITY_TRIPLE_ETA_MAX_POSITION_TRIPLES);
-        this.frequencySeverityTripleEtaMaxFillEdges = getConfigInteger(
-                PAC_FREQUENCY_SEVERITY_TRIPLE_ETA_MAX_FILL_EDGES_PROPERTY,
-                DEFAULT_FREQUENCY_SEVERITY_TRIPLE_ETA_MAX_FILL_EDGES);
-        this.frequencySeverityTripleEtaMinCellContexts = getConfigInteger(
-                PAC_FREQUENCY_SEVERITY_TRIPLE_ETA_MIN_CELL_CONTEXTS_PROPERTY,
-                DEFAULT_FREQUENCY_SEVERITY_TRIPLE_ETA_MIN_CELL_CONTEXTS);
-        this.frequencySeverityTripleEtaPriorStrength = getConfigDouble(
-                PAC_FREQUENCY_SEVERITY_TRIPLE_ETA_PRIOR_STRENGTH_PROPERTY,
-                DEFAULT_FREQUENCY_SEVERITY_TRIPLE_ETA_PRIOR_STRENGTH);
-        this.frequencySeverityTripleEtaLocalCapKcal = getConfigDouble(
-                PAC_FREQUENCY_SEVERITY_TRIPLE_ETA_LOCAL_CAP_PROPERTY,
-                DEFAULT_FREQUENCY_SEVERITY_TRIPLE_ETA_LOCAL_CAP_KCAL);
-        this.frequencySeverityTripleEtaResidualCapKcal = getConfigDouble(
-                PAC_FREQUENCY_SEVERITY_TRIPLE_ETA_RESIDUAL_CAP_PROPERTY,
-                DEFAULT_FREQUENCY_SEVERITY_TRIPLE_ETA_RESIDUAL_CAP_KCAL);
-        this.frequencySeverityMinTrainCount = getConfigInteger(
-                PAC_FREQUENCY_SEVERITY_MIN_TRAIN_COUNT_PROPERTY,
-                DEFAULT_FREQUENCY_SEVERITY_MIN_TRAIN_COUNT);
-        this.frequencySeverityMaxUndertrainedAmplification = getConfigDouble(
-                PAC_FREQUENCY_SEVERITY_MAX_UNDERTRAINED_AMPLIFICATION_PROPERTY,
-                DEFAULT_FREQUENCY_SEVERITY_MAX_UNDERTRAINED_AMPLIFICATION);
-        this.frequencySeveritySizeSafety = getConfigDouble(
-                PAC_FREQUENCY_SEVERITY_SIZE_SAFETY_PROPERTY,
-                DEFAULT_FREQUENCY_SEVERITY_SIZE_SAFETY);
-        this.frequencySeverityTestAlpha = getConfigDouble(
-                PAC_FREQUENCY_SEVERITY_TEST_ALPHA_PROPERTY,
-                DEFAULT_FREQUENCY_SEVERITY_TEST_ALPHA);
+                        PAC_MEAN_EXCESS_TRIPLE_ETA_SCALE_GRID_PROPERTY,
+                        DEFAULT_MEAN_EXCESS_TRIPLE_ETA_SCALE_GRID),
+                "PACK* mean-excess triple eta scale grid");
+        this.meanExcessTripleEtaMaxAssignments = getConfigLong(
+                PAC_MEAN_EXCESS_TRIPLE_ETA_MAX_ASSIGNMENTS_PROPERTY,
+                DEFAULT_MEAN_EXCESS_TRIPLE_ETA_MAX_ASSIGNMENTS);
+        this.meanExcessTripleEtaMaxPositionTriples = getConfigInteger(
+                PAC_MEAN_EXCESS_TRIPLE_ETA_MAX_POSITION_TRIPLES_PROPERTY,
+                DEFAULT_MEAN_EXCESS_TRIPLE_ETA_MAX_POSITION_TRIPLES);
+        this.meanExcessTripleEtaMaxFillEdges = getConfigInteger(
+                PAC_MEAN_EXCESS_TRIPLE_ETA_MAX_FILL_EDGES_PROPERTY,
+                DEFAULT_MEAN_EXCESS_TRIPLE_ETA_MAX_FILL_EDGES);
+        this.meanExcessTripleEtaMinCellContexts = getConfigInteger(
+                PAC_MEAN_EXCESS_TRIPLE_ETA_MIN_CELL_CONTEXTS_PROPERTY,
+                DEFAULT_MEAN_EXCESS_TRIPLE_ETA_MIN_CELL_CONTEXTS);
+        this.meanExcessTripleEtaPriorStrength = getConfigDouble(
+                PAC_MEAN_EXCESS_TRIPLE_ETA_PRIOR_STRENGTH_PROPERTY,
+                DEFAULT_MEAN_EXCESS_TRIPLE_ETA_PRIOR_STRENGTH);
+        this.meanExcessTripleEtaLocalCapKcal = getConfigDouble(
+                PAC_MEAN_EXCESS_TRIPLE_ETA_LOCAL_CAP_PROPERTY,
+                DEFAULT_MEAN_EXCESS_TRIPLE_ETA_LOCAL_CAP_KCAL);
+        this.meanExcessTripleEtaResidualCapKcal = getConfigDouble(
+                PAC_MEAN_EXCESS_TRIPLE_ETA_RESIDUAL_CAP_PROPERTY,
+                DEFAULT_MEAN_EXCESS_TRIPLE_ETA_RESIDUAL_CAP_KCAL);
+        this.meanExcessMinTrainCount = getConfigInteger(
+                PAC_MEAN_EXCESS_MIN_TRAIN_COUNT_PROPERTY,
+                DEFAULT_MEAN_EXCESS_MIN_TRAIN_COUNT);
+        this.meanExcessMaxUndertrainedAmplification = getConfigDouble(
+                PAC_MEAN_EXCESS_MAX_UNDERTRAINED_AMPLIFICATION_PROPERTY,
+                DEFAULT_MEAN_EXCESS_MAX_UNDERTRAINED_AMPLIFICATION);
+        this.meanExcessSizeSafety = getConfigDouble(
+                PAC_MEAN_EXCESS_SIZE_SAFETY_PROPERTY,
+                DEFAULT_MEAN_EXCESS_SIZE_SAFETY);
+        this.meanExcessTestAlpha = getConfigDouble(
+                PAC_MEAN_EXCESS_TEST_ALPHA_PROPERTY,
+                DEFAULT_MEAN_EXCESS_TEST_ALPHA);
         String configuredFrequencySeverityOutputDir = getConfigProperty(
-                PAC_FREQUENCY_SEVERITY_OUTPUT_DIR_PROPERTY, null);
+                PAC_MEAN_EXCESS_OUTPUT_DIR_PROPERTY, null);
         if (configuredFrequencySeverityOutputDir == null) {
             String benchOutputDir = getConfigProperty(
                     "osprey.bench.outputDir", null);
@@ -572,136 +575,136 @@ public class PackStarEstimator {
                     trimmedBenchOutputDir)
                     ? new File(trimmedBenchOutputDir,
                             "adaptive_frequency_severity").getPath()
-                    : DEFAULT_FREQUENCY_SEVERITY_OUTPUT_DIR;
+                    : DEFAULT_MEAN_EXCESS_OUTPUT_DIR;
         }
-        this.frequencySeverityOutputDir =
+        this.meanExcessOutputDir =
                 configuredFrequencySeverityOutputDir.trim();
-        if (!Double.isFinite(frequencySeverityRelativeBoundKcal)
-                || !(frequencySeverityRelativeBoundKcal > 0.0)) {
+        if (!Double.isFinite(meanExcessRelativeBoundKcal)
+                || !(meanExcessRelativeBoundKcal > 0.0)) {
             throw new IllegalArgumentException(
-                    "PACK* frequency/severity relative bound must be finite and positive: "
-                            + frequencySeverityRelativeBoundKcal);
+                    "PACK* mean-excess relative bound must be finite and positive: "
+                            + meanExcessRelativeBoundKcal);
         }
-        if (!Double.isFinite(frequencySeverityCap)
-                || frequencySeverityCap < 0.0) {
+        if (!Double.isFinite(conditionalMeanExcessBound)
+                || conditionalMeanExcessBound < 0.0) {
             throw new IllegalArgumentException(
-                    "PACK* frequency/severity severity cap must be finite and nonnegative: "
-                            + frequencySeverityCap);
+                    "PACK* mean-excess conditional mean-excess bound must be finite and nonnegative: "
+                            + conditionalMeanExcessBound);
         }
-        if (frequencySeverityPremiseId.isEmpty()) {
+        if (meanExcessPremiseId.isEmpty()) {
             throw new IllegalArgumentException(
-                    "PACK* frequency/severity severity premise id must not be empty");
+                    "PACK* mean-excess conditional mean-excess assumption id must not be empty");
         }
-        if (frequencySeverityFolds != 2) {
+        if (meanExcessFolds != 2) {
             throw new IllegalArgumentException(
                     "AdaptiveFrequencySeverityPAC currently freezes exactly two folds; got "
-                            + frequencySeverityFolds);
+                            + meanExcessFolds);
         }
-        if (!Double.isFinite(frequencySeverityMinShiftEssFraction)
-                || !(frequencySeverityMinShiftEssFraction > 0.0)
-                || frequencySeverityMinShiftEssFraction > 1.0) {
+        if (!Double.isFinite(meanExcessMinShiftEssFraction)
+                || !(meanExcessMinShiftEssFraction > 0.0)
+                || meanExcessMinShiftEssFraction > 1.0) {
             throw new IllegalArgumentException(
-                    "PACK* frequency/severity minimum shift ESS fraction must be in (0,1]: "
-                            + frequencySeverityMinShiftEssFraction);
+                    "PACK* mean-excess minimum shift ESS fraction must be in (0,1]: "
+                            + meanExcessMinShiftEssFraction);
         }
-        if (!Double.isFinite(frequencySeverityDiscoveryMinShiftEssFraction)
-                || !(frequencySeverityDiscoveryMinShiftEssFraction > 0.0)
-                || frequencySeverityDiscoveryMinShiftEssFraction
-                > frequencySeverityMinShiftEssFraction) {
+        if (!Double.isFinite(meanExcessDiscoveryMinShiftEssFraction)
+                || !(meanExcessDiscoveryMinShiftEssFraction > 0.0)
+                || meanExcessDiscoveryMinShiftEssFraction
+                > meanExcessMinShiftEssFraction) {
             throw new IllegalArgumentException(
-                    "PACK* frequency/severity discovery shift ESS fraction must be in"
+                    "PACK* mean-excess discovery shift ESS fraction must be in"
                             + " (0, minimum final shift ESS fraction]: "
-                            + frequencySeverityDiscoveryMinShiftEssFraction);
+                            + meanExcessDiscoveryMinShiftEssFraction);
         }
-        if (frequencySeverityMaxRefits < 0
-                || frequencySeverityMaxRefits > 16) {
+        if (meanExcessMaxRefits < 0
+                || meanExcessMaxRefits > 16) {
             throw new IllegalArgumentException(
-                    "PACK* frequency/severity maximum refits must be in [0,16]: "
-                            + frequencySeverityMaxRefits);
+                    "PACK* mean-excess maximum refits must be in [0,16]: "
+                            + meanExcessMaxRefits);
         }
-        if (frequencySeverityDiscoveryMaxSamples
-                < frequencySeverityDiscoverySamples) {
+        if (meanExcessDiscoveryMaxSamples
+                < meanExcessDiscoverySamples) {
             throw new IllegalArgumentException(
-                    "PACK* frequency/severity maximum discovery samples must"
+                    "PACK* mean-excess maximum discovery samples must"
                             + " be at least the initial discovery samples: "
-                            + frequencySeverityDiscoveryMaxSamples + " < "
-                            + frequencySeverityDiscoverySamples);
+                            + meanExcessDiscoveryMaxSamples + " < "
+                            + meanExcessDiscoverySamples);
         }
-        if (!Double.isFinite(frequencySeverityTripleEtaScale)
-                || frequencySeverityTripleEtaScale != 1.0) {
+        if (!Double.isFinite(meanExcessTripleEtaScale)
+                || meanExcessTripleEtaScale != 1.0) {
             throw new IllegalArgumentException(
-                    "PACK* frequency/severity triple eta scale is not tunable"
+                    "PACK* mean-excess triple eta scale is not tunable"
                             + " and must be fixed to 1: "
-                            + frequencySeverityTripleEtaScale);
+                            + meanExcessTripleEtaScale);
         }
-        if (frequencySeverityTripleEtaMaxAssignments < 1L) {
+        if (meanExcessTripleEtaMaxAssignments < 1L) {
             throw new IllegalArgumentException(
-                    "PACK* frequency/severity triple eta assignment cap must"
+                    "PACK* mean-excess triple eta assignment cap must"
                             + " be positive: "
-                            + frequencySeverityTripleEtaMaxAssignments);
+                            + meanExcessTripleEtaMaxAssignments);
         }
-        if (frequencySeverityBudgetForward && frequencySeverityTripleEtaMaxPositionTriples > 3)
+        if (meanExcessBudgetForward && meanExcessTripleEtaMaxPositionTriples > 3)
             throw new IllegalArgumentException("budget-forward final protocol supports K=0,1,2,3 only");
-        if (frequencySeverityTripleEtaMaxPositionTriples < 1
-                || frequencySeverityTripleEtaMaxPositionTriples > 16) {
+        if (meanExcessTripleEtaMaxPositionTriples < 1
+                || meanExcessTripleEtaMaxPositionTriples > 16) {
             throw new IllegalArgumentException(
                     "PACK* selected triple count must be in [1,16]: "
-                            + frequencySeverityTripleEtaMaxPositionTriples);
+                            + meanExcessTripleEtaMaxPositionTriples);
         }
-        if (frequencySeverityTripleEtaMaxFillEdges < 0
-                || frequencySeverityTripleEtaMaxFillEdges > 16) {
+        if (meanExcessTripleEtaMaxFillEdges < 0
+                || meanExcessTripleEtaMaxFillEdges > 16) {
             throw new IllegalArgumentException(
                     "PACK* selected triple fill-edge budget must be in [0,16]: "
-                            + frequencySeverityTripleEtaMaxFillEdges);
+                            + meanExcessTripleEtaMaxFillEdges);
         }
-        if (frequencySeverityTripleEtaMinCellContexts < 1) {
+        if (meanExcessTripleEtaMinCellContexts < 1) {
             throw new IllegalArgumentException(
                     "PACK* selected triple minimum cell contexts must be positive: "
-                            + frequencySeverityTripleEtaMinCellContexts);
+                            + meanExcessTripleEtaMinCellContexts);
         }
-        if (!Double.isFinite(frequencySeverityTripleEtaPriorStrength)
-                || frequencySeverityTripleEtaPriorStrength < 0.0
-                || !Double.isFinite(frequencySeverityTripleEtaLocalCapKcal)
-                || frequencySeverityTripleEtaLocalCapKcal < 0.0
-                || !Double.isFinite(frequencySeverityTripleEtaResidualCapKcal)
-                || !(frequencySeverityTripleEtaResidualCapKcal > 0.0)) {
+        if (!Double.isFinite(meanExcessTripleEtaPriorStrength)
+                || meanExcessTripleEtaPriorStrength < 0.0
+                || !Double.isFinite(meanExcessTripleEtaLocalCapKcal)
+                || meanExcessTripleEtaLocalCapKcal < 0.0
+                || !Double.isFinite(meanExcessTripleEtaResidualCapKcal)
+                || !(meanExcessTripleEtaResidualCapKcal > 0.0)) {
             throw new IllegalArgumentException(
                     "PACK* selected triple shrink/cap controls are invalid");
         }
-        if (frequencySeverityMinTrainCount < 1) {
+        if (meanExcessMinTrainCount < 1) {
             throw new IllegalArgumentException(
-                    "PACK* frequency/severity minimum train count must be positive: "
-                            + frequencySeverityMinTrainCount);
+                    "PACK* mean-excess minimum train count must be positive: "
+                            + meanExcessMinTrainCount);
         }
-        if (!Double.isFinite(frequencySeverityMaxUndertrainedAmplification)
-                || frequencySeverityMaxUndertrainedAmplification < 1.0) {
+        if (!Double.isFinite(meanExcessMaxUndertrainedAmplification)
+                || meanExcessMaxUndertrainedAmplification < 1.0) {
             throw new IllegalArgumentException(
-                    "PACK* frequency/severity maximum undertrained amplification must be finite and >=1: "
-                            + frequencySeverityMaxUndertrainedAmplification);
+                    "PACK* mean-excess maximum undertrained amplification must be finite and >=1: "
+                            + meanExcessMaxUndertrainedAmplification);
         }
-        if (!Double.isFinite(frequencySeveritySizeSafety)
-                || !(frequencySeveritySizeSafety > 0.0)
-                || frequencySeveritySizeSafety > 1.0) {
+        if (!Double.isFinite(meanExcessSizeSafety)
+                || !(meanExcessSizeSafety > 0.0)
+                || meanExcessSizeSafety > 1.0) {
             throw new IllegalArgumentException(
-                    "PACK* frequency/severity sizing safety must be in (0,1]: "
-                            + frequencySeveritySizeSafety);
+                    "PACK* mean-excess sizing safety must be in (0,1]: "
+                            + meanExcessSizeSafety);
         }
-        if (!Double.isFinite(frequencySeverityTestAlpha)
-                || !(frequencySeverityTestAlpha > 0.0)
-                || frequencySeverityTestAlpha >= 1.0) {
+        if (!Double.isFinite(meanExcessTestAlpha)
+                || !(meanExcessTestAlpha > 0.0)
+                || meanExcessTestAlpha >= 1.0) {
             throw new IllegalArgumentException(
-                    "PACK* frequency/severity severity-test alpha must be in (0,1): "
-                            + frequencySeverityTestAlpha);
+                    "PACK* mean-excess mean-excess diagnostic alpha must be in (0,1): "
+                            + meanExcessTestAlpha);
         }
-        if (frequencySeverityOutputDir == null
-                || !isXtmpOutputPath(frequencySeverityOutputDir)) {
+        if (meanExcessOutputDir == null
+                || !isXtmpOutputPath(meanExcessOutputDir)) {
             throw new IllegalArgumentException(
-                    "PACK* frequency/severity production requires an absolute output directory under"
-                            + " /usr/xtmp/lz280: " + frequencySeverityOutputDir);
+                    "PACK* mean-excess production requires an absolute output directory under"
+                            + " /usr/xtmp/lz280: " + meanExcessOutputDir);
         }
         if (trainSamples < 4) {
             throw new IllegalArgumentException(
-                    "PACK* frequency/severity two-fold selection requires at least four training samples");
+                    "PACK* mean-excess two-fold selection requires at least four training samples");
         }
         this.localRCByGlobalRC = buildLocalRCMaps(rcs);
     }
@@ -763,11 +766,11 @@ public class PackStarEstimator {
         }
     }
 
-    static final class FrequencySeverityShrinkPair {
+    static final class MeanExcessShrinkPair {
         final double unary;
         final double pair;
 
-        FrequencySeverityShrinkPair(double unary, double pair) {
+        MeanExcessShrinkPair(double unary, double pair) {
             this.unary = unary;
             this.pair = pair;
         }
@@ -867,12 +870,12 @@ public class PackStarEstimator {
         return new double[]{1.0};
     }
 
-    static FrequencySeverityShrinkPair[] parseFrequencySeverityShrinkGrid(String configured) {
+    static MeanExcessShrinkPair[] parseFrequencySeverityShrinkGrid(String configured) {
         if (configured == null || configured.trim().isEmpty()) {
             throw new IllegalArgumentException(
-                    "PACK* frequency/severity shrink grid must not be empty");
+                    "PACK* mean-excess shrink grid must not be empty");
         }
-        List<FrequencySeverityShrinkPair> parsed = new ArrayList<>();
+        List<MeanExcessShrinkPair> parsed = new ArrayList<>();
         Set<String> seen = new HashSet<>();
         boolean containsRaw = false;
         for (String token : configured.split(",")) {
@@ -880,7 +883,7 @@ public class PackStarEstimator {
             String[] parts = trimmed.split(":", -1);
             if (parts.length != 2) {
                 throw new IllegalArgumentException(
-                        "PACK* frequency/severity shrink values must have unary:pair form: "
+                        "PACK* mean-excess shrink values must have unary:pair form: "
                                 + trimmed);
             }
             final double unary;
@@ -890,25 +893,25 @@ public class PackStarEstimator {
                 pair = Double.parseDouble(parts[1].trim());
             } catch (NumberFormatException ex) {
                 throw new IllegalArgumentException(
-                        "Invalid PACK* frequency/severity shrink value: " + trimmed, ex);
+                        "Invalid PACK* mean-excess shrink value: " + trimmed, ex);
             }
             if (!Double.isFinite(unary) || unary < 0.0
                     || !Double.isFinite(pair) || pair < 0.0) {
                 throw new IllegalArgumentException(
-                        "PACK* frequency/severity shrink strengths must be finite and nonnegative: "
+                        "PACK* mean-excess shrink strengths must be finite and nonnegative: "
                                 + trimmed);
             }
             String key = Long.toHexString(Double.doubleToLongBits(unary))
                     + ":" + Long.toHexString(Double.doubleToLongBits(pair));
             if (!seen.add(key)) continue;
-            parsed.add(new FrequencySeverityShrinkPair(unary, pair));
+            parsed.add(new MeanExcessShrinkPair(unary, pair));
             if (unary == 0.0 && pair == 0.0) containsRaw = true;
         }
         if (parsed.isEmpty() || !containsRaw) {
             throw new IllegalArgumentException(
-                    "PACK* frequency/severity shrink grid must contain raw eta as 0:0");
+                    "PACK* mean-excess shrink grid must contain raw eta as 0:0");
         }
-        return parsed.toArray(new FrequencySeverityShrinkPair[0]);
+        return parsed.toArray(new MeanExcessShrinkPair[0]);
     }
 
     private static int resolveConfiguredSamplingThreads() {
@@ -1151,9 +1154,9 @@ public class PackStarEstimator {
                 + ", severityTestStage=final"
                 + ", sampleBudget="
                 + (sampleBudget == Integer.MAX_VALUE ? "unbounded" : sampleBudget)
-                + ", B_rel=" + frequencySeverityRelativeBoundKcal
-                + ", S0=" + frequencySeverityCap
-                + ", maxRefits=" + frequencySeverityMaxRefits);
+                + ", B_rel=" + meanExcessRelativeBoundKcal
+                + ", S0=" + conditionalMeanExcessBound
+                + ", maxRefits=" + meanExcessMaxRefits);
         try {
             runAdaptiveFrequencySeverityPAC(startTime, logZRigid);
         } finally {
@@ -1177,10 +1180,10 @@ public class PackStarEstimator {
                 + ", log10Upper=" + formatLog10(logZUpperPAC));
     }
 
-    // ========== Adaptive frequency/severity estimator ==========
+    // ========== Adaptive mean-excess estimator ==========
 
     /**
-     * Adaptive frequency/severity PAC estimator.
+     * Adaptive mean-excess PAC estimator.
      *
      *   Z = q_eta * E_{p_eta}[ exp(-xi/RT) ],   xi = E_true - E_eta   (exact identity)
      *
@@ -1193,15 +1196,15 @@ public class PackStarEstimator {
      *
      * Sample-splitting: eta and p_eta depend only on training/adaptation data,
      * while final samples are fresh. Conditional on the frozen
-     * severity premise and the pilot, the final sample size is fixed for the
+     * conditional mean-excess assumption and the pilot, the final sample size is fixed for the
      * empirical-Bernstein PAC calculation. The same fixed final batch also
-     * supplies one severity p-value test; rejection suppresses the estimate.
+     * supplies one conditional mean-excess rejection diagnostic; rejection suppresses the estimate.
      */
-    private static class FrequencySeverityEtaCoverage {
+    private static class MeanExcessEtaCoverage {
         final int[][] unaryDistinctContexts;
         final EtaCorrections.PairCountMap pairDistinctContexts;
 
-        FrequencySeverityEtaCoverage(int numPos, int[] numRCs) {
+        MeanExcessEtaCoverage(int numPos, int[] numRCs) {
             unaryDistinctContexts = new int[numPos][];
             for (int pos = 0; pos < numPos; pos++) {
                 unaryDistinctContexts[pos] = new int[numRCs[pos]];
@@ -1219,7 +1222,7 @@ public class PackStarEstimator {
         }
     }
 
-    private static class FrequencySeverityEtaCellObservation {
+    private static class MeanExcessEtaCellObservation {
         final int sampleIndex;
         final int fold;
         final boolean pair;
@@ -1229,7 +1232,7 @@ public class PackStarEstimator {
         final int rc2;
         final double correctionKcal;
 
-        FrequencySeverityEtaCellObservation(
+        MeanExcessEtaCellObservation(
                 int sampleIndex, int fold, boolean pair,
                 int pos1, int rc1, int pos2, int rc2,
                 double correctionKcal) {
@@ -1244,22 +1247,22 @@ public class PackStarEstimator {
         }
     }
 
-    private static class FrequencySeverityEtaTraining {
+    private static class MeanExcessEtaTraining {
         final EtaCorrections all;
         final EtaCorrections[] folds;
-        final FrequencySeverityEtaCoverage allCoverage;
-        final FrequencySeverityEtaCoverage[] foldCoverage;
-        final List<FrequencySeverityEtaCellObservation> observations;
+        final MeanExcessEtaCoverage allCoverage;
+        final MeanExcessEtaCoverage[] foldCoverage;
+        final List<MeanExcessEtaCellObservation> observations;
         final int allFitSampleCount;
         final int[] foldFitSampleCounts;
         final int historySampleCount;
         final List<CCDResult> allFitSamples;
         final List<CCDResult>[] foldFitSamples;
 
-        FrequencySeverityEtaTraining(EtaCorrections all, EtaCorrections[] folds,
-                      FrequencySeverityEtaCoverage allCoverage,
-                      FrequencySeverityEtaCoverage[] foldCoverage,
-                      List<FrequencySeverityEtaCellObservation> observations,
+        MeanExcessEtaTraining(EtaCorrections all, EtaCorrections[] folds,
+                      MeanExcessEtaCoverage allCoverage,
+                      MeanExcessEtaCoverage[] foldCoverage,
+                      List<MeanExcessEtaCellObservation> observations,
                       int allFitSampleCount, int[] foldFitSampleCounts,
                       int historySampleCount,
                       List<CCDResult> allFitSamples,
@@ -1277,7 +1280,7 @@ public class PackStarEstimator {
         }
     }
 
-    private static class FrequencySeverityFoldScore {
+    private static class MeanExcessFoldScore {
         final int validationFold;
         final int sampleCount;
         final double logMu;
@@ -1285,9 +1288,9 @@ public class PackStarEstimator {
         final double shiftEssFraction;
         final double targetM2;
         final double targetEssFraction;
-        final double bulkMean;
-        final double bulkVariance;
-        final double tailProbability;
+        final double clippedMean;
+        final double clippedVariance;
+        final double exceedanceProbability;
         final double baselineUnaryUndertrainedMass;
         final double candidateUnaryUndertrainedMass;
         final double unaryUndertrainedAmplification;
@@ -1301,11 +1304,11 @@ public class PackStarEstimator {
         final boolean bulkPass;
         final boolean reachabilityPass;
 
-        FrequencySeverityFoldScore(int validationFold, int sampleCount,
+        MeanExcessFoldScore(int validationFold, int sampleCount,
                     double logMu, double shiftEss,
                     double shiftEssFraction, double targetM2,
-                    double targetEssFraction, double bulkMean,
-                    double bulkVariance, double tailProbability,
+                    double targetEssFraction, double clippedMean,
+                    double clippedVariance, double exceedanceProbability,
                     double baselineUnaryUndertrainedMass,
                     double candidateUnaryUndertrainedMass,
                     double unaryUndertrainedAmplification,
@@ -1323,9 +1326,9 @@ public class PackStarEstimator {
             this.shiftEssFraction = shiftEssFraction;
             this.targetM2 = targetM2;
             this.targetEssFraction = targetEssFraction;
-            this.bulkMean = bulkMean;
-            this.bulkVariance = bulkVariance;
-            this.tailProbability = tailProbability;
+            this.clippedMean = clippedMean;
+            this.clippedVariance = clippedVariance;
+            this.exceedanceProbability = exceedanceProbability;
             this.baselineUnaryUndertrainedMass =
                     baselineUnaryUndertrainedMass;
             this.candidateUnaryUndertrainedMass =
@@ -1358,16 +1361,16 @@ public class PackStarEstimator {
      * diagnostic; it is not a confidence interval and is always followed by a
      * full-refit audit and an independent on-policy pilot.
      */
-    private static class FrequencySeverityCrossfitScore {
+    private static class MeanExcessCrossfitScore {
         final int sampleCount;
         final double logMu;
         final double shiftEss;
         final double shiftEssFraction;
         final double targetM2;
         final double targetEssFraction;
-        final double bulkMean;
-        final double bulkVariance;
-        final double tailProbability;
+        final double clippedMean;
+        final double clippedVariance;
+        final double exceedanceProbability;
         final double baselineUnaryUndertrainedMass;
         final double candidateUnaryUndertrainedMass;
         final double unaryUndertrainedAmplification;
@@ -1384,12 +1387,12 @@ public class PackStarEstimator {
         final boolean bulkPass;
         final boolean reachabilityPass;
 
-        FrequencySeverityCrossfitScore(
+        MeanExcessCrossfitScore(
                 int sampleCount, double logMu,
                 double shiftEss, double shiftEssFraction,
                 double targetM2, double targetEssFraction,
-                double bulkMean, double bulkVariance,
-                double tailProbability,
+                double clippedMean, double clippedVariance,
+                double exceedanceProbability,
                 double baselineUnaryUndertrainedMass,
                 double candidateUnaryUndertrainedMass,
                 double unaryUndertrainedAmplification,
@@ -1409,9 +1412,9 @@ public class PackStarEstimator {
             this.shiftEssFraction = shiftEssFraction;
             this.targetM2 = targetM2;
             this.targetEssFraction = targetEssFraction;
-            this.bulkMean = bulkMean;
-            this.bulkVariance = bulkVariance;
-            this.tailProbability = tailProbability;
+            this.clippedMean = clippedMean;
+            this.clippedVariance = clippedVariance;
+            this.exceedanceProbability = exceedanceProbability;
             this.baselineUnaryUndertrainedMass =
                     baselineUnaryUndertrainedMass;
             this.candidateUnaryUndertrainedMass =
@@ -1446,9 +1449,9 @@ public class PackStarEstimator {
         }
     }
 
-    private static class FrequencySeverityCandidateScore {
+    private static class MeanExcessCandidateScore {
         final String id;
-        final FrequencySeverityShrinkPair shrink;
+        final MeanExcessShrinkPair shrink;
         final double alpha;
         final double tripleEtaScale;
         final EtaCorrections fullEta;
@@ -1457,18 +1460,18 @@ public class PackStarEstimator {
         String pathStopReason = "legacy-or-pair-only";
         String[] foldPathStopReasons = {"legacy-or-pair-only", "legacy-or-pair-only"};
         double innerLogRhoGain = Double.NaN;
-        final FrequencySeverityFoldScore[] folds;
-        final FrequencySeverityCrossfitScore crossfit;
+        final MeanExcessFoldScore[] folds;
+        final MeanExcessCrossfitScore crossfit;
         final boolean crossfitEligible;
-        final FrequencySeverityRefitAudit refitAudit;
+        final MeanExcessRefitAudit refitAudit;
         final boolean eligible;
 
-        FrequencySeverityCandidateScore(String id, FrequencySeverityShrinkPair shrink,
+        MeanExcessCandidateScore(String id, MeanExcessShrinkPair shrink,
                          double alpha, double tripleEtaScale,
                          EtaCorrections fullEta,
-                         FrequencySeverityFoldScore[] folds,
-                         FrequencySeverityCrossfitScore crossfit,
-                         FrequencySeverityRefitAudit refitAudit) {
+                         MeanExcessFoldScore[] folds,
+                         MeanExcessCrossfitScore crossfit,
+                         MeanExcessRefitAudit refitAudit) {
             this.id = id;
             this.shrink = shrink;
             this.alpha = alpha;
@@ -1486,7 +1489,7 @@ public class PackStarEstimator {
         }
     }
 
-    private static class FrequencySeverityRefitAudit {
+    private static class MeanExcessRefitAudit {
         final double shiftEssFraction;
         final double baselineUnaryUndertrainedMass;
         final double candidateUnaryUndertrainedMass;
@@ -1498,7 +1501,7 @@ public class PackStarEstimator {
         final boolean shiftPass;
         final boolean coveragePass;
 
-        FrequencySeverityRefitAudit(
+        MeanExcessRefitAudit(
                 double shiftEssFraction,
                 double baselineUnaryUndertrainedMass,
                 double candidateUnaryUndertrainedMass,
@@ -1531,12 +1534,12 @@ public class PackStarEstimator {
         }
     }
 
-    private static class FrequencySeverityPilotEvaluation {
+    private static class MeanExcessPilotEvaluation {
         final double[] logRelativeWeights;
         final PackStarFrequencySeverityPAC.Interval interval;
         final PackStarFrequencySeverityPAC.Sizing sizing;
 
-        FrequencySeverityPilotEvaluation(
+        MeanExcessPilotEvaluation(
                 double[] logRelativeWeights,
                 PackStarFrequencySeverityPAC.Interval interval,
                 PackStarFrequencySeverityPAC.Sizing sizing) {
@@ -1547,7 +1550,7 @@ public class PackStarEstimator {
     }
 
     /** Scratch arrays reused across sequential candidate/fold scoring. */
-    private static class FrequencySeverityFoldScratch {
+    private static class MeanExcessFoldScratch {
         double[] logA = new double[0];
         double[] logV = new double[0];
         double[] proposalWeights = new double[0];
@@ -1573,7 +1576,7 @@ public class PackStarEstimator {
      * scoped to one scoring pass: CCDResult features remain eta-independent,
      * while these energies depend on the fitted candidate model.
      */
-    private class FrequencySeverityEtaEnergyCache {
+    private class MeanExcessEtaEnergyCache {
 
         private static class CachedEnergyVector {
             final double[] values;
@@ -1592,10 +1595,10 @@ public class PackStarEstimator {
         private final IdentityHashMap<EtaCorrections, CachedEnergyVector>
                 tripleResidualEnergies = new IdentityHashMap<>();
 
-        FrequencySeverityEtaEnergyCache(
+        MeanExcessEtaEnergyCache(
                 List<CCDResult> trainingSamples,
                 List<CCDResult>[] validationFolds,
-                FrequencySeverityEtaTraining training) {
+                MeanExcessEtaTraining training) {
             addSamples(trainingSamples);
             addSamples(training.allFitSamples);
             for (List<CCDResult> foldSamples : training.foldFitSamples) {
@@ -1685,20 +1688,20 @@ public class PackStarEstimator {
         }
     }
 
-    private static class FrequencySeverityCoverageFlags {
+    private static class MeanExcessCoverageFlags {
         final boolean[] unaryUndertrained;
         final boolean[] pairUndertrained;
 
-        FrequencySeverityCoverageFlags(int sampleCount) {
+        MeanExcessCoverageFlags(int sampleCount) {
             unaryUndertrained = new boolean[sampleCount];
             pairUndertrained = new boolean[sampleCount];
         }
     }
 
-    private FrequencySeverityCoverageFlags buildFrequencySeverityCoverageFlags(
-            List<CCDResult> samples, FrequencySeverityEtaCoverage coverage) {
-        FrequencySeverityCoverageFlags flags =
-                new FrequencySeverityCoverageFlags(samples.size());
+    private MeanExcessCoverageFlags buildFrequencySeverityCoverageFlags(
+            List<CCDResult> samples, MeanExcessEtaCoverage coverage) {
+        MeanExcessCoverageFlags flags =
+                new MeanExcessCoverageFlags(samples.size());
         for (int i = 0; i < samples.size(); i++) {
             int[] conf = samples.get(i).conf;
             flags.unaryUndertrained[i] =
@@ -1709,49 +1712,49 @@ public class PackStarEstimator {
         return flags;
     }
 
-    private List<FrequencySeverityCandidateScore> scoreFrequencySeverityEtaCandidates(
+    private List<MeanExcessCandidateScore> scoreFrequencySeverityEtaCandidates(
             List<CCDResult> trainingSamples,
-            FrequencySeverityEtaTraining training) {
-        List<CCDResult>[] validationFolds = new List[frequencySeverityFolds];
-        FrequencySeverityCoverageFlags[] validationCoverageFlags =
-                new FrequencySeverityCoverageFlags[frequencySeverityFolds];
-        for (int fold = 0; fold < frequencySeverityFolds; fold++) {
+            MeanExcessEtaTraining training) {
+        List<CCDResult>[] validationFolds = new List[meanExcessFolds];
+        MeanExcessCoverageFlags[] validationCoverageFlags =
+                new MeanExcessCoverageFlags[meanExcessFolds];
+        for (int fold = 0; fold < meanExcessFolds; fold++) {
             validationFolds[fold] = new ArrayList<>();
         }
         for (int index = 0; index < trainingSamples.size(); index++) {
-            validationFolds[index % frequencySeverityFolds].add(trainingSamples.get(index));
+            validationFolds[index % meanExcessFolds].add(trainingSamples.get(index));
         }
         for (int validationFold = 0;
-             validationFold < frequencySeverityFolds; validationFold++) {
+             validationFold < meanExcessFolds; validationFold++) {
             int fitFold = 1 - validationFold;
             validationCoverageFlags[validationFold] =
                     buildFrequencySeverityCoverageFlags(
                             validationFolds[validationFold],
                             training.foldCoverage[fitFold]);
         }
-        FrequencySeverityCoverageFlags allCoverageFlags =
+        MeanExcessCoverageFlags allCoverageFlags =
                 buildFrequencySeverityCoverageFlags(
                         trainingSamples, training.allCoverage);
 
-        List<FrequencySeverityCandidateScore> candidates = new ArrayList<>();
-        FrequencySeverityFoldScratch foldScratch =
-                new FrequencySeverityFoldScratch();
-        FrequencySeverityEtaEnergyCache energyCache =
-                new FrequencySeverityEtaEnergyCache(
+        List<MeanExcessCandidateScore> candidates = new ArrayList<>();
+        MeanExcessFoldScratch foldScratch =
+                new MeanExcessFoldScratch();
+        MeanExcessEtaEnergyCache energyCache =
+                new MeanExcessEtaEnergyCache(
                         trainingSamples, validationFolds, training);
-        if (!frequencySeverityProposalLearning) {
+        if (!meanExcessProposalLearning) {
             // Extraction retains support/provenance but leaves every eta cell zero.
             // Evaluate one fixed proposal, without fitting or selecting corrections.
-            FrequencySeverityFoldScore[] scores =
-                    new FrequencySeverityFoldScore[frequencySeverityFolds];
-            for (int fold = 0; fold < frequencySeverityFolds; fold++) {
+            MeanExcessFoldScore[] scores =
+                    new MeanExcessFoldScore[meanExcessFolds];
+            for (int fold = 0; fold < meanExcessFolds; fold++) {
                 scores[fold] = scoreFrequencySeverityEtaFold(
                         fold, validationFolds[fold], training.folds[1 - fold],
                         training.folds[1 - fold], foldScratch,
                         validationCoverageFlags[fold], energyCache);
             }
-            FrequencySeverityCandidateScore fixed = new FrequencySeverityCandidateScore(
-                    "fixed-qm-no-learning", new FrequencySeverityShrinkPair(0.0, 0.0),
+            MeanExcessCandidateScore fixed = new MeanExcessCandidateScore(
+                    "fixed-qm-no-learning", new MeanExcessShrinkPair(0.0, 0.0),
                     0.0, 0.0, training.all, scores,
                     poolFrequencySeverityFoldScores(scores),
                     auditFrequencySeverityRefit(trainingSamples, training.all,
@@ -1765,33 +1768,33 @@ public class PackStarEstimator {
         // triple prefixes; legacy comparison strategies retain only their
         // terminal set. No fitted correction is continuously attenuated.
         final double alpha = 1.0;
-        for (FrequencySeverityShrinkPair shrink : frequencySeverityShrinkGrid) {
+        for (MeanExcessShrinkPair shrink : meanExcessShrinkGrid) {
             EtaCorrections fullPairEta = shrinkEta(
                     training.all, training.allCoverage,
                     shrink.unary, shrink.pair);
-            if (frequencySeverityJointMomentLearning) {
+            if (meanExcessJointMomentLearning) {
                 fullPairEta = refitFrequencySeverityPairEta(training.allFitSamples,
                         fullPairEta, training.allCoverage, shrink);
             }
             EtaCorrections[] foldPairEta =
-                    new EtaCorrections[frequencySeverityFolds];
+                    new EtaCorrections[meanExcessFolds];
             for (int fitFold = 0;
-                 fitFold < frequencySeverityFolds; fitFold++) {
+                 fitFold < meanExcessFolds; fitFold++) {
                 foldPairEta[fitFold] = shrinkEta(
                         training.folds[fitFold],
                         training.foldCoverage[fitFold],
                         shrink.unary, shrink.pair);
-                if (frequencySeverityJointMomentLearning) {
+                if (meanExcessJointMomentLearning) {
                     foldPairEta[fitFold] = refitFrequencySeverityPairEta(
                             training.foldFitSamples[fitFold], foldPairEta[fitFold],
                             training.foldCoverage[fitFold], shrink);
                 }
             }
 
-            FrequencySeverityFoldScore[] pairFoldScores =
-                    new FrequencySeverityFoldScore[frequencySeverityFolds];
+            MeanExcessFoldScore[] pairFoldScores =
+                    new MeanExcessFoldScore[meanExcessFolds];
             for (int validationFold = 0;
-                 validationFold < frequencySeverityFolds; validationFold++) {
+                 validationFold < meanExcessFolds; validationFold++) {
                 int fitFold = 1 - validationFold;
                 pairFoldScores[validationFold] =
                         scoreFrequencySeverityEtaFold(
@@ -1803,21 +1806,21 @@ public class PackStarEstimator {
                         validationCoverageFlags[validationFold],
                         energyCache);
             }
-            FrequencySeverityCrossfitScore pairCrossfit =
+            MeanExcessCrossfitScore pairCrossfit =
                     poolFrequencySeverityFoldScores(pairFoldScores);
-            FrequencySeverityRefitAudit pairRefitAudit =
+            MeanExcessRefitAudit pairRefitAudit =
                     auditFrequencySeverityRefit(
                     trainingSamples, fullPairEta,
                             fullPairEta, allCoverageFlags, foldScratch,
                             energyCache);
-            candidates.add(new FrequencySeverityCandidateScore(
-                    frequencySeverityCandidateId(
+            candidates.add(new MeanExcessCandidateScore(
+                    meanExcessCandidateId(
                             shrink, alpha, 0.0),
                     shrink, alpha, 0.0, fullPairEta,
                     pairFoldScores, pairCrossfit, pairRefitAudit));
 
-            if (frequencySeverityTripleEta == null) continue;
-            if (frequencySeverityBudgetForward) {
+            if (meanExcessTripleEta == null) continue;
+            if (meanExcessBudgetForward) {
                 scoreFrequencySeverityTriplePath(candidates, shrink, training, trainingSamples,
                         validationFolds, fullPairEta, foldPairEta, validationCoverageFlags,
                         allCoverageFlags, foldScratch, energyCache);
@@ -1830,11 +1833,11 @@ public class PackStarEstimator {
             if (!hasTripleEta(fullSelectedTriple)) continue;
             PackStarTripleEtaCorrections[] foldSelectedTriples =
                     new PackStarTripleEtaCorrections[
-                    frequencySeverityFolds];
+                    meanExcessFolds];
             EtaCorrections[] foldTripleEta =
-                    new EtaCorrections[frequencySeverityFolds];
+                    new EtaCorrections[meanExcessFolds];
             for (int fitFold = 0;
-                 fitFold < frequencySeverityFolds; fitFold++) {
+                 fitFold < meanExcessFolds; fitFold++) {
                 foldSelectedTriples[fitFold] =
                         fitFrequencySeverityTripleEta(
                                 training.foldFitSamples[fitFold],
@@ -1843,17 +1846,17 @@ public class PackStarEstimator {
                         attachFrequencySeverityTripleEta(
                                 foldPairEta[fitFold],
                                 foldSelectedTriples[fitFold],
-                                frequencySeverityTripleEtaScale);
+                                meanExcessTripleEtaScale);
             }
             EtaCorrections fullTripleEta =
                     attachFrequencySeverityTripleEta(
                             fullPairEta, fullSelectedTriple,
-                            frequencySeverityTripleEtaScale);
-            FrequencySeverityFoldScore[] tripleFoldScores =
-                    new FrequencySeverityFoldScore[
-                    frequencySeverityFolds];
+                            meanExcessTripleEtaScale);
+            MeanExcessFoldScore[] tripleFoldScores =
+                    new MeanExcessFoldScore[
+                    meanExcessFolds];
             for (int validationFold = 0;
-                 validationFold < frequencySeverityFolds;
+                 validationFold < meanExcessFolds;
                  validationFold++) {
                 int fitFold = 1 - validationFold;
                 tripleFoldScores[validationFold] =
@@ -1866,17 +1869,17 @@ public class PackStarEstimator {
                         validationCoverageFlags[validationFold],
                         energyCache);
             }
-            FrequencySeverityCrossfitScore tripleCrossfit =
+            MeanExcessCrossfitScore tripleCrossfit =
                     poolFrequencySeverityFoldScores(tripleFoldScores);
-            FrequencySeverityRefitAudit tripleRefitAudit =
+            MeanExcessRefitAudit tripleRefitAudit =
                     auditFrequencySeverityRefit(
                     trainingSamples, fullTripleEta, fullPairEta,
                             allCoverageFlags, foldScratch, energyCache);
-            FrequencySeverityCandidateScore legacyCandidate = new FrequencySeverityCandidateScore(
-                    frequencySeverityCandidateId(shrink, alpha, 1.0),
+            MeanExcessCandidateScore legacyCandidate = new MeanExcessCandidateScore(
+                    meanExcessCandidateId(shrink, alpha, 1.0),
                     shrink, alpha, 1.0, fullTripleEta,
                     tripleFoldScores, tripleCrossfit, tripleRefitAudit);
-            for (int f = 0; f < frequencySeverityFolds; f++)
+            for (int f = 0; f < meanExcessFolds; f++)
                 legacyCandidate.foldTripleCounts[f] = hasTripleEta(foldSelectedTriples[f])
                         ? (int) foldSelectedTriples[f].positionTripleCount : 0;
             candidates.add(legacyCandidate);
@@ -1885,14 +1888,14 @@ public class PackStarEstimator {
     }
 
     private void scoreFrequencySeverityTriplePath(
-            List<FrequencySeverityCandidateScore> candidates, FrequencySeverityShrinkPair shrink,
-            FrequencySeverityEtaTraining training, List<CCDResult> trainingSamples,
+            List<MeanExcessCandidateScore> candidates, MeanExcessShrinkPair shrink,
+            MeanExcessEtaTraining training, List<CCDResult> trainingSamples,
             List<CCDResult>[] validationFolds, EtaCorrections fullPairEta, EtaCorrections[] foldPairEta,
-            FrequencySeverityCoverageFlags[] validationCoverageFlags,
-            FrequencySeverityCoverageFlags allCoverageFlags, FrequencySeverityFoldScratch scratch,
-            FrequencySeverityEtaEnergyCache cache) {
+            MeanExcessCoverageFlags[] validationCoverageFlags,
+            MeanExcessCoverageFlags allCoverageFlags, MeanExcessFoldScratch scratch,
+            MeanExcessEtaEnergyCache cache) {
         PackStarTripleEtaCorrections.MomentPath full = fitFrequencySeverityTriplePath(
-                training.allFitSamples, fullPairEta, shrink, frequencySeverityTripleEtaMaxPositionTriples);
+                training.allFitSamples, fullPairEta, shrink, meanExcessTripleEtaMaxPositionTriples);
         PackStarTripleEtaCorrections.MomentPath[] paths = new PackStarTripleEtaCorrections.MomentPath[2];
         // Only K values present in the full path become scoring candidates.
         // The at-most-K fold procedure has the same prefixes regardless of
@@ -1900,12 +1903,12 @@ public class PackStarEstimator {
         int requiredK = full.models.size() - 1;
         for (int f = 0; f < 2; f++) paths[f] = fitFrequencySeverityTriplePath(
                 training.foldFitSamples[f], foldPairEta[f], shrink, requiredK);
-        FrequencySeverityCandidateScore pairCandidate = candidates.get(candidates.size() - 1);
+        MeanExcessCandidateScore pairCandidate = candidates.get(candidates.size() - 1);
         pairCandidate.pathStopReason = full.stopReason;
         for (int f = 0; f < 2; f++) pairCandidate.foldPathStopReasons[f] = paths[f].stopReason;
         for (int k = 1; k < full.models.size(); k++) {
             EtaCorrections fullEta = attachFrequencySeverityTripleEta(fullPairEta, full.models.get(k), 1);
-            FrequencySeverityFoldScore[] scores = new FrequencySeverityFoldScore[2];
+            MeanExcessFoldScore[] scores = new MeanExcessFoldScore[2];
             for (int validationFold = 0; validationFold < 2; validationFold++) {
                 int fitFold = 1 - validationFold;
                 // Crossfit the at-most-K procedure. A fold may stop earlier;
@@ -1915,8 +1918,8 @@ public class PackStarEstimator {
                         validationFolds[validationFold], eta, foldPairEta[fitFold], scratch,
                         validationCoverageFlags[validationFold], cache);
             }
-            FrequencySeverityCandidateScore candidate = new FrequencySeverityCandidateScore(
-                    frequencySeverityCandidateId(shrink, 1, 1) + "-K-" + k,
+            MeanExcessCandidateScore candidate = new MeanExcessCandidateScore(
+                    meanExcessCandidateId(shrink, 1, 1) + "-K-" + k,
                     shrink, 1, 1, fullEta, scores, poolFrequencySeverityFoldScores(scores),
                     auditFrequencySeverityRefit(trainingSamples, fullEta, fullPairEta,
                             allCoverageFlags, scratch, cache));
@@ -1932,7 +1935,7 @@ public class PackStarEstimator {
     }
 
     private PackStarTripleEtaCorrections.MomentPath fitFrequencySeverityTriplePath(
-            List<CCDResult> samples, EtaCorrections pairEta, FrequencySeverityShrinkPair shrink,
+            List<CCDResult> samples, EtaCorrections pairEta, MeanExcessShrinkPair shrink,
             int requiredK) {
         PackStarTripleEtaCorrections.MomentPath empty = new PackStarTripleEtaCorrections.MomentPath(rcs.getNumPos());
         if (requiredK == 0) { empty.stopReason = "required-prefix-limit"; return empty; }
@@ -1942,28 +1945,28 @@ public class PackStarEstimator {
             for (CCDResult sample : samples)
                 if (PackStarProposalLearning.fold(sample.conf) != heldOut) fit.add(sample);
             if (fit.size() < 2) { empty.stopReason = "insufficient-inner-data"; return empty; }
-            FrequencySeverityEtaTraining training = extractFrequencySeverityEtaTraining(fit);
+            MeanExcessEtaTraining training = extractFrequencySeverityEtaTraining(fit);
             EtaCorrections prior = shrinkEta(training.all, training.allCoverage, shrink.unary, shrink.pair);
             EtaCorrections pair = refitFrequencySeverityPairEta(fit, prior, training.allCoverage, shrink);
             inner[heldOut] = proposalLearningData(samples, pair);
         }
-        if (frequencySeverityDecompositionCache == null)
-            frequencySeverityDecompositionCache = new PackStarTripleDecompositionCosts.Cache(
+        if (meanExcessDecompositionCache == null)
+            meanExcessDecompositionCache = new PackStarTripleDecompositionCosts.Cache(
                     rcs, interactionGraph, initialRootedRoot,
                     getConfigInteger(PackStarTripleDecompositionCosts.PREFIX + "PreviewCacheEntries", 1024), confSpace);
-        PackStarTripleEtaCorrections.MomentPath path = frequencySeverityTripleEta.fitSecondMomentPath(rcs, interactionGraph,
+        PackStarTripleEtaCorrections.MomentPath path = meanExcessTripleEta.fitSecondMomentPath(rcs, interactionGraph,
                 proposalLearningData(samples, pairEta), inner, RT,
-                requiredK, frequencySeverityTripleEtaMaxFillEdges,
-                frequencySeverityTripleEtaMinCellContexts, frequencySeverityTripleEtaPriorStrength,
-                frequencySeverityTripleEtaResidualCapKcal, frequencySeverityTripleEtaMaxAssignments,
-                frequencySeverityDecompositionCache, frequencySeverityDecompositionLimits);
-        if (requiredK < frequencySeverityTripleEtaMaxPositionTriples && path.stopReason.equals("maximum-K"))
+                requiredK, meanExcessTripleEtaMaxFillEdges,
+                meanExcessTripleEtaMinCellContexts, meanExcessTripleEtaPriorStrength,
+                meanExcessTripleEtaResidualCapKcal, meanExcessTripleEtaMaxAssignments,
+                meanExcessDecompositionCache, meanExcessDecompositionLimits);
+        if (requiredK < meanExcessTripleEtaMaxPositionTriples && path.stopReason.equals("maximum-K"))
             path.stopReason = "required-prefix-limit";
         return path;
     }
 
-    static String frequencySeverityCandidateId(
-            FrequencySeverityShrinkPair shrink, double alpha,
+    static String meanExcessCandidateId(
+            MeanExcessShrinkPair shrink, double alpha,
             double tripleScale) {
         if (alpha != 1.0) {
             throw new IllegalArgumentException(
@@ -1997,13 +2000,13 @@ public class PackStarEstimator {
 
     private PackStarTripleEtaCorrections fitFrequencySeverityTripleEta(
             List<CCDResult> samples, EtaCorrections pairEta,
-            FrequencySeverityEtaEnergyCache energyCache,
-            FrequencySeverityShrinkPair shrink) {
-        if (frequencySeverityTripleEta == null
+            MeanExcessEtaEnergyCache energyCache,
+            MeanExcessShrinkPair shrink) {
+        if (meanExcessTripleEta == null
                 || samples == null || samples.size() < 2) {
             return null;
         }
-        if (frequencySeverityJointMomentLearning) {
+        if (meanExcessJointMomentLearning) {
             PackStarProposalLearning.Data[] inner = new PackStarProposalLearning.Data[2];
             for (int heldOut = 0; heldOut < 2; heldOut++) {
                 List<CCDResult> fit = new ArrayList<>();
@@ -2012,27 +2015,27 @@ public class PackStarEstimator {
                 if (fit.size() < 2) return null;
                 // Refit the entire pair pipeline without this inner fold; a
                 // frozen pair fit on all samples would leak held-out CCD labels.
-                FrequencySeverityEtaTraining training = extractFrequencySeverityEtaTraining(fit);
+                MeanExcessEtaTraining training = extractFrequencySeverityEtaTraining(fit);
                 EtaCorrections prior = shrinkEta(training.all, training.allCoverage,
                         shrink.unary, shrink.pair);
                 EtaCorrections pair = refitFrequencySeverityPairEta(fit, prior,
                         training.allCoverage, shrink);
                 inner[heldOut] = proposalLearningData(samples, pair);
             }
-            if (frequencySeverityDecompositionCostSelection && frequencySeverityDecompositionCache == null) {
-                frequencySeverityDecompositionCache = new PackStarTripleDecompositionCosts.Cache(
+            if (meanExcessDecompositionCostSelection && meanExcessDecompositionCache == null) {
+                meanExcessDecompositionCache = new PackStarTripleDecompositionCosts.Cache(
                         rcs, interactionGraph, initialRootedRoot,
                         getConfigInteger(PackStarTripleDecompositionCosts.PREFIX + "PreviewCacheEntries", 1024), confSpace);
             }
-            return frequencySeverityTripleEta.fitSelectedSecondMoment(
+            return meanExcessTripleEta.fitSelectedSecondMoment(
                     rcs, interactionGraph, proposalLearningData(samples, pairEta), inner, RT,
-                    frequencySeverityTripleEtaMaxPositionTriples,
-                    frequencySeverityTripleEtaMaxFillEdges,
-                    frequencySeverityTripleEtaMinCellContexts,
-                    frequencySeverityTripleEtaPriorStrength,
-                    frequencySeverityTripleEtaResidualCapKcal,
-                    frequencySeverityTripleEtaMaxAssignments,
-                    frequencySeverityDecompositionCache, frequencySeverityDecompositionLimits);
+                    meanExcessTripleEtaMaxPositionTriples,
+                    meanExcessTripleEtaMaxFillEdges,
+                    meanExcessTripleEtaMinCellContexts,
+                    meanExcessTripleEtaPriorStrength,
+                    meanExcessTripleEtaResidualCapKcal,
+                    meanExcessTripleEtaMaxAssignments,
+                    meanExcessDecompositionCache, meanExcessDecompositionLimits);
         }
         int[][] conformations = new int[samples.size()][];
         double[] residuals = new double[samples.size()];
@@ -2042,15 +2045,15 @@ public class PackStarEstimator {
             residuals[sample] = result.eTrue - result.eMin
                     - energyCache.getPairEnergy(result, pairEta);
         }
-        return frequencySeverityTripleEta.fitSelectedResidual(
+        return meanExcessTripleEta.fitSelectedResidual(
                 rcs, interactionGraph, conformations, residuals,
-                frequencySeverityTripleEtaMaxPositionTriples,
-                frequencySeverityTripleEtaMaxFillEdges,
-                frequencySeverityTripleEtaMinCellContexts,
-                frequencySeverityTripleEtaPriorStrength,
-                frequencySeverityTripleEtaLocalCapKcal,
-                frequencySeverityTripleEtaResidualCapKcal,
-                frequencySeverityTripleEtaMaxAssignments);
+                meanExcessTripleEtaMaxPositionTriples,
+                meanExcessTripleEtaMaxFillEdges,
+                meanExcessTripleEtaMinCellContexts,
+                meanExcessTripleEtaPriorStrength,
+                meanExcessTripleEtaLocalCapKcal,
+                meanExcessTripleEtaResidualCapKcal,
+                meanExcessTripleEtaMaxAssignments);
     }
 
     private static boolean hasTripleEta(EtaCorrections eta) {
@@ -2068,15 +2071,15 @@ public class PackStarEstimator {
             double energy = sample.eMin + computeEtaEnergy(sample, pair);
             conf[i] = sample.conf;
             residual[i] = sample.eTrue - energy;
-            logWeight[i] = frequencySeveritySourceLogWeight(sample, energy);
+            logWeight[i] = meanExcessSourceLogWeight(sample, energy);
         }
         return new PackStarProposalLearning.Data(conf, residual, logWeight);
     }
 
     /** Jointly fit full CCD residual using only cells of the existing graph. */
     private EtaCorrections refitFrequencySeverityPairEta(List<CCDResult> samples,
-            EtaCorrections prior, FrequencySeverityEtaCoverage coverage,
-            FrequencySeverityShrinkPair shrink) {
+            EtaCorrections prior, MeanExcessEtaCoverage coverage,
+            MeanExcessShrinkPair shrink) {
         if (samples.size() < 2) return prior;
         int[][] unaryIds = new int[prior.oneBody.length][];
         List<Double> ratios = new ArrayList<>();
@@ -2119,7 +2122,7 @@ public class PackStarEstimator {
         for (int j = 0; j < ratios.size(); j++) regularization[j] = ratios.get(j);
         PackStarProposalLearning.JointFit fit = PackStarProposalLearning.jointFit(
                 features, data.residual, data.logWeight, regularization,
-                frequencySeverityTripleEtaResidualCapKcal, 40);
+                meanExcessTripleEtaResidualCapKcal, 40);
         for (int p = 0; p < unaryIds.length; p++) {
             for (int rc = 0; rc < unaryIds[p].length; rc++) {
                 int id = unaryIds[p][rc];
@@ -2148,14 +2151,14 @@ public class PackStarEstimator {
         return eta.tripleEta.summarizeResidual(eta::getPairEta);
     }
 
-    private FrequencySeverityFoldScore scoreFrequencySeverityEtaFold(
+    private MeanExcessFoldScore scoreFrequencySeverityEtaFold(
             int validationFold,
             List<CCDResult> samples,
             EtaCorrections eta,
             EtaCorrections pairEta,
-            FrequencySeverityFoldScratch scratch,
-            FrequencySeverityCoverageFlags coverageFlags,
-            FrequencySeverityEtaEnergyCache energyCache) {
+            MeanExcessFoldScratch scratch,
+            MeanExcessCoverageFlags coverageFlags,
+            MeanExcessEtaEnergyCache energyCache) {
         int n = samples.size();
         if (n <= 1) {
             return invalidFrequencySeverityFoldScore(validationFold, n);
@@ -2167,7 +2170,7 @@ public class PackStarEstimator {
             CCDResult sample = samples.get(i);
             double targetEnergy = sample.eMin
                     + energyCache.getEnergy(sample, eta, pairEta);
-            logA[i] = frequencySeveritySourceLogWeight(
+            logA[i] = meanExcessSourceLogWeight(
                     sample, targetEnergy);
             logV[i] = logA[i]
                     + (targetEnergy - sample.eTrue) / RT;
@@ -2185,13 +2188,13 @@ public class PackStarEstimator {
         double[] proposalWeights = scratch.proposalWeights;
         double[] logRelative = scratch.logRelative;
         double sumWeightSquares = 0.0;
-        double bulkMean = 0.0;
-        double tailProbability = 0.0;
+        double clippedMean = 0.0;
+        double exceedanceProbability = 0.0;
         double candidateUnaryUndertrained = 0.0;
         double candidatePairUndertrained = 0.0;
         int baselineUnaryUndertrained = 0;
         int baselinePairUndertrained = 0;
-        double logClip = frequencySeverityRelativeBoundKcal / RT;
+        double logClip = meanExcessRelativeBoundKcal / RT;
         double[] bulk = scratch.bulk;
         for (int i = 0; i < n; i++) {
             double weight = Math.exp(logA[i] - logSumA);
@@ -2206,8 +2209,8 @@ public class PackStarEstimator {
             double value = logR >= logClip
                     ? 1.0 : Math.exp(logR - logClip);
             bulk[i] = value;
-            bulkMean += weight * value;
-            if (logR > logClip) tailProbability += weight;
+            clippedMean += weight * value;
+            if (logR > logClip) exceedanceProbability += weight;
             if (coverageFlags.unaryUndertrained[i]) {
                 baselineUnaryUndertrained++;
                 candidateUnaryUndertrained += weight;
@@ -2227,12 +2230,12 @@ public class PackStarEstimator {
         if (!(varianceDenominator > 0.0)) {
             return invalidFrequencySeverityFoldScore(validationFold, n);
         }
-        double bulkVariance = 0.0;
+        double clippedVariance = 0.0;
         for (int i = 0; i < n; i++) {
-            double centered = bulk[i] - bulkMean;
-            bulkVariance += proposalWeights[i] * centered * centered;
+            double centered = bulk[i] - clippedMean;
+            clippedVariance += proposalWeights[i] * centered * centered;
         }
-        bulkVariance /= varianceDenominator;
+        clippedVariance /= varianceDenominator;
 
         double logMeanR = weightedLogMeanExp(
                 proposalWeights, logRelative, 1.0);
@@ -2258,17 +2261,17 @@ public class PackStarEstimator {
         PackStarFrequencySeverityPAC.Interval atMax;
         try {
             moments = new PackStarFrequencySeverityPAC.Moments(
-                    clamp(bulkMean, 0.0, 1.0),
-                    Math.max(0.0, bulkVariance) * nstarInflate,
-                    clamp(tailProbability, 0.0, 1.0));
+                    clamp(clippedMean, 0.0, 1.0),
+                    Math.max(0.0, clippedVariance) * nstarInflate,
+                    clamp(exceedanceProbability, 0.0, 1.0));
             sizing = PackStarFrequencySeverityPAC.size(
                     moments, maxEstSamples,
                     configuredFrequencySeverityUnreachableSamples(),
-                    targetEpsilon, frequencySeveritySizeSafety, frequencySeverityCap,
-                    frequencySeverityEventDelta(), frequencySeverityEventDelta());
+                    targetEpsilon, meanExcessSizeSafety, conditionalMeanExcessBound,
+                    meanExcessEventDelta(), meanExcessEventDelta());
             atMax = PackStarFrequencySeverityPAC.project(
-                    maxEstSamples, moments, frequencySeverityCap,
-                    frequencySeverityEventDelta(), frequencySeverityEventDelta());
+                    maxEstSamples, moments, conditionalMeanExcessBound,
+                    meanExcessEventDelta(), meanExcessEventDelta());
         } catch (IllegalArgumentException ex) {
             return invalidFrequencySeverityFoldScore(validationFold, n);
         }
@@ -2276,25 +2279,25 @@ public class PackStarEstimator {
         boolean finite = Double.isFinite(logMu)
                 && Double.isFinite(shiftEssFraction)
                 && Double.isFinite(logTargetM2)
-                && Double.isFinite(bulkMean)
-                && Double.isFinite(bulkVariance)
-                && Double.isFinite(tailProbability)
+                && Double.isFinite(clippedMean)
+                && Double.isFinite(clippedVariance)
+                && Double.isFinite(exceedanceProbability)
                 && Double.isFinite(unaryAmplification)
                 && Double.isFinite(pairAmplification);
         boolean shiftPass = shiftEssFraction + 1.0e-12
-                >= frequencySeverityMinShiftEssFraction;
+                >= meanExcessMinShiftEssFraction;
         boolean coveragePass = unaryAmplification
-                <= frequencySeverityMaxUndertrainedAmplification + 1.0e-12
+                <= meanExcessMaxUndertrainedAmplification + 1.0e-12
                 && pairAmplification
-                <= frequencySeverityMaxUndertrainedAmplification + 1.0e-12;
-        boolean bulkPass = atMax.bulkLower > 0.0;
+                <= meanExcessMaxUndertrainedAmplification + 1.0e-12;
+        boolean bulkPass = atMax.clippedLower > 0.0;
         boolean reachabilityPass = sizing.reachableAtMax
                 && sizing.epsilonAtMaxSamples
                 <= targetEpsilon + 1.0e-12;
-        return new FrequencySeverityFoldScore(
+        return new MeanExcessFoldScore(
                 validationFold, n, logMu, shiftEss,
                 shiftEssFraction, targetM2, targetEssFraction,
-                bulkMean, bulkVariance, tailProbability,
+                clippedMean, clippedVariance, exceedanceProbability,
                 baselineUnaryMass, candidateUnaryUndertrained,
                 unaryAmplification, baselinePairMass,
                 candidatePairUndertrained, pairAmplification,
@@ -2302,16 +2305,16 @@ public class PackStarEstimator {
                 bulkPass, reachabilityPass);
     }
 
-    private FrequencySeverityFoldScore invalidFrequencySeverityFoldScore(int fold, int sampleCount) {
+    private MeanExcessFoldScore invalidFrequencySeverityFoldScore(int fold, int sampleCount) {
         PackStarFrequencySeverityPAC.Moments fallback =
                 new PackStarFrequencySeverityPAC.Moments(0.0, 0.0, 1.0);
         PackStarFrequencySeverityPAC.Sizing sizing =
                 PackStarFrequencySeverityPAC.size(
                         fallback, maxEstSamples,
                         configuredFrequencySeverityUnreachableSamples(),
-                        targetEpsilon, frequencySeveritySizeSafety, frequencySeverityCap,
-                        frequencySeverityEventDelta(), frequencySeverityEventDelta());
-        return new FrequencySeverityFoldScore(
+                        targetEpsilon, meanExcessSizeSafety, conditionalMeanExcessBound,
+                        meanExcessEventDelta(), meanExcessEventDelta());
+        return new MeanExcessFoldScore(
                 fold, sampleCount, Double.NaN, 0.0, 0.0,
                 Double.POSITIVE_INFINITY, 0.0, 0.0, 0.0, 1.0,
                 1.0, 1.0, Double.POSITIVE_INFINITY,
@@ -2319,28 +2322,28 @@ public class PackStarEstimator {
                 sizing, false, false, false, false, false);
     }
 
-    private FrequencySeverityCrossfitScore poolFrequencySeverityFoldScores(
-            FrequencySeverityFoldScore[] folds) {
+    private MeanExcessCrossfitScore poolFrequencySeverityFoldScores(
+            MeanExcessFoldScore[] folds) {
         if (folds == null || folds.length == 0) {
             return invalidFrequencySeverityCrossfitScore();
         }
         int[] sampleCounts = new int[folds.length];
         double[] shiftEss = new double[folds.length];
-        double[] bulkMeans = new double[folds.length];
-        double[] bulkVariances = new double[folds.length];
-        double[] tailProbabilities = new double[folds.length];
+        double[] clippedMeans = new double[folds.length];
+        double[] clippedVariances = new double[folds.length];
+        double[] exceedanceProbabilities = new double[folds.length];
         int total = 0;
         boolean allFoldsFinite = true;
         boolean allFoldsShiftPass = true;
         boolean allFoldsCoveragePass = true;
         for (int fold = 0; fold < folds.length; fold++) {
-            FrequencySeverityFoldScore score = folds[fold];
+            MeanExcessFoldScore score = folds[fold];
             if (score == null) return invalidFrequencySeverityCrossfitScore();
             sampleCounts[fold] = score.sampleCount;
             shiftEss[fold] = score.shiftEss;
-            bulkMeans[fold] = score.bulkMean;
-            bulkVariances[fold] = score.bulkVariance;
-            tailProbabilities[fold] = score.tailProbability;
+            clippedMeans[fold] = score.clippedMean;
+            clippedVariances[fold] = score.clippedVariance;
+            exceedanceProbabilities[fold] = score.exceedanceProbability;
             total += score.sampleCount;
             allFoldsFinite &= score.finite;
             allFoldsShiftPass &= score.shiftPass;
@@ -2353,8 +2356,8 @@ public class PackStarEstimator {
         PackStarFrequencySeverityPAC.PooledCrossfitMoments pooled;
         try {
             pooled = PackStarFrequencySeverityPAC.poolCrossfitMoments(
-                    sampleCounts, shiftEss, bulkMeans,
-                    bulkVariances, tailProbabilities);
+                    sampleCounts, shiftEss, clippedMeans,
+                    clippedVariances, exceedanceProbabilities);
         } catch (IllegalArgumentException ex) {
             return invalidFrequencySeverityCrossfitScore();
         }
@@ -2365,7 +2368,7 @@ public class PackStarEstimator {
         double candidateUnaryMass = 0.0;
         double baselinePairMass = 0.0;
         double candidatePairMass = 0.0;
-        for (FrequencySeverityFoldScore fold : folds) {
+        for (MeanExcessFoldScore fold : folds) {
             double foldMass = (double) fold.sampleCount / total;
             logMu += foldMass * fold.logMu;
             targetM2 += foldMass * fold.targetM2;
@@ -2390,19 +2393,19 @@ public class PackStarEstimator {
         try {
             PackStarFrequencySeverityPAC.Moments inflated =
                     new PackStarFrequencySeverityPAC.Moments(
-                            pooled.moments.bulkMean,
-                            pooled.moments.bulkVariance * nstarInflate,
-                            pooled.moments.tailProbability);
+                            pooled.moments.clippedMean,
+                            pooled.moments.clippedVariance * nstarInflate,
+                            pooled.moments.exceedanceProbability);
             sizing = PackStarFrequencySeverityPAC.size(
                     inflated, maxEstSamples,
                     configuredFrequencySeverityUnreachableSamples(),
-                    targetEpsilon, frequencySeveritySizeSafety,
-                    frequencySeverityCap, frequencySeverityEventDelta(),
-                    frequencySeverityEventDelta());
+                    targetEpsilon, meanExcessSizeSafety,
+                    conditionalMeanExcessBound, meanExcessEventDelta(),
+                    meanExcessEventDelta());
             atMax = PackStarFrequencySeverityPAC.project(
-                    maxEstSamples, inflated, frequencySeverityCap,
-                    frequencySeverityEventDelta(),
-                    frequencySeverityEventDelta());
+                    maxEstSamples, inflated, conditionalMeanExcessBound,
+                    meanExcessEventDelta(),
+                    meanExcessEventDelta());
         } catch (IllegalArgumentException ex) {
             return invalidFrequencySeverityCrossfitScore();
         }
@@ -2411,31 +2414,31 @@ public class PackStarEstimator {
                 && Double.isFinite(pooled.effectiveSampleSize)
                 && Double.isFinite(pooled.effectiveSampleFraction)
                 && Double.isFinite(targetEssFraction)
-                && Double.isFinite(pooled.moments.bulkMean)
-                && Double.isFinite(pooled.moments.bulkVariance)
-                && Double.isFinite(pooled.moments.tailProbability)
+                && Double.isFinite(pooled.moments.clippedMean)
+                && Double.isFinite(pooled.moments.clippedVariance)
+                && Double.isFinite(pooled.moments.exceedanceProbability)
                 && Double.isFinite(unaryAmplification)
                 && Double.isFinite(pairAmplification);
         boolean shiftPass = finite
                 && pooled.effectiveSampleFraction + 1.0e-12
-                >= frequencySeverityMinShiftEssFraction;
+                >= meanExcessMinShiftEssFraction;
         boolean coveragePass = finite
                 && unaryAmplification
-                <= frequencySeverityMaxUndertrainedAmplification + 1.0e-12
+                <= meanExcessMaxUndertrainedAmplification + 1.0e-12
                 && pairAmplification
-                <= frequencySeverityMaxUndertrainedAmplification + 1.0e-12;
-        boolean bulkPass = atMax.bulkLower > 0.0;
+                <= meanExcessMaxUndertrainedAmplification + 1.0e-12;
+        boolean bulkPass = atMax.clippedLower > 0.0;
         boolean reachabilityPass = sizing.reachableAtMax
                 && sizing.epsilonAtMaxSamples
                 <= targetEpsilon + 1.0e-12;
-        return new FrequencySeverityCrossfitScore(
+        return new MeanExcessCrossfitScore(
                 pooled.sampleCount, logMu,
                 pooled.effectiveSampleSize,
                 pooled.effectiveSampleFraction,
                 targetM2, targetEssFraction,
-                pooled.moments.bulkMean,
-                pooled.moments.bulkVariance,
-                pooled.moments.tailProbability,
+                pooled.moments.clippedMean,
+                pooled.moments.clippedVariance,
+                pooled.moments.exceedanceProbability,
                 baselineUnaryMass, candidateUnaryMass,
                 unaryAmplification,
                 baselinePairMass, candidatePairMass,
@@ -2445,17 +2448,17 @@ public class PackStarEstimator {
                 coveragePass, bulkPass, reachabilityPass);
     }
 
-    private FrequencySeverityCrossfitScore invalidFrequencySeverityCrossfitScore() {
+    private MeanExcessCrossfitScore invalidFrequencySeverityCrossfitScore() {
         PackStarFrequencySeverityPAC.Moments fallback =
                 new PackStarFrequencySeverityPAC.Moments(0.0, 0.0, 1.0);
         PackStarFrequencySeverityPAC.Sizing sizing =
                 PackStarFrequencySeverityPAC.size(
                         fallback, maxEstSamples,
                         configuredFrequencySeverityUnreachableSamples(),
-                        targetEpsilon, frequencySeveritySizeSafety,
-                        frequencySeverityCap, frequencySeverityEventDelta(),
-                        frequencySeverityEventDelta());
-        return new FrequencySeverityCrossfitScore(
+                        targetEpsilon, meanExcessSizeSafety,
+                        conditionalMeanExcessBound, meanExcessEventDelta(),
+                        meanExcessEventDelta());
+        return new MeanExcessCrossfitScore(
                 0, Double.NaN, 0.0, 0.0,
                 Double.POSITIVE_INFINITY, 0.0,
                 0.0, 0.0, 1.0,
@@ -2465,11 +2468,11 @@ public class PackStarEstimator {
                 false, false, false, false, false);
     }
 
-    private FrequencySeverityCandidateScore selectBestFrequencySeverityCandidate(
-            List<FrequencySeverityCandidateScore> candidates) {
-        if (frequencySeverityBudgetForward) {
-            List<FrequencySeverityCandidateScore> eligible = new ArrayList<>();
-            for (FrequencySeverityCandidateScore candidate : candidates)
+    private MeanExcessCandidateScore selectBestFrequencySeverityCandidate(
+            List<MeanExcessCandidateScore> candidates) {
+        if (meanExcessBudgetForward) {
+            List<MeanExcessCandidateScore> eligible = new ArrayList<>();
+            for (MeanExcessCandidateScore candidate : candidates)
                 if (candidate.eligible) eligible.add(candidate);
             return PackStarProposalLearning.chooseWithinFivePercent(eligible,
                     candidate -> candidate.crossfit.sizing.finalSamples,
@@ -2483,8 +2486,8 @@ public class PackStarEstimator {
                         return 0;
                     });
         }
-        FrequencySeverityCandidateScore best = null;
-        for (FrequencySeverityCandidateScore candidate : candidates) {
+        MeanExcessCandidateScore best = null;
+        for (MeanExcessCandidateScore candidate : candidates) {
             if (!candidate.eligible) continue;
             if (best == null || isBetterFrequencySeverityCandidate(candidate, best)) {
                 best = candidate;
@@ -2493,11 +2496,11 @@ public class PackStarEstimator {
         return best;
     }
 
-    private PackStarTripleDecompositionCosts.Cost candidateStructure(FrequencySeverityCandidateScore candidate) {
+    private PackStarTripleDecompositionCosts.Cost candidateStructure(MeanExcessCandidateScore candidate) {
         Set<Long> fill = new LinkedHashSet<>();
         for (int[] edge : candidate.fullEta.tripleEta.requiredFillEdges(interactionGraph))
             fill.add(((long) edge[0] << 32) | edge[1]);
-        return frequencySeverityDecompositionCache.preview(fill);
+        return meanExcessDecompositionCache.preview(fill);
     }
 
     /**
@@ -2512,11 +2515,11 @@ public class PackStarEstimator {
      * cannot supply, and it can never reach final sampling without a fresh
      * on-policy validation batch.
      */
-    private FrequencySeverityCandidateScore selectFrequencySeverityDiscoveryProbe(
-            List<FrequencySeverityCandidateScore> candidates) {
-        FrequencySeverityCandidateScore strongest = null;
-        for (FrequencySeverityCandidateScore candidate : candidates) {
-            if ((frequencySeverityProposalLearning && !(candidate.alpha > 0.0))
+    private MeanExcessCandidateScore selectFrequencySeverityDiscoveryProbe(
+            List<MeanExcessCandidateScore> candidates) {
+        MeanExcessCandidateScore strongest = null;
+        for (MeanExcessCandidateScore candidate : candidates) {
+            if ((meanExcessProposalLearning && !(candidate.alpha > 0.0))
                     || candidate.shrink.unary != 0.0
                     || candidate.shrink.pair != 0.0
                     || candidate.crossfit == null
@@ -2525,16 +2528,16 @@ public class PackStarEstimator {
                     || !candidate.crossfit.allFoldsFinite
                     || !candidate.refitAudit.finite
                     || candidate.crossfit.shiftEssFraction + 1.0e-12
-                    < frequencySeverityDiscoveryMinShiftEssFraction
+                    < meanExcessDiscoveryMinShiftEssFraction
                     || candidate.refitAudit.shiftEssFraction + 1.0e-12
-                    < frequencySeverityDiscoveryMinShiftEssFraction) {
+                    < meanExcessDiscoveryMinShiftEssFraction) {
                 continue;
             }
             boolean everyFoldRetainsDiscoveryOverlap = true;
-            for (FrequencySeverityFoldScore fold : candidate.folds) {
+            for (MeanExcessFoldScore fold : candidate.folds) {
                 if (!fold.finite
                         || fold.shiftEssFraction + 1.0e-12
-                        < frequencySeverityDiscoveryMinShiftEssFraction) {
+                        < meanExcessDiscoveryMinShiftEssFraction) {
                     everyFoldRetainsDiscoveryOverlap = false;
                     break;
                 }
@@ -2552,8 +2555,8 @@ public class PackStarEstimator {
     }
 
     private static boolean isBetterFrequencySeverityDiscoveryStructure(
-            FrequencySeverityCandidateScore candidate,
-            FrequencySeverityCandidateScore incumbent) {
+            MeanExcessCandidateScore candidate,
+            MeanExcessCandidateScore incumbent) {
         int compare = Double.compare(
                 candidate.crossfit.sizing.epsilonAtMaxSamples,
                 incumbent.crossfit.sizing.epsilonAtMaxSamples);
@@ -2571,7 +2574,7 @@ public class PackStarEstimator {
         return candidate.id.compareTo(incumbent.id) < 0;
     }
 
-    private boolean frequencySeverityPilotPass(
+    private boolean meanExcessPilotPass(
             PackStarFrequencySeverityPAC.Interval interval,
             PackStarFrequencySeverityPAC.Sizing sizing) {
         return interval != null && sizing != null
@@ -2604,7 +2607,7 @@ public class PackStarEstimator {
                 <= targetEpsilon + 1.0e-12;
     }
 
-    private FrequencySeverityPilotEvaluation evaluateFrequencySeverityPilot(
+    private MeanExcessPilotEvaluation evaluateFrequencySeverityPilot(
             List<CCDResult> samples, EtaCorrections eta,
             double logMuTrain) {
         double[] logRelative = computeFrequencySeverityLogRelativeWeights(
@@ -2612,32 +2615,32 @@ public class PackStarEstimator {
         PackStarFrequencySeverityPAC.Interval interval =
                 PackStarFrequencySeverityPAC.evaluate(
                         logRelative,
-                        frequencySeverityRelativeBoundKcal / RT,
-                        frequencySeverityCap,
-                        frequencySeverityEventDelta(),
-                        frequencySeverityEventDelta());
+                        meanExcessRelativeBoundKcal / RT,
+                        conditionalMeanExcessBound,
+                        meanExcessEventDelta(),
+                        meanExcessEventDelta());
         PackStarFrequencySeverityPAC.Moments sizingMoments =
                 new PackStarFrequencySeverityPAC.Moments(
-                        interval.bulkMean,
-                        interval.bulkVariance * nstarInflate,
-                        interval.tailProbabilityEmpirical);
+                        interval.clippedMean,
+                        interval.clippedVariance * nstarInflate,
+                        interval.exceedanceProbabilityEmpirical);
         PackStarFrequencySeverityPAC.Sizing sizing =
                 PackStarFrequencySeverityPAC.size(
                         sizingMoments, maxEstSamples,
                         configuredFrequencySeverityUnreachableSamples(),
-                        targetEpsilon, frequencySeveritySizeSafety,
-                        frequencySeverityCap,
-                        frequencySeverityEventDelta(),
-                        frequencySeverityEventDelta());
-        return new FrequencySeverityPilotEvaluation(
+                        targetEpsilon, meanExcessSizeSafety,
+                        conditionalMeanExcessBound,
+                        meanExcessEventDelta(),
+                        meanExcessEventDelta());
+        return new MeanExcessPilotEvaluation(
                 logRelative, interval, sizing);
     }
 
     private static boolean isBetterFrequencySeverityCandidate(
-            FrequencySeverityCandidateScore candidate,
-            FrequencySeverityCandidateScore incumbent) {
-        FrequencySeverityCrossfitScore candidateScore = candidate.crossfit;
-        FrequencySeverityCrossfitScore incumbentScore = incumbent.crossfit;
+            MeanExcessCandidateScore candidate,
+            MeanExcessCandidateScore incumbent) {
+        MeanExcessCrossfitScore candidateScore = candidate.crossfit;
+        MeanExcessCrossfitScore incumbentScore = incumbent.crossfit;
         if (candidateScore.sizing.finalSamples
                 != incumbentScore.sizing.finalSamples) {
             return candidateScore.sizing.finalSamples
@@ -2672,7 +2675,7 @@ public class PackStarEstimator {
     }
 
     /** Two confidence events for each of the three K* partition functions. */
-    private double frequencySeverityEventDelta() {
+    private double meanExcessEventDelta() {
         return delta / 6.0;
     }
 
@@ -2685,12 +2688,12 @@ public class PackStarEstimator {
         return candidateMass / baselineMass;
     }
 
-    private FrequencySeverityRefitAudit auditFrequencySeverityRefit(
+    private MeanExcessRefitAudit auditFrequencySeverityRefit(
             List<CCDResult> samples, EtaCorrections eta,
             EtaCorrections pairEta,
-            FrequencySeverityCoverageFlags coverageFlags,
-            FrequencySeverityFoldScratch scratch,
-            FrequencySeverityEtaEnergyCache energyCache) {
+            MeanExcessCoverageFlags coverageFlags,
+            MeanExcessFoldScratch scratch,
+            MeanExcessEtaEnergyCache energyCache) {
         int n = samples.size();
         scratch.ensureCapacity(n);
         double[] logA = scratch.logA;
@@ -2699,12 +2702,12 @@ public class PackStarEstimator {
             CCDResult sample = samples.get(i);
             double targetEnergy = sample.eMin
                     + energyCache.getEnergy(sample, eta, pairEta);
-            logA[i] = frequencySeveritySourceLogWeight(
+            logA[i] = meanExcessSourceLogWeight(
                     sample, targetEnergy);
             logSumA = logAddExp(logSumA, logA[i]);
         }
         if (!Double.isFinite(logSumA)) {
-            return new FrequencySeverityRefitAudit(
+            return new MeanExcessRefitAudit(
                     Double.NaN, Double.NaN, Double.NaN,
                     Double.NaN, Double.NaN, Double.NaN,
                     Double.NaN, false, false, false);
@@ -2742,13 +2745,13 @@ public class PackStarEstimator {
                 && Double.isFinite(unaryAmplification)
                 && Double.isFinite(pairAmplification);
         boolean shiftPass = finite && shiftEssFraction + 1.0e-12
-                >= frequencySeverityMinShiftEssFraction;
+                >= meanExcessMinShiftEssFraction;
         boolean coveragePass = finite
                 && unaryAmplification
-                <= frequencySeverityMaxUndertrainedAmplification + 1.0e-12
+                <= meanExcessMaxUndertrainedAmplification + 1.0e-12
                 && pairAmplification
-                <= frequencySeverityMaxUndertrainedAmplification + 1.0e-12;
-        return new FrequencySeverityRefitAudit(
+                <= meanExcessMaxUndertrainedAmplification + 1.0e-12;
+        return new MeanExcessRefitAudit(
                 shiftEssFraction,
                 baselineUnaryMass, candidateUnaryMass,
                 unaryAmplification,
@@ -2791,7 +2794,7 @@ public class PackStarEstimator {
      * self-normalization.  Retaining logZ_source is essential when batches
      * came from different sequential proposals.
      */
-    static double frequencySeveritySourceLogWeight(
+    static double meanExcessSourceLogWeight(
             double targetEnergy, double sourceEnergy,
             double sourceLogZ, double rt) {
         if (!Double.isFinite(targetEnergy)
@@ -2803,13 +2806,13 @@ public class PackStarEstimator {
         return -(targetEnergy - sourceEnergy) / rt + sourceLogZ;
     }
 
-    private double frequencySeveritySourceLogWeight(
+    private double meanExcessSourceLogWeight(
             CCDResult sample, double targetEnergy) {
         if (Double.isFinite(sample.sourceProposalEnergy)
                 && Double.isFinite(sample.sourceProposalLogZ)
                 && sample.sourceProposalId != null
                 && !sample.sourceProposalId.isEmpty()) {
-            return frequencySeveritySourceLogWeight(
+            return meanExcessSourceLogWeight(
                     targetEnergy, sample.sourceProposalEnergy,
                     sample.sourceProposalLogZ, RT);
         }
@@ -2847,13 +2850,13 @@ public class PackStarEstimator {
     }
 
     private boolean touchesFrequencySeverityUndertrainedUnary(
-            int[] conf, FrequencySeverityEtaCoverage coverage) {
+            int[] conf, MeanExcessEtaCoverage coverage) {
         return touchesFrequencySeverityUnaryBelowCount(
-                conf, coverage, frequencySeverityMinTrainCount);
+                conf, coverage, meanExcessMinTrainCount);
     }
 
     private boolean touchesFrequencySeverityUnaryBelowCount(
-            int[] conf, FrequencySeverityEtaCoverage coverage,
+            int[] conf, MeanExcessEtaCoverage coverage,
             int minimumCount) {
         for (int pos = 0; pos < conf.length; pos++) {
             int rc = conf[pos];
@@ -2865,13 +2868,13 @@ public class PackStarEstimator {
     }
 
     private boolean touchesFrequencySeverityUndertrainedPair(
-            int[] conf, FrequencySeverityEtaCoverage coverage) {
+            int[] conf, MeanExcessEtaCoverage coverage) {
         return touchesFrequencySeverityPairBelowCount(
-                conf, coverage, frequencySeverityMinTrainCount);
+                conf, coverage, meanExcessMinTrainCount);
     }
 
     private boolean touchesFrequencySeverityPairBelowCount(
-            int[] conf, FrequencySeverityEtaCoverage coverage,
+            int[] conf, MeanExcessEtaCoverage coverage,
             int minimumCount) {
         for (int[] edge : interactionEdges) {
             int pos1 = edge[0];
@@ -2886,7 +2889,7 @@ public class PackStarEstimator {
     }
 
     private EtaCorrections shrinkEta(EtaCorrections raw,
-                                     FrequencySeverityEtaCoverage coverage,
+                                     MeanExcessEtaCoverage coverage,
                                      double unaryShrink,
                                      double pairShrink) {
         int[] numRCs = new int[raw.oneBody.length];
@@ -2942,37 +2945,37 @@ public class PackStarEstimator {
             return;
         }
 
-        frequencySeverityTripleEta = null;
-        frequencySeverityTripleEtaFallbackReason = null;
-        if (frequencySeverityTripleEtaEnabled
-                && frequencySeverityTripleEtaScale > 0.0) {
+        meanExcessTripleEta = null;
+        meanExcessTripleEtaFallbackReason = null;
+        if (meanExcessTripleEtaEnabled
+                && meanExcessTripleEtaScale > 0.0) {
             try {
-                long workload = frequencySeverityJointMomentLearning ? 0L
+                long workload = meanExcessJointMomentLearning ? 0L
                         : PackStarTripleEtaCorrections.countCliqueAssignments(
                                 rcs, interactionGraph);
                 System.out.println(
                         "[PACK*-adaptive-frequency-severity] triple-eta preflight:"
                                 + " cliqueAssignments=" + workload
-                                + ", jointMomentLearning=" + frequencySeverityJointMomentLearning
+                                + ", jointMomentLearning=" + meanExcessJointMomentLearning
                                 + ", cap="
-                                + frequencySeverityTripleEtaMaxAssignments
+                                + meanExcessTripleEtaMaxAssignments
                                 + ", maximumScale="
-                                + frequencySeverityTripleEtaScale
+                                + meanExcessTripleEtaScale
                                 + ", scaleGrid="
                                 + Arrays.toString(
-                                frequencySeverityTripleEtaScaleGrid));
-                frequencySeverityTripleEta = frequencySeverityJointMomentLearning
+                                meanExcessTripleEtaScaleGrid));
+                meanExcessTripleEta = meanExcessJointMomentLearning
                         ? PackStarTripleEtaCorrections.emptyFitted(rcs.getNumPos())
                         : PackStarTripleEtaCorrections.compute(
                                 rcs, minimizingEcalc, interactionGraph,
                                 branchMinimizingEmat,
-                                frequencySeverityTripleEtaMaxAssignments);
-                frequencySeverityTripleEta.writeArtifacts(
+                                meanExcessTripleEtaMaxAssignments);
+                meanExcessTripleEta.writeArtifacts(
                         new File(artifactDir, "triple_eta_table.tsv"),
                         new File(artifactDir, "triple_eta_summary.tsv"));
             } catch (PackStarTripleEtaCorrections.AssignmentCapExceededException ex) {
-                frequencySeverityTripleEta = null;
-                frequencySeverityTripleEtaFallbackReason = ex.getMessage();
+                meanExcessTripleEta = null;
+                meanExcessTripleEtaFallbackReason = ex.getMessage();
                 writeFrequencySeverityTripleEtaFallbackArtifactQuietly(
                         artifactDir, ex);
                 System.out.println(
@@ -2995,34 +2998,34 @@ public class PackStarEstimator {
         }
 
         System.out.println("[PACK*-adaptive-frequency-severity] enabled"
-                + "; proposalLearning=" + frequencySeverityProposalLearning
+                + "; proposalLearning=" + meanExcessProposalLearning
                 + "; qMTrain=" + trainSamples
-                + "; discoveryPerRound=" + frequencySeverityDiscoverySamples
-                + "->" + frequencySeverityDiscoveryMaxSamples
-                + "; maxRefits=" + frequencySeverityMaxRefits
-                + "; validation=" + frequencySeverityValidationSamples
-                + "; folds=" + frequencySeverityFolds
-                + "; finalMinShiftESS=" + frequencySeverityMinShiftEssFraction
+                + "; discoveryPerRound=" + meanExcessDiscoverySamples
+                + "->" + meanExcessDiscoveryMaxSamples
+                + "; maxRefits=" + meanExcessMaxRefits
+                + "; validation=" + meanExcessValidationSamples
+                + "; folds=" + meanExcessFolds
+                + "; finalMinShiftESS=" + meanExcessMinShiftEssFraction
                 + "; discoveryMinShiftESS="
-                + frequencySeverityDiscoveryMinShiftEssFraction
+                + meanExcessDiscoveryMinShiftEssFraction
                 + "; candidateDP=0; proposalDP<="
-                + (frequencySeverityMaxRefits + 1)
+                + (meanExcessMaxRefits + 1)
                 + "; tripleEta="
-                + (frequencySeverityTripleEta == null
-                ? (frequencySeverityTripleEtaFallbackReason == null
+                + (meanExcessTripleEta == null
+                ? (meanExcessTripleEtaFallbackReason == null
                 ? "disabled" : "pair-only-cap-fallback")
                 : "crossfit-selected-signed-residual")
                 + "; tripleEtaMaximumScale="
-                + frequencySeverityTripleEtaScale
+                + meanExcessTripleEtaScale
                 + "; tripleEtaScaleGrid="
-                + Arrays.toString(frequencySeverityTripleEtaScaleGrid)
+                + Arrays.toString(meanExcessTripleEtaScaleGrid)
                 + "; selectedTripleLimit="
-                + frequencySeverityTripleEtaMaxPositionTriples
+                + meanExcessTripleEtaMaxPositionTriples
                 + "; fillEdgeLimit="
-                + frequencySeverityTripleEtaMaxFillEdges
-                + "; alpha=" + (frequencySeverityProposalLearning ? "1-fixed" : "0-fixed-qm")
-                + "; triple-model=" + (!frequencySeverityProposalLearning ? "disabled"
-                : frequencySeverityBudgetForward ? "K-prefix-path" : "pair-only-vs-selected"));
+                + meanExcessTripleEtaMaxFillEdges
+                + "; alpha=" + (meanExcessProposalLearning ? "1-fixed" : "0-fixed-qm")
+                + "; triple-model=" + (!meanExcessProposalLearning ? "disabled"
+                : meanExcessBudgetForward ? "K-prefix-path" : "pair-only-vs-selected"));
 
         String trainStage = "adaptive-frequency-severity-qm-train";
         List<CCDResult> trainCCD = runParallelCCD(
@@ -3051,24 +3054,24 @@ public class PackStarEstimator {
         int discoveryCCDCalls = 0;
         int proposalDpSweeps = 0;
 
-        FrequencySeverityCandidateScore selected = null;
-        FrequencySeverityEtaTraining selectedTraining = null;
+        MeanExcessCandidateScore selected = null;
+        MeanExcessEtaTraining selectedTraining = null;
         EtaCorrections selectedEta = null;
         EnergyMatrix selectedEmat = null;
         double selectedLogZ = Double.NaN;
         double selectedLogMu = Double.NaN;
-        FrequencySeverityPilotEvaluation preliminaryEvaluation = null;
+        MeanExcessPilotEvaluation preliminaryEvaluation = null;
         List<CCDResult> preliminarySamples = null;
         int selectedRound = -1;
         boolean selectedWasDiscoveryProbe = false;
 
-        for (int round = 0; round <= frequencySeverityMaxRefits; round++) {
+        for (int round = 0; round <= meanExcessMaxRefits; round++) {
             String artifactPrefix = String.format(
                     Locale.ROOT, "adaptive_eta_round_%02d", round);
-            FrequencySeverityEtaTraining training;
-            List<FrequencySeverityCandidateScore> candidates;
-            FrequencySeverityCandidateScore finalEligible;
-            FrequencySeverityCandidateScore discoveryProbe;
+            MeanExcessEtaTraining training;
+            List<MeanExcessCandidateScore> candidates;
+            MeanExcessCandidateScore finalEligible;
+            MeanExcessCandidateScore discoveryProbe;
             try {
                 training = extractFrequencySeverityEtaTraining(
                         history, scoringBatch);
@@ -3078,7 +3081,7 @@ public class PackStarEstimator {
                 discoveryProbe = finalEligible == null
                         ? selectFrequencySeverityDiscoveryProbe(candidates)
                         : null;
-                FrequencySeverityCandidateScore roundSelection =
+                MeanExcessCandidateScore roundSelection =
                         finalEligible != null ? finalEligible : discoveryProbe;
                 writeFrequencySeverityTrainingArtifacts(
                         artifactDir, artifactPrefix, fitPool, training);
@@ -3114,7 +3117,7 @@ public class PackStarEstimator {
                 return;
             }
 
-            FrequencySeverityCandidateScore roundSelection =
+            MeanExcessCandidateScore roundSelection =
                     finalEligible != null ? finalEligible : discoveryProbe;
             boolean roundUsesDiscoveryProbe = finalEligible == null;
             if (roundSelection == null) {
@@ -3127,7 +3130,7 @@ public class PackStarEstimator {
                         trainCCD.size(), discoveryCCDCalls, 0, 0);
                 failCertificate("AdaptiveFrequencySeverityPAC: no final candidate"
                         + " and no discovery probe retained source-shift ESS >= "
-                        + frequencySeverityDiscoveryMinShiftEssFraction,
+                        + meanExcessDiscoveryMinShiftEssFraction,
                         startTime);
                 return;
             }
@@ -3146,7 +3149,7 @@ public class PackStarEstimator {
 
             EnergyMatrix roundEmat;
             double roundLogZ;
-            if ((!frequencySeverityProposalLearning || round == 0) && roundSelection.alpha == 0.0
+            if ((!meanExcessProposalLearning || round == 0) && roundSelection.alpha == 0.0
                     && !hasTripleEta(roundEta)) {
                 roundEmat = branchMinimizingEmat;
                 roundLogZ = initialProposalLogZ;
@@ -3172,12 +3175,12 @@ public class PackStarEstimator {
                     "adaptive-frequency-severity-discovery-%02d", round);
             List<CCDResult> discoverySamples = new ArrayList<>(runParallelCCD(
                     sampleConformationsFromDP(
-                            frequencySeverityDiscoverySamples,
+                            meanExcessDiscoverySamples,
                             stageRandom(discoveryStage)),
                     roundEmat, roundLogZ,
                     "adaptive-frequency-severity-proposal-" + round));
             discoveryCCDCalls += discoverySamples.size();
-            if (discoverySamples.size() != frequencySeverityDiscoverySamples
+            if (discoverySamples.size() != meanExcessDiscoverySamples
                     || !validateObservedLowerBound(
                     discoverySamples, discoveryStage)) {
                 writeFrequencySeverityFailureArtifactQuietly(
@@ -3191,7 +3194,7 @@ public class PackStarEstimator {
 
             int initialDiscoveryCount = discoverySamples.size();
             int extensionDiscoveryCount = 0;
-            FrequencySeverityPilotEvaluation initialEvaluation;
+            MeanExcessPilotEvaluation initialEvaluation;
             try {
                 initialEvaluation = evaluateFrequencySeverityPilot(
                         discoverySamples, roundEta, roundLogMu);
@@ -3210,7 +3213,7 @@ public class PackStarEstimator {
             boolean discoveryExtended =
                     shouldExtendFrequencySeverityDiscovery(
                             discoverySamples.size(),
-                            frequencySeverityDiscoveryMaxSamples,
+                            meanExcessDiscoveryMaxSamples,
                             initialEvaluation.interval,
                             initialEvaluation.sizing,
                             targetEpsilon);
@@ -3237,21 +3240,21 @@ public class PackStarEstimator {
                     return;
                 }
 
-                int requestedExtension = frequencySeverityDiscoveryMaxSamples
+                int requestedExtension = meanExcessDiscoveryMaxSamples
                         - discoverySamples.size();
                 String extensionStage = discoveryStage + "-extension";
                 System.out.println("[PACK*-adaptive-frequency-severity] round="
                         + round
                         + ", initialDiscovery=" + discoverySamples.size()
-                        + ", initialTail=" + initialEvaluation.interval.tailCount
+                        + ", initialTail=" + initialEvaluation.interval.exceedanceCount
                         + ", initialBulkLower="
                         + String.format(Locale.ROOT, "%.9g",
-                        initialEvaluation.interval.bulkLower)
+                        initialEvaluation.interval.clippedLower)
                         + ", initialEpsilonAtMax="
                         + String.format(Locale.ROOT, "%.9f",
                         initialEvaluation.sizing.epsilonAtMaxSamples)
                         + ", action=extend-same-frozen-proposal-to-"
-                        + frequencySeverityDiscoveryMaxSamples);
+                        + meanExcessDiscoveryMaxSamples);
                 List<CCDResult> extensionSamples = runParallelCCD(
                         sampleConformationsFromDP(
                                 requestedExtension,
@@ -3292,14 +3295,14 @@ public class PackStarEstimator {
                 discoverySamples.addAll(extensionSamples);
             }
 
-            FrequencySeverityPilotEvaluation roundEvaluation;
+            MeanExcessPilotEvaluation roundEvaluation;
             boolean preliminaryPass;
             try {
                 roundEvaluation = discoveryExtended
                         ? evaluateFrequencySeverityPilot(
                         discoverySamples, roundEta, roundLogMu)
                         : initialEvaluation;
-                preliminaryPass = frequencySeverityPilotPass(
+                preliminaryPass = meanExcessPilotPass(
                         roundEvaluation.interval, roundEvaluation.sizing);
                 writeFrequencySeverityStageArtifact(
                         artifactDir, discoveryStage,
@@ -3315,7 +3318,7 @@ public class PackStarEstimator {
                         roundLogMu, roundLogZ, proposalDpSweeps,
                         discoverySamples, initialDiscoveryCount,
                         extensionDiscoveryCount,
-                        frequencySeverityDiscoveryMaxSamples,
+                        meanExcessDiscoveryMaxSamples,
                         training.allCoverage,
                         roundEvaluation, preliminaryPass);
             } catch (RuntimeException ex) {
@@ -3336,17 +3339,17 @@ public class PackStarEstimator {
                     + ", candidate=" + roundSelection.id
                     + ", fitPool=" + fitPool.size()
                     + ", sameProposalExtended=" + discoveryExtended
-                    + ", tail=" + roundEvaluation.interval.tailCount
+                    + ", tail=" + roundEvaluation.interval.exceedanceCount
                     + "/" + roundEvaluation.interval.sampleCount
                     + ", bulkLower="
                     + String.format(Locale.ROOT, "%.9g",
-                    roundEvaluation.interval.bulkLower)
+                    roundEvaluation.interval.clippedLower)
                     + ", reachable=" + roundEvaluation.sizing.reachableAtMax
                     + ", epsilonAtMax="
                     + String.format(Locale.ROOT, "%.9f",
                     roundEvaluation.sizing.epsilonAtMaxSamples)
                     + ", action=" + (preliminaryPass
-                    ? "validate" : round < frequencySeverityMaxRefits
+                    ? "validate" : round < meanExcessMaxRefits
                     ? "merge-and-refit" : "abort"));
 
             if (preliminaryPass) {
@@ -3363,14 +3366,14 @@ public class PackStarEstimator {
                 break;
             }
 
-            if (round == frequencySeverityMaxRefits) {
+            if (round == meanExcessMaxRefits) {
                 writeFrequencySeverityFailureArtifactQuietly(
                         artifactDir,
                         "discovery pilot remained unreachable or bulk-collapsed at refit cap",
                         trainCCD.size(), discoveryCCDCalls, 0, 0);
                 failCertificate("AdaptiveFrequencySeverityPAC: discovery pilot"
                         + " remained unreachable or bulk-collapsed after "
-                        + frequencySeverityMaxRefits + " refits", startTime);
+                        + meanExcessMaxRefits + " refits", startTime);
                 return;
             }
 
@@ -3391,10 +3394,10 @@ public class PackStarEstimator {
         String validationStage = "adaptive-frequency-severity-validation";
         List<CCDResult> validationCCD = runParallelCCD(
                 sampleConformationsFromDP(
-                        frequencySeverityValidationSamples,
+                        meanExcessValidationSamples,
                         stageRandom(validationStage)),
                 null, Double.NaN, null);
-        if (validationCCD.size() != frequencySeverityValidationSamples
+        if (validationCCD.size() != meanExcessValidationSamples
                 || !validateObservedLowerBound(
                 validationCCD, validationStage)) {
             writeFrequencySeverityFailureArtifactQuietly(
@@ -3406,7 +3409,7 @@ public class PackStarEstimator {
             return;
         }
 
-        FrequencySeverityPilotEvaluation validation;
+        MeanExcessPilotEvaluation validation;
         try {
             validation = evaluateFrequencySeverityPilot(
                     validationCCD, selectedEta, selectedLogMu);
@@ -3422,7 +3425,7 @@ public class PackStarEstimator {
                     + " failed: " + sanitizeTsv(ex.getMessage()), startTime);
             return;
         }
-        if (!frequencySeverityPilotPass(
+        if (!meanExcessPilotPass(
                 validation.interval, validation.sizing)) {
             writeFrequencySeverityFailureArtifactQuietly(
                     artifactDir,
@@ -3454,7 +3457,7 @@ public class PackStarEstimator {
                 ? "on-policy-validated-discovery-probe" : "final-eligible-grid")
                 + ", fitPool=" + fitPool.size()
                 + ", discoveryCCD=" + discoveryCCDCalls
-                + ", validationTail=" + validation.interval.tailCount
+                + ", validationTail=" + validation.interval.exceedanceCount
                 + "/" + validation.interval.sampleCount
                 + ", validationEpsilonAtMax="
                 + String.format(Locale.ROOT, "%.9f",
@@ -3483,24 +3486,24 @@ public class PackStarEstimator {
                 finalCCD, selectedEta, selectedLogMu);
         computeFunctionalObservable(finalCCD, finalLogR);
         PackStarFrequencySeverityPAC.Interval finalInterval;
-        PackStarFrequencySeverityPAC.SeverityTest finalSeverityTest;
+        PackStarFrequencySeverityPAC.MeanExcessTest finalMeanExcessTest;
         try {
             finalInterval = PackStarFrequencySeverityPAC.evaluate(
-                    finalLogR, frequencySeverityRelativeBoundKcal / RT,
-                    frequencySeverityCap, frequencySeverityEventDelta(),
-                    frequencySeverityEventDelta());
+                    finalLogR, meanExcessRelativeBoundKcal / RT,
+                    conditionalMeanExcessBound, meanExcessEventDelta(),
+                    meanExcessEventDelta());
             // One fixed-time test on the same fresh batch as the interval.
             // No additional samples, repeated looks, or post-final adaptation.
-            finalSeverityTest = PackStarFrequencySeverityPAC.testConditionalSeverity(
-                    finalLogR, frequencySeverityRelativeBoundKcal / RT,
-                    frequencySeverityCap, frequencySeverityTestAlpha);
+            finalMeanExcessTest = PackStarFrequencySeverityPAC.testConditionalMeanExcess(
+                    finalLogR, meanExcessRelativeBoundKcal / RT,
+                    conditionalMeanExcessBound, meanExcessTestAlpha);
             writeFrequencySeveritySamplesArtifact(
                     artifactDir, "final", finalCCD,
                     selectedEta, selectedLogMu);
             // Preserve the evidence even when the test suppresses the estimate.
             writeFrequencySeverityStageArtifact(
                     artifactDir, "final", finalInterval,
-                    finalSeverityTest, validation.sizing,
+                    finalMeanExcessTest, validation.sizing,
                     selectedLogMu, selectedLogZ);
         } catch (RuntimeException ex) {
             failCertificate("AdaptiveFrequencySeverityPAC final statistics failed: "
@@ -3508,7 +3511,7 @@ public class PackStarEstimator {
             return;
         }
         double logScale = selectedLogZ + selectedLogMu
-                + frequencySeverityRelativeBoundKcal / RT;
+                + meanExcessRelativeBoundKcal / RT;
         logZLowerPAC = finalInterval.normalizedMeanLower > 0.0
                 ? logScale + Math.log(finalInterval.normalizedMeanLower)
                 : Double.NEGATIVE_INFINITY;
@@ -3524,16 +3527,16 @@ public class PackStarEstimator {
                 && isValidCertificate(zLower, zUpper, epsilon);
         certificateFailureReason = certificateValid ? ""
                 : "AdaptiveFrequencySeverityPAC final interval failed validation";
-        if (finalSeverityTest.rejected) {
-            String reason = finalSeverityTest.logicalViolation
+        if (finalMeanExcessTest.rejected) {
+            String reason = finalMeanExcessTest.logicalViolation
                     ? "AdaptiveFrequencySeverityPAC: final sample logically violates zero severity premise"
                     : "AdaptiveFrequencySeverityPAC: final severity p-value rejected premise "
-                            + frequencySeverityPremiseId;
-            reason += ", tail=" + finalSeverityTest.tailCount
+                            + meanExcessPremiseId;
+            reason += ", tail=" + finalMeanExcessTest.exceedanceCount
                     + "/" + finalInterval.sampleCount
-                    + ", empiricalSeverity=" + finalInterval.empiricalConditionalSeverity
-                    + ", logP=" + finalSeverityTest.logPValue
-                    + ", alpha=" + frequencySeverityTestAlpha;
+                    + ", empiricalSeverity=" + finalInterval.empiricalConditionalMeanExcess
+                    + ", logP=" + finalMeanExcessTest.logPValue
+                    + ", alpha=" + meanExcessTestAlpha;
             writeFrequencySeverityFailureArtifactQuietly(
                     artifactDir, reason, trainCCD.size(),
                     discoveryCCDCalls + validationCCD.size(), 0, finalCCD.size());
@@ -3542,7 +3545,7 @@ public class PackStarEstimator {
         try {
             writeFrequencySeverityRunSummaryArtifact(
                     artifactDir, selected, validation.sizing,
-                    finalInterval, finalSeverityTest, trainCCD.size(),
+                    finalInterval, finalMeanExcessTest, trainCCD.size(),
                     discoveryCCDCalls, validationCCD.size(),
                     0, finalCCD.size(),
                     proposalDpSweeps, certificateValid);
@@ -3557,8 +3560,8 @@ public class PackStarEstimator {
         }
         System.out.println("[PACK*-adaptive-frequency-severity] issued"
                 + " assumption-conditional interval: premiseId="
-                + frequencySeverityPremiseId
-                + ", tail=" + finalInterval.tailCount
+                + meanExcessPremiseId
+                + ", tail=" + finalInterval.exceedanceCount
                 + "/" + finalInterval.sampleCount
                 + ", epsilon="
                 + String.format(Locale.ROOT, "%.9f", epsilon)
@@ -3575,7 +3578,7 @@ public class PackStarEstimator {
             CCDResult sample = samples.get(i);
             double targetEnergy = sample.eMin
                     + computeEtaEnergy(sample, eta);
-            logA[i] = frequencySeveritySourceLogWeight(
+            logA[i] = meanExcessSourceLogWeight(
                     sample, targetEnergy);
             logV[i] = logA[i]
                     + (targetEnergy - sample.eTrue) / RT;
@@ -3670,14 +3673,14 @@ public class PackStarEstimator {
                 : Double.POSITIVE_INFINITY;
         meanPsi = logMeanR < Math.log(Double.MAX_VALUE)
                 ? Math.exp(logMeanR) : Double.MAX_VALUE;
-        varPsi = interval.bulkVariance;
+        varPsi = interval.clippedVariance;
         cvPsi = Double.isFinite(m2)
                 ? Math.sqrt(Math.max(0.0, m2 - 1.0))
                 : Double.MAX_VALUE;
     }
 
     private File prepareFrequencySeverityArtifactDirectory() {
-        File root = new File(frequencySeverityOutputDir);
+        File root = new File(meanExcessOutputDir);
         if ((!root.exists() && !root.mkdirs()) || !root.isDirectory()) {
             throw new IllegalStateException(
                     "cannot create frequency/severity output root " + root);
@@ -3696,7 +3699,7 @@ public class PackStarEstimator {
     /** Record why eta training cannot start when the initial q_m DP is empty. */
     private void writeFrequencySeverityInitialDpFailureQuietly(
             double logZUpper, double logZLower, String reason) {
-        if (frequencySeverityOutputDir == null) return;
+        if (meanExcessOutputDir == null) return;
         try {
             File dir = prepareFrequencySeverityArtifactDirectory();
             writeFrequencySeverityProtocolArtifact(dir, logZLower);
@@ -3860,9 +3863,9 @@ public class PackStarEstimator {
                             pos, sanitizeTsv(confSpace.name(pos)),
                             localRc, globalRc,
                             sanitizeTsv(confSpace.confType(pos, globalRc)),
-                            rigid, frequencySeverityNumericStatus(rigid),
+                            rigid, meanExcessNumericStatus(rigid),
                             minimizing,
-                            frequencySeverityNumericStatus(minimizing));
+                            meanExcessNumericStatus(minimizing));
                 }
             }
             for (int pos1 = 0; pos1 < numPos; pos1++) {
@@ -3895,9 +3898,9 @@ public class PackStarEstimator {
                                             pos2, globalRc2)),
                                     Boolean.toString(graphEdge),
                                     rigid,
-                                    frequencySeverityNumericStatus(rigid),
+                                    meanExcessNumericStatus(rigid),
                                     minimizing,
-                                    frequencySeverityNumericStatus(minimizing));
+                                    meanExcessNumericStatus(minimizing));
                         }
                     }
                 }
@@ -3908,7 +3911,7 @@ public class PackStarEstimator {
         }
     }
 
-    private static String frequencySeverityNumericStatus(double value) {
+    private static String meanExcessNumericStatus(double value) {
         if (Double.isFinite(value)) return "finite";
         if (Double.isNaN(value)) return "nan";
         return value < 0.0 ? "negative-infinity" : "positive-infinity";
@@ -3998,86 +4001,86 @@ public class PackStarEstimator {
             writeFrequencySeverityKey(writer, "schema",
                     "packstar-adaptive-frequency-severity-protocol-v11");
             writeFrequencySeverityKey(writer, "proposalLearningEnabled",
-                    frequencySeverityProposalLearning);
+                    meanExcessProposalLearning);
             writeFrequencySeverityKey(writer, "tripleFitThreads",
-                    frequencySeverityBudgetForward ? PackStarTripleEtaCorrections.configuredFitThreads() : 1);
+                    meanExcessBudgetForward ? PackStarTripleEtaCorrections.configuredFitThreads() : 1);
             writeFrequencySeverityKey(writer, "tripleMomentReduction",
                     "FP64-grouped-feature-masses-max-shifted-Kahan-cached-gradient-masses;pair-fit-sequential-logadd");
             writeFrequencySeverityKey(writer, "fixedProposalCalibration",
-                    frequencySeverityProposalLearning ? "not-applicable"
+                    meanExcessProposalLearning ? "not-applicable"
                             : "same-train-discovery-validation-final-budgets;gauge-only-adaptation;zero-corrected-DP-sweeps");
             writeFrequencySeverityKey(writer, "proposalLearningObjective",
-                    !frequencySeverityProposalLearning ? "none-fixed-qm"
-                            : frequencySeverityJointMomentLearning
+                    !meanExcessProposalLearning ? "none-fixed-qm"
+                            : meanExcessJointMomentLearning
                             ? "source-weighted-joint-residual+nested-heldout-log-rho"
                             : "legacy-termwise+deduplicated-residual-mse");
             writeFrequencySeverityKey(writer, "algorithm",
                     "AdaptiveFrequencySeverityPAC-crossfit-selected-signed-triple-residual-source-aware-online-refit");
             writeFrequencySeverityKey(writer, "proposalModel",
-                    !frequencySeverityProposalLearning ? "original-DP-proposal-no-learned-correction"
-                            : frequencySeverityBudgetForward ? "fixed-pair-plus-jointly-refitted-forward-triple-prefixes-K-0-1-2-3"
+                    !meanExcessProposalLearning ? "original-DP-proposal-no-learned-correction"
+                            : meanExcessBudgetForward ? "fixed-pair-plus-jointly-refitted-forward-triple-prefixes-K-0-1-2-3"
                             : "pair-only-versus-legacy-terminal-triple-set");
             writeFrequencySeverityKey(writer, "tripleEtaEnabled",
-                    frequencySeverityTripleEtaEnabled);
+                    meanExcessTripleEtaEnabled);
             writeFrequencySeverityKey(writer, "tripleEtaMaximumScale",
-                    frequencySeverityTripleEtaScale);
+                    meanExcessTripleEtaScale);
             writeFrequencySeverityKey(writer, "tripleEtaScaleGrid",
-                    Arrays.toString(frequencySeverityTripleEtaScaleGrid));
+                    Arrays.toString(meanExcessTripleEtaScaleGrid));
             writeFrequencySeverityKey(writer, "tripleEtaScaleSelection",
                     "fixed-one-when-included-not-continuously-tuned");
             writeFrequencySeverityKey(writer, "tripleEtaModelOrderSelection",
-                    frequencySeverityBudgetForward ? "all-achieved-prefixes;crossfit-at-most-K-with-fold-early-stop"
+                    meanExcessBudgetForward ? "all-achieved-prefixes;crossfit-at-most-K-with-fold-early-stop"
                             : "pair-only-or-selected-triple-by-crossfit");
             writeFrequencySeverityKey(writer,
                     "tripleEtaAssignmentCapFallback",
-                    frequencySeverityJointMomentLearning
+                    meanExcessJointMomentLearning
                             ? "selected-table-budget;no-eager-clique-prior"
                             : "pair-only-when-clique-workload-exceeds-cap");
             writeFrequencySeverityKey(writer,
                     "tripleEtaMaximumPartialAssignments",
-                    frequencySeverityTripleEtaMaxAssignments);
+                    meanExcessTripleEtaMaxAssignments);
             writeFrequencySeverityKey(writer,
                     "tripleEtaMaximumSelectedPositionTriples",
-                    frequencySeverityTripleEtaMaxPositionTriples);
+                    meanExcessTripleEtaMaxPositionTriples);
             writeFrequencySeverityKey(writer,
                     "tripleEtaMaximumFillEdges",
-                    frequencySeverityTripleEtaMaxFillEdges);
+                    meanExcessTripleEtaMaxFillEdges);
             writeFrequencySeverityKey(writer, "tripleEtaSelectionStrategy",
-                    frequencySeverityBudgetForward ? "budget-forward"
-                            : frequencySeverityDecompositionCostSelection ? "decomposition-cost" : "fill-edge");
+                    meanExcessBudgetForward ? "budget-forward"
+                            : meanExcessDecompositionCostSelection ? "decomposition-cost" : "fill-edge");
             writeFrequencySeverityKey(writer, "tripleEtaSelectionCostMetric",
-                    frequencySeverityBudgetForward ? "hard-resource-gates;heldout-log-rho-gain;absolute-1e-6-ties-by-work-host-file-table"
-                            : frequencySeverityDecompositionCostSelection
+                    meanExcessBudgetForward ? "hard-resource-gates;heldout-log-rho-gain;absolute-1e-6-ties-by-work-host-file-table"
+                            : meanExcessDecompositionCostSelection
                             ? "held-out-log-rho-gain/(1+max-relative-work-state-table-host-file-growth)"
                             : "gain/(1+new-fill-edges)");
-            if (frequencySeverityDecompositionCostSelection) {
+            if (meanExcessDecompositionCostSelection) {
                 writeFrequencySeverityKey(writer, "tripleEtaDecompositionLimits",
-                        frequencySeverityDecompositionLimits.toString());
+                        meanExcessDecompositionLimits.toString());
                 writeFrequencySeverityKey(writer, "tripleEtaDecompositionPreview",
                         "weighted-hicks-configured-root;shared-with-proposal-execution;no-enumeration-arrays-or-dp-tables;per-pfunc-LRU-cache");
             }
             writeFrequencySeverityKey(writer,
                     "tripleEtaMinimumCellContexts",
-                    frequencySeverityTripleEtaMinCellContexts);
+                    meanExcessTripleEtaMinCellContexts);
             writeFrequencySeverityKey(writer,
                     "tripleEtaPriorStrength",
-                    frequencySeverityTripleEtaPriorStrength);
+                    meanExcessTripleEtaPriorStrength);
             writeFrequencySeverityKey(writer,
                     "tripleEtaLocalPriorCapKcal",
-                    frequencySeverityTripleEtaLocalCapKcal);
+                    meanExcessTripleEtaLocalCapKcal);
             writeFrequencySeverityKey(writer,
                     "tripleEtaResidualCapKcal",
-                    frequencySeverityTripleEtaResidualCapKcal);
+                    meanExcessTripleEtaResidualCapKcal);
             writeFrequencySeverityKey(writer, "tripleEtaFactorDomain",
                     "all-position-triples-with-a-bounded-zero-energy-fill-edge-budget");
             writeFrequencySeverityKey(writer,
                     "tripleEtaLocalJointCorrection",
-                    frequencySeverityJointMomentLearning
+                    meanExcessJointMomentLearning
                             ? "conditional-second-moment-shrunk-toward-global-moment;unseen-zero"
                             : "signed-shrinkage-prior-from-shared-three-pair-minimum-minus-independent-three-pair-minima");
             writeFrequencySeverityKey(writer,
                     "tripleEtaProposalFactor",
-                    frequencySeverityJointMomentLearning
+                    meanExcessJointMomentLearning
                             ? "nested-crossfit-conditional-second-moment-table"
                             : "crossfit-signed-Etrue-minus-Em-minus-single-pair-eta-residual-table");
             writeFrequencySeverityKey(writer,
@@ -4090,10 +4093,10 @@ public class PackStarEstimator {
             writeFrequencySeverityKey(writer,
                     "tripleEtaFitUsesExistingSampledFullCcd", true);
             writeFrequencySeverityKey(writer, "candidateObjective",
-                    frequencySeverityBudgetForward ? "minimum-projected-final-N;within-1.05-of-global-minimum-prefer-smaller-K-then-structure"
+                    meanExcessBudgetForward ? "minimum-projected-final-N;within-1.05-of-global-minimum-prefer-smaller-K-then-structure"
                             : "legacy-min-projected-final-N-then-epsilon-then-M2");
-            writeFrequencySeverityKey(writer, "modelOrderFinalNTolerance", frequencySeverityBudgetForward ? 0.05 : 0.0);
-            writeFrequencySeverityKey(writer, "tripleJointRefit", frequencySeverityBudgetForward);
+            writeFrequencySeverityKey(writer, "modelOrderFinalNTolerance", meanExcessBudgetForward ? 0.05 : 0.0);
+            writeFrequencySeverityKey(writer, "tripleJointRefit", meanExcessBudgetForward);
             writeFrequencySeverityKey(writer, "tripleJointPenalty", "0.5*sum(mass*strength/min(contexts,sourceESS)*(h/RT)^2);unsupported-zero");
             writeFrequencySeverityKey(writer, "tripleJointMaxIterations", PackStarTripleEtaCorrections.JOINT_MOMENT_ITERATIONS);
             writeFrequencySeverityKey(writer, "tripleEarlyStopRule", "both-inner-fold-gains>1e-8;converged-refits;otherwise-stop");
@@ -4109,52 +4112,52 @@ public class PackStarEstimator {
                     "hard-gate-before-winner-DP");
             writeFrequencySeverityKey(writer, "guarantee",
                     "assumption-conditional-frequency-severity-PAC");
-            writeFrequencySeverityKey(writer, "severityPremiseId", frequencySeverityPremiseId);
+            writeFrequencySeverityKey(writer, "severityPremiseId", meanExcessPremiseId);
             writeFrequencySeverityKey(writer, "severityPremiseExternallyValidated", "false");
-            writeFrequencySeverityKey(writer, "severityCapS0", frequencySeverityCap);
-            writeFrequencySeverityKey(writer, "relativeBoundKcal", frequencySeverityRelativeBoundKcal);
+            writeFrequencySeverityKey(writer, "severityCapS0", conditionalMeanExcessBound);
+            writeFrequencySeverityKey(writer, "relativeBoundKcal", meanExcessRelativeBoundKcal);
             writeFrequencySeverityKey(writer, "relativeGauge",
                     "self-normalized-source-aware-importance-estimate-of-E_qeta[exp((Eeta-Etrue)/RT)]");
             writeFrequencySeverityKey(writer, "confidenceDelta", delta);
             writeFrequencySeverityKey(writer, "confidenceFamily",
                     "two-events-times-three-Kstar-partition-functions");
             writeFrequencySeverityKey(writer, "bulkDelta",
-                    frequencySeverityEventDelta());
+                    meanExcessEventDelta());
             writeFrequencySeverityKey(writer, "frequencyDelta",
-                    frequencySeverityEventDelta());
+                    meanExcessEventDelta());
             writeFrequencySeverityKey(writer, "targetEpsilon", targetEpsilon);
             writeFrequencySeverityKey(writer, "trainSamples", trainSamples);
             writeFrequencySeverityKey(writer, "discoverySamplesPerRound",
-                    frequencySeverityDiscoverySamples);
+                    meanExcessDiscoverySamples);
             writeFrequencySeverityKey(writer, "maximumDiscoverySamplesPerRound",
-                    frequencySeverityDiscoveryMaxSamples);
+                    meanExcessDiscoveryMaxSamples);
             writeFrequencySeverityKey(writer, "discoveryExtensionPolicy",
                     "same-frozen-proposal-when-bulk-lower-is-zero-and-point-sizing-is-reachable-at-target");
             writeFrequencySeverityKey(writer, "maximumRefits",
-                    frequencySeverityMaxRefits);
+                    meanExcessMaxRefits);
             writeFrequencySeverityKey(writer, "validationSamples",
-                    frequencySeverityValidationSamples);
+                    meanExcessValidationSamples);
             // Retain this audit key for readers of historical run artifacts.
             writeFrequencySeverityKey(writer, "monitorSamples", 0);
             writeFrequencySeverityKey(writer, "maxFinalSamples", maxEstSamples);
             writeFrequencySeverityKey(writer, "unreachableFinalSamples",
                     configuredFrequencySeverityUnreachableSamples());
-            writeFrequencySeverityKey(writer, "folds", frequencySeverityFolds);
+            writeFrequencySeverityKey(writer, "folds", meanExcessFolds);
             writeFrequencySeverityKey(writer, "shrinkGrid", formatFrequencySeverityShrinkGrid());
-            writeFrequencySeverityKey(writer, "alphaGrid", Arrays.toString(frequencySeverityAlphaGrid));
+            writeFrequencySeverityKey(writer, "alphaGrid", Arrays.toString(meanExcessAlphaGrid));
             writeFrequencySeverityKey(writer, "alphaSelection",
                     "fixed-one-not-tuned");
             writeFrequencySeverityKey(writer, "minimumShiftEssFraction",
-                    frequencySeverityMinShiftEssFraction);
+                    meanExcessMinShiftEssFraction);
             writeFrequencySeverityKey(writer,
                     "discoveryMinimumShiftEssFraction",
-                    frequencySeverityDiscoveryMinShiftEssFraction);
+                    meanExcessDiscoveryMinShiftEssFraction);
             writeFrequencySeverityKey(writer, "minimumDistinctContextCount",
-                    frequencySeverityMinTrainCount);
+                    meanExcessMinTrainCount);
             writeFrequencySeverityKey(writer, "maximumUndertrainedMassAmplification",
-                    frequencySeverityMaxUndertrainedAmplification);
-            writeFrequencySeverityKey(writer, "sizingSafety", frequencySeveritySizeSafety);
-            writeFrequencySeverityKey(writer, "severityTestAlpha", frequencySeverityTestAlpha);
+                    meanExcessMaxUndertrainedAmplification);
+            writeFrequencySeverityKey(writer, "sizingSafety", meanExcessSizeSafety);
+            writeFrequencySeverityKey(writer, "severityTestAlpha", meanExcessTestAlpha);
             writeFrequencySeverityKey(writer, "severityTestStage", "final");
             writeFrequencySeverityKey(writer, "severityTestDataReuse",
                     "same-fixed-final-batch-as-partition-function-interval");
@@ -4164,7 +4167,7 @@ public class PackStarEstimator {
             writeFrequencySeverityKey(writer, "candidateSpecificCcd", 0);
             writeFrequencySeverityKey(writer, "candidateSpecificDp", 0);
             writeFrequencySeverityKey(writer, "proposalCorrectedDpMaximum",
-                    frequencySeverityMaxRefits + 1);
+                    meanExcessMaxRefits + 1);
             writeFrequencySeverityKey(writer, "etaZeroReusesInitialDpOnlyAtRoundZero",
                     false);
             writeFrequencySeverityKey(writer, "legacyIterativeRepairBypassed", "true");
@@ -4186,9 +4189,9 @@ public class PackStarEstimator {
     private void writeFrequencySeverityTrainingArtifacts(
             File dir, String artifactPrefix,
             List<CCDResult> samples,
-            FrequencySeverityEtaTraining training) {
+            MeanExcessEtaTraining training) {
         File sampleOutput = newFrequencySeverityArtifact(
-                dir, frequencySeverityPrefixedArtifactName(
+                dir, meanExcessPrefixedArtifactName(
                         artifactPrefix,
                         "frequency_severity_training_samples.tsv"));
         try (PrintWriter writer = openFrequencySeverityWriter(sampleOutput)) {
@@ -4200,7 +4203,7 @@ public class PackStarEstimator {
                 CCDResult sample = samples.get(index);
                 int newestBatchFold = index < training.historySampleCount
                         ? -1 : (index - training.historySampleCount)
-                        % frequencySeverityFolds;
+                        % meanExcessFolds;
                 writer.printf(Locale.ROOT,
                         "packstar-adaptive-frequency-severity-training-sample-v1"
                                 + "\t%d\t%d\t%s\t%.17g\t%.17g\t%.17g"
@@ -4220,13 +4223,13 @@ public class PackStarEstimator {
         }
 
         File observationOutput = newFrequencySeverityArtifact(
-                dir, frequencySeverityPrefixedArtifactName(
+                dir, meanExcessPrefixedArtifactName(
                         artifactPrefix,
                         "eta_training_cell_observations.tsv"));
         try (PrintWriter writer = openFrequencySeverityWriter(observationOutput)) {
             writer.println("schema\tsampleIndex\tfold\tcellType"
                     + "\tpos1\trc1\tpos2\trc2\tcorrectionKcal");
-            for (FrequencySeverityEtaCellObservation observation
+            for (MeanExcessEtaCellObservation observation
                     : training.observations) {
                 writer.printf(Locale.ROOT,
                         "packstar-adaptive-frequency-severity-eta-cell-observation-v1"
@@ -4243,7 +4246,7 @@ public class PackStarEstimator {
         }
 
         File statisticsOutput = newFrequencySeverityArtifact(
-                dir, frequencySeverityPrefixedArtifactName(
+                dir, meanExcessPrefixedArtifactName(
                         artifactPrefix,
                         "eta_fit_cell_statistics.tsv"));
         try (PrintWriter writer = openFrequencySeverityWriter(statisticsOutput)) {
@@ -4253,7 +4256,7 @@ public class PackStarEstimator {
             writeFrequencySeverityEtaStatisticsScope(
                     writer, "all", training.allFitSampleCount,
                     training.all, training.allCoverage);
-            for (int fold = 0; fold < frequencySeverityFolds; fold++) {
+            for (int fold = 0; fold < meanExcessFolds; fold++) {
                 writeFrequencySeverityEtaStatisticsScope(
                         writer, "fold-" + fold,
                         training.foldFitSampleCounts[fold],
@@ -4268,7 +4271,7 @@ public class PackStarEstimator {
 
     private void writeFrequencySeverityEtaStatisticsScope(
             PrintWriter writer, String scope, int fitSampleCount,
-            EtaCorrections raw, FrequencySeverityEtaCoverage coverage) {
+            EtaCorrections raw, MeanExcessEtaCoverage coverage) {
         for (int pos = 0; pos < raw.oneBody.length; pos++) {
             for (int rc = 0; rc < raw.oneBody[pos].length; rc++) {
                 int count = raw.oneBodyCounts[pos][rc];
@@ -4303,13 +4306,13 @@ public class PackStarEstimator {
     }
 
     private void writeFrequencySeverityModelPathArtifact(File dir,
-            List<FrequencySeverityCandidateScore> candidates, String prefix, String selectedId) {
+            List<MeanExcessCandidateScore> candidates, String prefix, String selectedId) {
         File output = newFrequencySeverityArtifact(dir,
-                frequencySeverityPrefixedArtifactName(prefix, "eta_candidate_model_path.tsv"));
+                meanExcessPrefixedArtifactName(prefix, "eta_candidate_model_path.tsv"));
         try (PrintWriter writer = openFrequencySeverityWriter(output)) {
             writer.println("schema\tcandidate\tselected\teligible\tK\tfitFold0K\tfitFold1K"
                     + "\tinnerLogRhoGain\tpredictedFinalN\tstopReason\tfitFold0Stop\tfitFold1Stop\tscopes\tsignature\tstructure");
-            for (FrequencySeverityCandidateScore c : candidates) {
+            for (MeanExcessCandidateScore c : candidates) {
                 boolean active = hasTripleEta(c.fullEta);
                 writer.printf(Locale.ROOT, "packstar-model-path-v1\t%s\t%s\t%s\t%d\t%d\t%d\t%.17g\t%d\t%s\t%s\t%s\t%s\t%s\t%s%n",
                         c.id, c.id.equals(selectedId), c.eligible, c.requestedTripleCount,
@@ -4318,7 +4321,7 @@ public class PackStarEstimator {
                         c.foldPathStopReasons[0], c.foldPathStopReasons[1],
                         active ? c.fullEta.tripleEta.positionTriples() : "[]",
                         active ? c.fullEta.tripleEta.signatureSha256 : "NA",
-                        frequencySeverityBudgetForward && active ? candidateStructure(c) : "NA");
+                        meanExcessBudgetForward && active ? candidateStructure(c) : "NA");
             }
         } catch (Exception ex) {
             throw new IllegalStateException("cannot write candidate model path", ex);
@@ -4327,10 +4330,10 @@ public class PackStarEstimator {
 
     private void writeFrequencySeverityCandidateArtifact(
             File dir, String artifactPrefix,
-            List<FrequencySeverityCandidateScore> candidates,
+            List<MeanExcessCandidateScore> candidates,
             String selectedId) {
         File output = newFrequencySeverityArtifact(dir,
-                frequencySeverityPrefixedArtifactName(
+                meanExcessPrefixedArtifactName(
                         artifactPrefix, "eta_candidate_scores.tsv"));
         try (PrintWriter writer = openFrequencySeverityWriter(output)) {
             writer.println("schema\tcandidate\tselected\teligible\tvalidationFold"
@@ -4348,8 +4351,8 @@ public class PackStarEstimator {
                     + "\tcandidatePairUndertrainedMass"
                     + "\tpairUndertrainedAmplification\tcoveragePass"
                     + "\tfinite");
-            for (FrequencySeverityCandidateScore candidate : candidates) {
-                for (FrequencySeverityFoldScore fold : candidate.folds) {
+            for (MeanExcessCandidateScore candidate : candidates) {
+                for (MeanExcessFoldScore fold : candidate.folds) {
                     writer.printf(Locale.ROOT,
                             "packstar-adaptive-frequency-severity-candidate-score-v2\t%s\t%s\t%s"
                                     + "\t%d\t%.17g\t%.17g\t%.17g\t%.17g\t%d"
@@ -4373,9 +4376,9 @@ public class PackStarEstimator {
                             Boolean.toString(fold.shiftPass),
                             fold.targetM2,
                             fold.targetEssFraction,
-                            fold.bulkMean,
-                            fold.bulkVariance,
-                            fold.tailProbability,
+                            fold.clippedMean,
+                            fold.clippedVariance,
+                            fold.exceedanceProbability,
                             fold.sizing.finalSamples,
                             fold.sizing.epsilonAtFinalSamples,
                             fold.sizing.epsilonAtMaxSamples,
@@ -4399,10 +4402,10 @@ public class PackStarEstimator {
 
     private void writeFrequencySeverityCrossfitArtifact(
             File dir, String artifactPrefix,
-            List<FrequencySeverityCandidateScore> candidates,
+            List<MeanExcessCandidateScore> candidates,
             String selectedId) {
         File output = newFrequencySeverityArtifact(
-                dir, frequencySeverityPrefixedArtifactName(
+                dir, meanExcessPrefixedArtifactName(
                         artifactPrefix,
                         "eta_candidate_crossfit_pooled.tsv"));
         try (PrintWriter writer = openFrequencySeverityWriter(output)) {
@@ -4425,8 +4428,8 @@ public class PackStarEstimator {
                     + "\tcandidatePairUndertrainedMass"
                     + "\tpairUndertrainedAmplification"
                     + "\tcoveragePassDiagnostic\tfinite");
-            for (FrequencySeverityCandidateScore candidate : candidates) {
-                FrequencySeverityCrossfitScore score = candidate.crossfit;
+            for (MeanExcessCandidateScore candidate : candidates) {
+                MeanExcessCrossfitScore score = candidate.crossfit;
                 writer.printf(Locale.ROOT,
                         "packstar-adaptive-frequency-severity-crossfit-pooled-v2"
                                 + "\t%s\t%s\t%s\t%.17g\t%.17g\t%.17g\t%.17g\t%d"
@@ -4452,9 +4455,9 @@ public class PackStarEstimator {
                         Boolean.toString(score.allFoldsCoveragePass),
                         score.targetM2,
                         score.targetEssFraction,
-                        score.bulkMean,
-                        score.bulkVariance,
-                        score.tailProbability,
+                        score.clippedMean,
+                        score.clippedVariance,
+                        score.exceedanceProbability,
                         score.sizing.finalSamples,
                         score.sizing.epsilonAtFinalSamples,
                         score.sizing.epsilonAtMaxSamples,
@@ -4477,10 +4480,10 @@ public class PackStarEstimator {
 
     private void writeFrequencySeverityRefitArtifact(
             File dir, String artifactPrefix,
-            List<FrequencySeverityCandidateScore> candidates,
+            List<MeanExcessCandidateScore> candidates,
             String selectedId) {
         File output = newFrequencySeverityArtifact(
-                dir, frequencySeverityPrefixedArtifactName(
+                dir, meanExcessPrefixedArtifactName(
                         artifactPrefix,
                         "eta_candidate_refit_audit.tsv"));
         try (PrintWriter writer = openFrequencySeverityWriter(output)) {
@@ -4493,8 +4496,8 @@ public class PackStarEstimator {
                     + "\tcandidatePairUndertrainedMass"
                     + "\tpairUndertrainedAmplification"
                     + "\tcoveragePass\tfinite");
-            for (FrequencySeverityCandidateScore candidate : candidates) {
-                FrequencySeverityRefitAudit audit = candidate.refitAudit;
+            for (MeanExcessCandidateScore candidate : candidates) {
+                MeanExcessRefitAudit audit = candidate.refitAudit;
                 writer.printf(Locale.ROOT,
                         "packstar-adaptive-frequency-severity-refit-audit-v2"
                                 + "\t%s\t%.17g\t%s\t%s\t%s\t%.17g\t%s"
@@ -4523,8 +4526,8 @@ public class PackStarEstimator {
     }
 
     private void writeFrequencySeverityWinnerArtifact(
-            File dir, FrequencySeverityCandidateScore winner,
-            FrequencySeverityRefitAudit refitAudit,
+            File dir, MeanExcessCandidateScore winner,
+            MeanExcessRefitAudit refitAudit,
             double logMuTrain, int winnerDpSweeps) {
         PackStarTripleEtaCorrections.ResidualSummary tripleSummary =
                 summarizeFrequencySeverityTripleResidual(winner.fullEta);
@@ -4606,7 +4609,7 @@ public class PackStarEstimator {
                     refitAudit.shiftEssFraction);
             writeFrequencySeverityKey(writer,
                     "minimumShiftEssFraction",
-                    frequencySeverityMinShiftEssFraction);
+                    meanExcessMinShiftEssFraction);
             writeFrequencySeverityKey(writer,
                     "fullTrainingBaselineUnaryUndertrainedMass",
                     refitAudit.baselineUnaryUndertrainedMass);
@@ -4627,7 +4630,7 @@ public class PackStarEstimator {
                     refitAudit.pairUndertrainedAmplification);
             writeFrequencySeverityKey(writer,
                     "maximumUndertrainedMassAmplification",
-                    frequencySeverityMaxUndertrainedAmplification);
+                    meanExcessMaxUndertrainedAmplification);
             writeFrequencySeverityKey(writer, "logMuTrain", logMuTrain);
             writeFrequencySeverityKey(writer, "proposalDpSweeps",
                     winnerDpSweeps);
@@ -4642,7 +4645,7 @@ public class PackStarEstimator {
     private void writeAdaptiveFrequencySeverityRoundArtifact(
             File dir, String artifactPrefix, int round,
             int historyCount, int scoringBatchCount, int fitPoolCount,
-            FrequencySeverityCandidateScore selected,
+            MeanExcessCandidateScore selected,
             boolean discoveryProbe,
             double logMuTrain, double logZProposal,
             int cumulativeProposalDpSweeps,
@@ -4650,14 +4653,14 @@ public class PackStarEstimator {
             int initialDiscoveryCount,
             int extensionDiscoveryCount,
             int maximumDiscoveryCount,
-            FrequencySeverityEtaCoverage fitCoverage,
-            FrequencySeverityPilotEvaluation evaluation,
+            MeanExcessEtaCoverage fitCoverage,
+            MeanExcessPilotEvaluation evaluation,
             boolean passed) {
         PackStarTripleEtaCorrections.ResidualSummary tripleSummary =
                 summarizeFrequencySeverityTripleResidual(
                         selected.fullEta);
         File output = newFrequencySeverityArtifact(
-                dir, frequencySeverityPrefixedArtifactName(
+                dir, meanExcessPrefixedArtifactName(
                         artifactPrefix, "selection.tsv"));
         int unseenUnary = 0;
         int unseenPair = 0;
@@ -4665,7 +4668,7 @@ public class PackStarEstimator {
         int undertrainedPair = 0;
         int unseenUnaryTail = 0;
         int unseenPairTail = 0;
-        double logClip = frequencySeverityRelativeBoundKcal / RT;
+        double logClip = meanExcessRelativeBoundKcal / RT;
         for (int i = 0; i < discoverySamples.size(); i++) {
             int[] conf = discoverySamples.get(i).conf;
             boolean sampleUnseenUnary = touchesFrequencySeverityUnaryBelowCount(
@@ -4758,9 +4761,9 @@ public class PackStarEstimator {
                     "sameFrozenProposalExtensionPolicy",
                     "bulk-lower-zero-and-point-sizing-reachable-at-target");
             writeFrequencySeverityKey(writer, "discoveryTailCount",
-                    evaluation.interval.tailCount);
+                    evaluation.interval.exceedanceCount);
             writeFrequencySeverityKey(writer, "discoveryBulkLower",
-                    evaluation.interval.bulkLower);
+                    evaluation.interval.clippedLower);
             writeFrequencySeverityKey(writer, "discoveryReachableAtMax",
                     evaluation.sizing.reachableAtMax);
             writeFrequencySeverityKey(writer, "discoveryEpsilonAtMax",
@@ -4780,7 +4783,7 @@ public class PackStarEstimator {
             writeFrequencySeverityKey(writer, "preliminaryPass", passed);
             writeFrequencySeverityKey(writer, "nextAction",
                     passed ? "draw-independent-validation"
-                            : round < frequencySeverityMaxRefits
+                            : round < meanExcessMaxRefits
                             ? "merge-discovery-and-refit" : "abort-at-refit-cap");
         } catch (Exception ex) {
             throw new IllegalStateException(
@@ -4790,7 +4793,7 @@ public class PackStarEstimator {
 
     private void writeFrequencySeverityCoverageArtifact(
             File dir, EtaCorrections raw,
-            FrequencySeverityEtaCoverage coverage, EtaCorrections selected) {
+            MeanExcessEtaCoverage coverage, EtaCorrections selected) {
         File output = newFrequencySeverityArtifact(dir, "eta_cell_coverage.tsv");
         try (PrintWriter writer = openFrequencySeverityWriter(output)) {
             writer.println("schema\tcellType\tpos1\trc1\tpos2\trc2"
@@ -4809,7 +4812,7 @@ public class PackStarEstimator {
                             raw.getOneBodyEta(pos, rc),
                             selected == null ? Double.NaN
                                     : selected.getOneBodyEta(pos, rc),
-                            Boolean.toString(contexts < frequencySeverityMinTrainCount));
+                            Boolean.toString(contexts < meanExcessMinTrainCount));
                 }
             }
             for (long key : raw.pairSums.keys()) {
@@ -4829,7 +4832,7 @@ public class PackStarEstimator {
                         selected == null ? Double.NaN
                                 : selected.getPairEta(
                                 pos1, rc1, pos2, rc2),
-                        Boolean.toString(contexts < frequencySeverityMinTrainCount));
+                        Boolean.toString(contexts < meanExcessMinTrainCount));
             }
         } catch (Exception ex) {
             throw new IllegalStateException(
@@ -4839,7 +4842,7 @@ public class PackStarEstimator {
 
     private void writeFrequencySeverityCoverageArtifactQuietly(
             File dir, EtaCorrections raw,
-            FrequencySeverityEtaCoverage coverage, EtaCorrections selected) {
+            MeanExcessEtaCoverage coverage, EtaCorrections selected) {
         try {
             writeFrequencySeverityCoverageArtifact(dir, raw, coverage, selected);
         } catch (RuntimeException ex) {
@@ -4853,7 +4856,7 @@ public class PackStarEstimator {
             EtaCorrections eta, double logMuTrain) {
         File output = newFrequencySeverityArtifact(
                 dir, "frequency_severity_" + stage + "_samples.tsv");
-        double logClip = frequencySeverityRelativeBoundKcal / RT;
+        double logClip = meanExcessRelativeBoundKcal / RT;
         try (PrintWriter writer = openFrequencySeverityWriter(output)) {
             writer.println("schema\tstage\tindex\tconf\teTrueKcal\teMinKcal"
                     + "\tetaKcal\teProposalKcal\tlogRawWeight"
@@ -4896,7 +4899,7 @@ public class PackStarEstimator {
     private void writeFrequencySeverityStageArtifact(
             File dir, String stage,
             PackStarFrequencySeverityPAC.Interval interval,
-            PackStarFrequencySeverityPAC.SeverityTest severityTest,
+            PackStarFrequencySeverityPAC.MeanExcessTest meanExcessTest,
             PackStarFrequencySeverityPAC.Sizing sizing,
             double logMuTrain, double logZCorrected) {
         File output = newFrequencySeverityArtifact(dir, "frequency_severity_" + stage + ".tsv");
@@ -4920,37 +4923,37 @@ public class PackStarEstimator {
                             + "\t%.17g\t%.17g\t%.17g\t%.17g\t%.17g"
                             + "\t%.17g\t%d\t%s\t%s\t%.17g\t%.17g"
                             + "\t%d\t%s\t%.17g\t%.17g\t%.17g\t%s%n",
-                    stage, interval.sampleCount, interval.tailCount,
-                    interval.bulkMean, interval.bulkVariance,
-                    interval.bulkRadius, interval.bulkLower,
-                    interval.bulkUpper,
-                    interval.tailProbabilityEmpirical,
-                    interval.tailProbabilityUpper,
-                    interval.conditionalSeverityCap,
-                    interval.inducedTailMeanUpper,
+                    stage, interval.sampleCount, interval.exceedanceCount,
+                    interval.clippedMean, interval.clippedVariance,
+                    interval.clippedRadius, interval.clippedLower,
+                    interval.clippedUpper,
+                    interval.exceedanceProbabilityEmpirical,
+                    interval.exceedanceProbabilityUpper,
+                    interval.conditionalMeanExcessBound,
+                    interval.excessMeanUpper,
                     interval.normalizedMeanLower,
                     interval.normalizedMeanUpper,
                     interval.epsilon,
-                    interval.empiricalTailMean,
-                    interval.empiricalConditionalSeverity,
-                    interval.observedMaxConditionalSeverity,
-                    severityTest == null ? -1 : severityTest.tailCount,
-                    severityTest == null ? "NA"
+                    interval.empiricalExcessMean,
+                    interval.empiricalConditionalMeanExcess,
+                    interval.observedMaxExcess,
+                    meanExcessTest == null ? -1 : meanExcessTest.exceedanceCount,
+                    meanExcessTest == null ? "NA"
                             : Boolean.toString(
-                            severityTest.sufficientTailSamples),
-                    severityTest == null ? "NA"
-                            : Boolean.toString(severityTest.rejected),
-                    severityTest == null ? Double.NaN
-                            : severityTest.logPValue,
-                    severityTest == null ? Double.NaN
-                            : severityTest.pValueUpper,
+                            meanExcessTest.sufficientTailSamples),
+                    meanExcessTest == null ? "NA"
+                            : Boolean.toString(meanExcessTest.rejected),
+                    meanExcessTest == null ? Double.NaN
+                            : meanExcessTest.logPValue,
+                    meanExcessTest == null ? Double.NaN
+                            : meanExcessTest.pValueUpper,
                     sizing == null ? -1 : sizing.finalSamples,
                     sizing == null ? "NA"
                             : Boolean.toString(sizing.reachableAtMax),
                     sizing == null ? Double.NaN
                             : sizing.epsilonAtMaxSamples,
                     logMuTrain, logZCorrected,
-                    sanitizeTsv(frequencySeverityPremiseId));
+                    sanitizeTsv(meanExcessPremiseId));
         } catch (Exception ex) {
             throw new IllegalStateException(
                     "cannot write frequency/severity " + stage + " artifact", ex);
@@ -4958,10 +4961,10 @@ public class PackStarEstimator {
     }
 
     private void writeFrequencySeverityRunSummaryArtifact(
-            File dir, FrequencySeverityCandidateScore winner,
+            File dir, MeanExcessCandidateScore winner,
             PackStarFrequencySeverityPAC.Sizing sizing,
             PackStarFrequencySeverityPAC.Interval interval,
-            PackStarFrequencySeverityPAC.SeverityTest severityTest,
+            PackStarFrequencySeverityPAC.MeanExcessTest meanExcessTest,
             int trainCount, int discoveryCount, int validationCount,
             int monitorCount, int finalCount,
             int proposalDpSweeps, boolean valid) {
@@ -4974,18 +4977,18 @@ public class PackStarEstimator {
             writeFrequencySeverityKey(writer, "certificateValid", valid);
             writeFrequencySeverityKey(writer, "certificateFailureReason", certificateFailureReason);
             writeFrequencySeverityKey(writer, "assumptionConditional", "true");
-            writeFrequencySeverityKey(writer, "severityPremiseId", frequencySeverityPremiseId);
-            writeFrequencySeverityKey(writer, "severityCapS0", frequencySeverityCap);
+            writeFrequencySeverityKey(writer, "severityPremiseId", meanExcessPremiseId);
+            writeFrequencySeverityKey(writer, "severityCapS0", conditionalMeanExcessBound);
             writeFrequencySeverityKey(writer, "severityTestStage", "final");
-            writeFrequencySeverityKey(writer, "severityTestAlpha", frequencySeverityTestAlpha);
-            writeFrequencySeverityKey(writer, "severityTestTailCount", severityTest.tailCount);
-            writeFrequencySeverityKey(writer, "severityTestSufficient", severityTest.sufficientTailSamples);
-            writeFrequencySeverityKey(writer, "severityTestRejected", severityTest.rejected);
-            writeFrequencySeverityKey(writer, "severityTestLogP", severityTest.logPValue);
-            writeFrequencySeverityKey(writer, "severityTestPUpper", severityTest.pValueUpper);
+            writeFrequencySeverityKey(writer, "severityTestAlpha", meanExcessTestAlpha);
+            writeFrequencySeverityKey(writer, "severityTestTailCount", meanExcessTest.exceedanceCount);
+            writeFrequencySeverityKey(writer, "severityTestSufficient", meanExcessTest.sufficientTailSamples);
+            writeFrequencySeverityKey(writer, "severityTestRejected", meanExcessTest.rejected);
+            writeFrequencySeverityKey(writer, "severityTestLogP", meanExcessTest.logPValue);
+            writeFrequencySeverityKey(writer, "severityTestPUpper", meanExcessTest.pValueUpper);
             writeFrequencySeverityKey(writer, "empiricalConditionalSeverity",
-                    interval.empiricalConditionalSeverity);
-            writeFrequencySeverityKey(writer, "relativeBoundKcal", frequencySeverityRelativeBoundKcal);
+                    interval.empiricalConditionalMeanExcess);
+            writeFrequencySeverityKey(writer, "relativeBoundKcal", meanExcessRelativeBoundKcal);
             writeFrequencySeverityKey(writer, "trainCcd", trainCount);
             writeFrequencySeverityKey(writer, "discoveryCcd", discoveryCount);
             writeFrequencySeverityKey(writer, "validationCcd", validationCount);
@@ -5012,26 +5015,26 @@ public class PackStarEstimator {
             writeFrequencySeverityKey(writer, "proposalDpSweeps",
                     proposalDpSweeps);
             writeFrequencySeverityKey(writer, "tripleEtaEnabled",
-                    frequencySeverityTripleEta != null);
+                    meanExcessTripleEta != null);
             writeFrequencySeverityKey(writer,
                     "tripleEtaCapacityFallback",
-                    frequencySeverityTripleEtaFallbackReason != null);
+                    meanExcessTripleEtaFallbackReason != null);
             writeFrequencySeverityKey(writer,
                     "tripleEtaCapacityFallbackReason",
-                    frequencySeverityTripleEtaFallbackReason == null
-                            ? "NA" : frequencySeverityTripleEtaFallbackReason);
+                    meanExcessTripleEtaFallbackReason == null
+                            ? "NA" : meanExcessTripleEtaFallbackReason);
             writeFrequencySeverityKey(writer, "selectedTripleEtaActive",
                     hasTripleEta(winner.fullEta));
             writeFrequencySeverityKey(writer, "tripleEtaScale",
                     winner.fullEta.tripleEtaScale);
             writeFrequencySeverityKey(writer,
                     "tripleEtaPartialCcdAssignments",
-                    frequencySeverityTripleEta == null ? 0L
-                            : frequencySeverityTripleEta.factorAssignments);
+                    meanExcessTripleEta == null ? 0L
+                            : meanExcessTripleEta.factorAssignments);
             writeFrequencySeverityKey(writer,
                     "tripleEtaPositiveJointFactors",
-                    frequencySeverityTripleEta == null ? 0L
-                            : frequencySeverityTripleEta.positiveFactors);
+                    meanExcessTripleEta == null ? 0L
+                            : meanExcessTripleEta.positiveFactors);
             writeFrequencySeverityKey(writer,
                     "selectedTripleEtaPositionTriples",
                     hasTripleEta(winner.fullEta)
@@ -5069,11 +5072,11 @@ public class PackStarEstimator {
                     sizing.reachableAtMax);
             writeFrequencySeverityKey(writer, "predictedEpsilonAtMax",
                     sizing.epsilonAtMaxSamples);
-            writeFrequencySeverityKey(writer, "tailCount", interval.tailCount);
+            writeFrequencySeverityKey(writer, "tailCount", interval.exceedanceCount);
             writeFrequencySeverityKey(writer, "tailProbabilityUpper",
-                    interval.tailProbabilityUpper);
-            writeFrequencySeverityKey(writer, "bulkLower", interval.bulkLower);
-            writeFrequencySeverityKey(writer, "bulkUpper", interval.bulkUpper);
+                    interval.exceedanceProbabilityUpper);
+            writeFrequencySeverityKey(writer, "bulkLower", interval.clippedLower);
+            writeFrequencySeverityKey(writer, "bulkUpper", interval.clippedUpper);
             writeFrequencySeverityKey(writer, "epsilon", epsilon);
             writeFrequencySeverityKey(writer, "targetEpsilon", targetEpsilon);
             writeFrequencySeverityKey(writer, "targetReached",
@@ -5327,7 +5330,7 @@ public class PackStarEstimator {
                 StandardOpenOption.WRITE));
     }
 
-    private String frequencySeverityPrefixedArtifactName(
+    private String meanExcessPrefixedArtifactName(
             String prefix, String baseName) {
         if (prefix == null || prefix.isEmpty()) return baseName;
         return sanitizeTsv(prefix).replace('\t', '_') + "_" + baseName;
@@ -5340,7 +5343,7 @@ public class PackStarEstimator {
 
     private String formatFrequencySeverityShrinkGrid() {
         StringBuilder text = new StringBuilder();
-        for (FrequencySeverityShrinkPair shrink : frequencySeverityShrinkGrid) {
+        for (MeanExcessShrinkPair shrink : meanExcessShrinkGrid) {
             if (text.length() > 0) text.append(',');
             text.append(String.format(Locale.ROOT, "%g:%g",
                     shrink.unary, shrink.pair));
@@ -6649,7 +6652,7 @@ public class PackStarEstimator {
         }
     }
 
-    private FrequencySeverityEtaTraining extractFrequencySeverityEtaTraining(
+    private MeanExcessEtaTraining extractFrequencySeverityEtaTraining(
             List<CCDResult> ccdResults) {
         return extractFrequencySeverityEtaTraining(
                 Collections.emptyList(), ccdResults);
@@ -6662,7 +6665,7 @@ public class PackStarEstimator {
      * by the complementary fit.  This prevents a failed q_eta batch from being
      * evaluated as if it were an IID extension of the original q_m batch.
      */
-    private FrequencySeverityEtaTraining extractFrequencySeverityEtaTraining(
+    private MeanExcessEtaTraining extractFrequencySeverityEtaTraining(
             List<CCDResult> history,
             List<CCDResult> newestOnPolicyBatch) {
         int numPos = rcs.getNumPos();
@@ -6671,23 +6674,23 @@ public class PackStarEstimator {
             numRCs[pos] = branchMinimizingEmat.getNumConfAtPos(pos);
         }
         EtaCorrections all = new EtaCorrections(numPos, numRCs);
-        EtaCorrections[] folds = new EtaCorrections[frequencySeverityFolds];
-        FrequencySeverityEtaCoverage[] foldCoverage = new FrequencySeverityEtaCoverage[frequencySeverityFolds];
-        Set<String>[] foldAssignments = new Set[frequencySeverityFolds];
-        List<CCDResult>[] foldFitSamples = new List[frequencySeverityFolds];
-        for (int fold = 0; fold < frequencySeverityFolds; fold++) {
+        EtaCorrections[] folds = new EtaCorrections[meanExcessFolds];
+        MeanExcessEtaCoverage[] foldCoverage = new MeanExcessEtaCoverage[meanExcessFolds];
+        Set<String>[] foldAssignments = new Set[meanExcessFolds];
+        List<CCDResult>[] foldFitSamples = new List[meanExcessFolds];
+        for (int fold = 0; fold < meanExcessFolds; fold++) {
             folds[fold] = new EtaCorrections(numPos, numRCs);
-            foldCoverage[fold] = new FrequencySeverityEtaCoverage(numPos, numRCs);
+            foldCoverage[fold] = new MeanExcessEtaCoverage(numPos, numRCs);
             foldAssignments[fold] = new HashSet<>();
             foldFitSamples[fold] = new ArrayList<>();
         }
         List<CCDResult> allFitSamples = new ArrayList<>(
                 history.size() + newestOnPolicyBatch.size());
-        FrequencySeverityEtaCoverage allCoverage = new FrequencySeverityEtaCoverage(numPos, numRCs);
+        MeanExcessEtaCoverage allCoverage = new MeanExcessEtaCoverage(numPos, numRCs);
         Set<String> allAssignments = new HashSet<>();
         int totalSamples = history.size() + newestOnPolicyBatch.size();
-        int[] foldFitSampleCounts = new int[frequencySeverityFolds];
-        List<FrequencySeverityEtaCellObservation> observations =
+        int[] foldFitSampleCounts = new int[meanExcessFolds];
+        List<MeanExcessEtaCellObservation> observations =
                 new ArrayList<>(totalSamples * Math.max(1, numPos));
 
         for (int sampleIndex = 0; sampleIndex < totalSamples; sampleIndex++) {
@@ -6697,16 +6700,16 @@ public class PackStarEstimator {
                     ? history.get(sampleIndex)
                     : newestOnPolicyBatch.get(newestIndex);
             int newestFold = historical ? -1
-                    : newestIndex % frequencySeverityFolds;
+                    : newestIndex % meanExcessFolds;
             allFitSamples.add(result);
-            for (int fold = 0; fold < frequencySeverityFolds; fold++) {
+            for (int fold = 0; fold < meanExcessFolds; fold++) {
                 if (historical || fold == newestFold) {
                     foldFitSampleCounts[fold]++;
                     foldFitSamples[fold].add(result);
                 }
             }
             int[] conf = result.conf;
-            if (frequencySeverityProposalLearning) {
+            if (meanExcessProposalLearning) {
             SampleFeatures features = getSampleFeatures(result);
 
             for (int pos = 0; pos < numPos; pos++) {
@@ -6714,12 +6717,12 @@ public class PackStarEstimator {
                 if (rc < 0) continue;
                 double correction = features.oneBodyCorrections[pos];
                 all.addOneBodySample(pos, rc, correction);
-                for (int fold = 0; fold < frequencySeverityFolds; fold++) {
+                for (int fold = 0; fold < meanExcessFolds; fold++) {
                     if (historical || fold == newestFold) {
                         folds[fold].addOneBodySample(pos, rc, correction);
                     }
                 }
-                observations.add(new FrequencySeverityEtaCellObservation(
+                observations.add(new MeanExcessEtaCellObservation(
                         sampleIndex, newestFold, false,
                         pos, rc, -1, -1, correction));
             }
@@ -6732,13 +6735,13 @@ public class PackStarEstimator {
                 if (rc1 < 0 || rc2 < 0) continue;
                 double correction = features.pairCorrections[edgeIndex];
                 all.addPairSample(pos1, rc1, pos2, rc2, correction);
-                for (int fold = 0; fold < frequencySeverityFolds; fold++) {
+                for (int fold = 0; fold < meanExcessFolds; fold++) {
                     if (historical || fold == newestFold) {
                         folds[fold].addPairSample(
                                 pos1, rc1, pos2, rc2, correction);
                     }
                 }
-                observations.add(new FrequencySeverityEtaCellObservation(
+                observations.add(new MeanExcessEtaCellObservation(
                         sampleIndex, newestFold, true,
                         pos1, rc1, pos2, rc2, correction));
             }
@@ -6748,7 +6751,7 @@ public class PackStarEstimator {
             if (allAssignments.add(assignment)) {
                 addFrequencySeverityCoverage(conf, allCoverage);
             }
-            for (int fold = 0; fold < frequencySeverityFolds; fold++) {
+            for (int fold = 0; fold < meanExcessFolds; fold++) {
                 if ((historical || fold == newestFold)
                         && foldAssignments[fold].add(assignment)) {
                     addFrequencySeverityCoverage(conf, foldCoverage[fold]);
@@ -6757,13 +6760,13 @@ public class PackStarEstimator {
         }
         finalizeEtaTermCounts(all);
         for (EtaCorrections fold : folds) finalizeEtaTermCounts(fold);
-        return new FrequencySeverityEtaTraining(
+        return new MeanExcessEtaTraining(
                 all, folds, allCoverage, foldCoverage, observations,
                 totalSamples, foldFitSampleCounts, history.size(),
                 List.copyOf(allFitSamples), foldFitSamples);
     }
 
-    private void addFrequencySeverityCoverage(int[] conf, FrequencySeverityEtaCoverage coverage) {
+    private void addFrequencySeverityCoverage(int[] conf, MeanExcessEtaCoverage coverage) {
         for (int pos = 0; pos < conf.length; pos++) {
             int rc = conf[pos];
             if (rc >= 0) coverage.unaryDistinctContexts[pos][rc]++;

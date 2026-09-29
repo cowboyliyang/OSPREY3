@@ -40,6 +40,10 @@ PY
     --tests edu.duke.cs.osprey.kstar.TestKStarScore \
     --tests edu.duke.cs.osprey.kstar.TestKStarScoreLog10 \
     --tests edu.duke.cs.osprey.packstar.TestPackStarFrequencySeverityPAC \
+    --tests edu.duke.cs.osprey.packstar.TestPackStarConfig \
+    --tests edu.duke.cs.osprey.packstar.TestPackStarProposalLearning \
+    --tests edu.duke.cs.osprey.packstar.TestPackStarForwardTripleSelection \
+    --tests edu.duke.cs.osprey.packstar.TestPackStarTripleEtaCorrections \
     --tests edu.duke.cs.osprey.packstar.TestPackStarAutoPreflight \
     --tests edu.duke.cs.osprey.packstar.TestPackStarAdmissionDecision \
     --tests edu.duke.cs.osprey.branchdp.TestBranchDpAdmission \

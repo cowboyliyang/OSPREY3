@@ -84,10 +84,10 @@ final class PackStarBranchDpBackend extends BranchDpBackend implements PackStarB
         }
         int maxRefits = Math.max(0, getConfigInteger(
                 FREQUENCY_SEVERITY_MAX_REFITS_PROPERTY, 8));
-        return frequencySeverityDpSweeps(maxRefits);
+        return meanExcessDpSweeps(maxRefits);
     }
 
-    static int frequencySeverityDpSweeps(int maxRefits) {
+    static int meanExcessDpSweeps(int maxRefits) {
         // One initial q_m sweep plus one proposal sweep for each round
         // 0..maxRefits. Round zero may reuse q_m only in a special no-triple
         // case, so admission reserves the non-reuse upper bound.

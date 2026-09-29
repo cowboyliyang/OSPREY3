@@ -17,19 +17,23 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Frequency/severity PAC confidence interval for importance weights.
+ * Fixed-batch PAC-style interval under a conditional mean-excess assumption.
  *
- * <p>For a positive relative importance weight {@code R}, a fixed relative
- * clipping threshold {@code C}, and {@code U=max(R/C-1,0)}, the interval uses
- * an empirical-Bernstein interval for {@code Y=min(R/C,1)} and a one-sided
- * exact binomial limit for {@code P(U>0)}.  The tail factorization uses the
- * externally supplied conditional severity premise
- * {@code E[U | U>0] <= S0}.</p>
+ * <p>Manuscript mapping: w is the importance weight, mu is an adaptation-only
+ * scale, and kappa is the frozen relative clipping threshold. The clipped
+ * component is y = min(w/(mu*kappa),1), the excess is
+ * u = max(w/(mu*kappa)-1,0), and pi = P(u>0). The assumption is
+ * E[u | u>0] <= m_u. Empirical Bernstein bounds E[y], while a one-sided
+ * Clopper-Pearson bound piUpper gives E[u] <= m_u * piUpper.</p>
  *
- * <p>This class deliberately works on the relative scale.  A caller may use
- * any positive, adaptation-only normalizer {@code mu} and set {@code R=W/mu};
- * the corresponding partition-function scale is then
- * {@code Zproposal * mu * C}.</p>
+ * <p>The caller supplies logRelativeWeights = log(w/mu) and logKappa =
+ * log(kappa), then rescales the normalized endpoints by q_eta * mu * kappa.
+ * The proposal, mu, kappa, m_u, sample size, and error allocation are frozen
+ * before the independent final batch. This is not a confidence sequence.</p>
+ *
+ * <p>The historical class name is retained for compatibility. The bound m_u
+ * is an assumption on the conditional mean, not a pointwise bound on u.
+ * Observed mean/max excess values are diagnostics, not replacements for m_u.</p>
  */
 public final class PackStarFrequencySeverityPAC {
 
@@ -37,21 +41,21 @@ public final class PackStarFrequencySeverityPAC {
 
     /** Point estimates used only for adaptation-time sizing and ranking. */
     public static final class Moments {
-        public final double bulkMean;
-        public final double bulkVariance;
-        public final double tailProbability;
+        public final double clippedMean;
+        public final double clippedVariance;
+        public final double exceedanceProbability;
 
-        public Moments(double bulkMean, double bulkVariance,
-                       double tailProbability) {
-            requireProbability(bulkMean, "bulk mean");
-            if (!Double.isFinite(bulkVariance) || bulkVariance < 0.0) {
+        public Moments(double clippedMean, double clippedVariance,
+                       double exceedanceProbability) {
+            requireProbability(clippedMean, "clipped-component mean");
+            if (!Double.isFinite(clippedVariance) || clippedVariance < 0.0) {
                 throw new IllegalArgumentException(
-                        "bulk variance must be finite and nonnegative");
+                        "clipped-component variance must be finite and nonnegative");
             }
-            requireProbability(tailProbability, "tail probability");
-            this.bulkMean = bulkMean;
-            this.bulkVariance = bulkVariance;
-            this.tailProbability = tailProbability;
+            requireProbability(exceedanceProbability, "tail probability");
+            this.clippedMean = clippedMean;
+            this.clippedVariance = clippedVariance;
+            this.exceedanceProbability = exceedanceProbability;
         }
     }
 
@@ -90,17 +94,17 @@ public final class PackStarFrequencySeverityPAC {
     static PooledCrossfitMoments poolCrossfitMoments(
             int[] sampleCounts,
             double[] effectiveSampleSizes,
-            double[] bulkMeans,
-            double[] bulkVariances,
-            double[] tailProbabilities) {
+            double[] clippedMeans,
+            double[] clippedVariances,
+            double[] exceedanceProbabilities) {
         if (sampleCounts == null || sampleCounts.length == 0
                 || effectiveSampleSizes == null
-                || bulkMeans == null || bulkVariances == null
-                || tailProbabilities == null
+                || clippedMeans == null || clippedVariances == null
+                || exceedanceProbabilities == null
                 || effectiveSampleSizes.length != sampleCounts.length
-                || bulkMeans.length != sampleCounts.length
-                || bulkVariances.length != sampleCounts.length
-                || tailProbabilities.length != sampleCounts.length) {
+                || clippedMeans.length != sampleCounts.length
+                || clippedVariances.length != sampleCounts.length
+                || exceedanceProbabilities.length != sampleCounts.length) {
             throw new IllegalArgumentException(
                     "cross-fit moment arrays must have one common positive length");
         }
@@ -121,9 +125,9 @@ public final class PackStarFrequencySeverityPAC {
         for (int fold = 0; fold < sampleCounts.length; fold++) {
             int count = sampleCounts[fold];
             double ess = effectiveSampleSizes[fold];
-            double mean = bulkMeans[fold];
-            double variance = bulkVariances[fold];
-            double tail = tailProbabilities[fold];
+            double mean = clippedMeans[fold];
+            double variance = clippedVariances[fold];
+            double tail = exceedanceProbabilities[fold];
             if (!Double.isFinite(ess) || !(ess > 0.0)
                     || ess > count * (1.0 + 1.0e-9)
                     || !Double.isFinite(mean) || mean < 0.0 || mean > 1.0
@@ -165,60 +169,60 @@ public final class PackStarFrequencySeverityPAC {
     /** A finite-sample interval in units of the frozen clipping scale. */
     public static final class Interval {
         public final int sampleCount;
-        public final int tailCount;
-        public final double bulkMean;
-        public final double bulkVariance;
-        public final double bulkRadius;
-        public final double bulkLower;
-        public final double bulkUpper;
-        public final double tailProbabilityEmpirical;
-        public final double tailProbabilityUpper;
-        public final double conditionalSeverityCap;
-        public final double inducedTailMeanUpper;
+        public final int exceedanceCount;
+        public final double clippedMean;
+        public final double clippedVariance;
+        public final double clippedRadius;
+        public final double clippedLower;
+        public final double clippedUpper;
+        public final double exceedanceProbabilityEmpirical;
+        public final double exceedanceProbabilityUpper;
+        public final double conditionalMeanExcessBound;
+        public final double excessMeanUpper;
         public final double normalizedMeanLower;
         public final double normalizedMeanUpper;
         public final double epsilon;
-        public final double empiricalTailMean;
-        public final double empiricalConditionalSeverity;
-        public final double observedMaxConditionalSeverity;
+        public final double empiricalExcessMean;
+        public final double empiricalConditionalMeanExcess;
+        public final double observedMaxExcess;
 
-        private Interval(int sampleCount, int tailCount,
-                         double bulkMean, double bulkVariance,
-                         double bulkRadius, double bulkLower,
-                         double bulkUpper,
-                         double tailProbabilityEmpirical,
-                         double tailProbabilityUpper,
-                         double conditionalSeverityCap,
-                         double inducedTailMeanUpper,
+        private Interval(int sampleCount, int exceedanceCount,
+                         double clippedMean, double clippedVariance,
+                         double clippedRadius, double clippedLower,
+                         double clippedUpper,
+                         double exceedanceProbabilityEmpirical,
+                         double exceedanceProbabilityUpper,
+                         double conditionalMeanExcessBound,
+                         double excessMeanUpper,
                          double normalizedMeanLower,
                          double normalizedMeanUpper,
                          double epsilon,
-                         double empiricalTailMean,
-                         double empiricalConditionalSeverity,
-                         double observedMaxConditionalSeverity) {
+                         double empiricalExcessMean,
+                         double empiricalConditionalMeanExcess,
+                         double observedMaxExcess) {
             this.sampleCount = sampleCount;
-            this.tailCount = tailCount;
-            this.bulkMean = bulkMean;
-            this.bulkVariance = bulkVariance;
-            this.bulkRadius = bulkRadius;
-            this.bulkLower = bulkLower;
-            this.bulkUpper = bulkUpper;
-            this.tailProbabilityEmpirical = tailProbabilityEmpirical;
-            this.tailProbabilityUpper = tailProbabilityUpper;
-            this.conditionalSeverityCap = conditionalSeverityCap;
-            this.inducedTailMeanUpper = inducedTailMeanUpper;
+            this.exceedanceCount = exceedanceCount;
+            this.clippedMean = clippedMean;
+            this.clippedVariance = clippedVariance;
+            this.clippedRadius = clippedRadius;
+            this.clippedLower = clippedLower;
+            this.clippedUpper = clippedUpper;
+            this.exceedanceProbabilityEmpirical = exceedanceProbabilityEmpirical;
+            this.exceedanceProbabilityUpper = exceedanceProbabilityUpper;
+            this.conditionalMeanExcessBound = conditionalMeanExcessBound;
+            this.excessMeanUpper = excessMeanUpper;
             this.normalizedMeanLower = normalizedMeanLower;
             this.normalizedMeanUpper = normalizedMeanUpper;
             this.epsilon = epsilon;
-            this.empiricalTailMean = empiricalTailMean;
-            this.empiricalConditionalSeverity =
-                    empiricalConditionalSeverity;
-            this.observedMaxConditionalSeverity =
-                    observedMaxConditionalSeverity;
+            this.empiricalExcessMean = empiricalExcessMean;
+            this.empiricalConditionalMeanExcess =
+                    empiricalConditionalMeanExcess;
+            this.observedMaxExcess =
+                    observedMaxExcess;
         }
 
         public boolean hasPositiveBulkLower() {
-            return bulkLower > 0.0;
+            return clippedLower > 0.0;
         }
 
         public boolean isFinite() {
@@ -230,8 +234,8 @@ public final class PackStarFrequencySeverityPAC {
         }
 
         public Moments moments() {
-            return new Moments(bulkMean, bulkVariance,
-                    tailProbabilityEmpirical);
+            return new Moments(clippedMean, clippedVariance,
+                    exceedanceProbabilityEmpirical);
         }
     }
 
@@ -255,22 +259,22 @@ public final class PackStarFrequencySeverityPAC {
         }
     }
 
-    /** Fixed-batch test result that can reject, but never validate, S0. */
-    public static final class SeverityTest {
-        public final int tailCount;
+    /** Fixed-batch test result that can reject, but never validate, m_u. */
+    public static final class MeanExcessTest {
+        public final int exceedanceCount;
         public final boolean sufficientTailSamples;
         public final boolean logicalViolation;
         public final boolean rejected;
         public final double logPValue;
         public final double pValueUpper;
 
-        private SeverityTest(int tailCount,
+        private MeanExcessTest(int exceedanceCount,
                              boolean sufficientTailSamples,
                              boolean logicalViolation,
                              boolean rejected,
                              double logPValue,
                              double pValueUpper) {
-            this.tailCount = tailCount;
+            this.exceedanceCount = exceedanceCount;
             this.sufficientTailSamples = sufficientTailSamples;
             this.logicalViolation = logicalViolation;
             this.rejected = rejected;
@@ -281,31 +285,31 @@ public final class PackStarFrequencySeverityPAC {
 
     /** Evaluate a fresh IID sample of log relative weights. */
     public static Interval evaluate(double[] logRelativeWeights,
-                                    double logRelativeClip,
-                                    double conditionalSeverityCap,
-                                    double bulkDelta,
-                                    double frequencyDelta) {
+                                    double logKappa,
+                                    double conditionalMeanExcessBound,
+                                    double clippedComponentDelta,
+                                    double exceedanceProbabilityDelta) {
         requireLogWeights(logRelativeWeights);
-        if (!Double.isFinite(logRelativeClip)) {
+        if (!Double.isFinite(logKappa)) {
             throw new IllegalArgumentException(
                     "relative log clip must be finite");
         }
-        requireSeverity(conditionalSeverityCap);
-        requireDelta(bulkDelta, "bulk delta");
-        requireDelta(frequencyDelta, "frequency delta");
+        requireMeanExcessBound(conditionalMeanExcessBound);
+        requireDelta(clippedComponentDelta, "clipped-component delta");
+        requireDelta(exceedanceProbabilityDelta, "exceedance-probability delta");
 
         int n = logRelativeWeights.length;
-        double[] bulk = new double[n];
-        int tailCount = 0;
+        double[] clippedSamples = new double[n];
+        int exceedanceCount = 0;
         double sumTail = 0.0;
         double maxTail = 0.0;
         boolean infiniteTail = false;
 
         for (int i = 0; i < n; i++) {
-            double relative = logRelativeWeights[i] - logRelativeClip;
+            double relative = logRelativeWeights[i] - logKappa;
             if (relative > 0.0) {
-                bulk[i] = 1.0;
-                tailCount++;
+                clippedSamples[i] = 1.0;
+                exceedanceCount++;
                 double excess = safeExpm1(relative);
                 if (Double.isFinite(excess) && !infiniteTail) {
                     sumTail += excess;
@@ -315,32 +319,32 @@ public final class PackStarFrequencySeverityPAC {
                 }
                 maxTail = Math.max(maxTail, excess);
             } else {
-                bulk[i] = Math.exp(relative);
+                clippedSamples[i] = Math.exp(relative);
             }
         }
 
-        double mean = mean(bulk);
-        double variance = sampleVariance(bulk, mean);
+        double mean = mean(clippedSamples);
+        double variance = sampleVariance(clippedSamples, mean);
         double radius = empiricalBernsteinRadius(
-                n, variance, 1.0, bulkDelta);
+                n, variance, 1.0, clippedComponentDelta);
         double lower = Math.max(0.0, mean - radius);
         double upper = Math.min(1.0, mean + radius);
-        double pHat = (double) tailCount / n;
+        double pHat = (double) exceedanceCount / n;
         double pUpper = clopperPearsonUpper(
-                tailCount, n, frequencyDelta);
-        double tailUpper = pUpper * conditionalSeverityCap;
+                exceedanceCount, n, exceedanceProbabilityDelta);
+        double tailUpper = pUpper * conditionalMeanExcessBound;
         double meanUpper = upper + tailUpper;
         double epsilon = intervalEpsilon(lower, meanUpper);
-        double empiricalTailMean = infiniteTail
+        double empiricalExcessMean = infiniteTail
                 ? Double.POSITIVE_INFINITY : sumTail / n;
-        double empiricalSeverity = tailCount > 0
-                ? empiricalTailMean / pHat : 0.0;
+        double empiricalConditionalMeanExcess = exceedanceCount > 0
+                ? empiricalExcessMean / pHat : 0.0;
 
         return new Interval(
-                n, tailCount, mean, variance, radius, lower, upper,
-                pHat, pUpper, conditionalSeverityCap, tailUpper,
-                lower, meanUpper, epsilon, empiricalTailMean,
-                empiricalSeverity, maxTail);
+                n, exceedanceCount, mean, variance, radius, lower, upper,
+                pHat, pUpper, conditionalMeanExcessBound, tailUpper,
+                lower, meanUpper, epsilon, empiricalExcessMean,
+                empiricalConditionalMeanExcess, maxTail);
     }
 
     /**
@@ -349,9 +353,9 @@ public final class PackStarFrequencySeverityPAC {
      * the issued confidence interval.
      */
     public static Interval project(int sampleCount, Moments moments,
-                                   double conditionalSeverityCap,
-                                   double bulkDelta,
-                                   double frequencyDelta) {
+                                   double conditionalMeanExcessBound,
+                                   double clippedComponentDelta,
+                                   double exceedanceProbabilityDelta) {
         if (sampleCount <= 1) {
             throw new IllegalArgumentException(
                     "projected sample count must exceed one");
@@ -359,27 +363,27 @@ public final class PackStarFrequencySeverityPAC {
         if (moments == null) {
             throw new IllegalArgumentException("moments are required");
         }
-        requireSeverity(conditionalSeverityCap);
-        requireDelta(bulkDelta, "bulk delta");
-        requireDelta(frequencyDelta, "frequency delta");
+        requireMeanExcessBound(conditionalMeanExcessBound);
+        requireDelta(clippedComponentDelta, "clipped-component delta");
+        requireDelta(exceedanceProbabilityDelta, "exceedance-probability delta");
 
         double radius = empiricalBernsteinRadius(
-                sampleCount, moments.bulkVariance, 1.0, bulkDelta);
-        double lower = Math.max(0.0, moments.bulkMean - radius);
-        double upper = Math.min(1.0, moments.bulkMean + radius);
-        int pseudoTailCount = (int) Math.min(sampleCount,
-                Math.ceil(moments.tailProbability * sampleCount));
+                sampleCount, moments.clippedVariance, 1.0, clippedComponentDelta);
+        double lower = Math.max(0.0, moments.clippedMean - radius);
+        double upper = Math.min(1.0, moments.clippedMean + radius);
+        int pseudoExceedanceCount = (int) Math.min(sampleCount,
+                Math.ceil(moments.exceedanceProbability * sampleCount));
         double pUpper = clopperPearsonUpper(
-                pseudoTailCount, sampleCount, frequencyDelta);
-        double tailUpper = pUpper * conditionalSeverityCap;
+                pseudoExceedanceCount, sampleCount, exceedanceProbabilityDelta);
+        double tailUpper = pUpper * conditionalMeanExcessBound;
         double meanUpper = upper + tailUpper;
         double epsilon = intervalEpsilon(lower, meanUpper);
 
         return new Interval(
-                sampleCount, pseudoTailCount, moments.bulkMean,
-                moments.bulkVariance, radius, lower, upper,
-                moments.tailProbability, pUpper,
-                conditionalSeverityCap, tailUpper,
+                sampleCount, pseudoExceedanceCount, moments.clippedMean,
+                moments.clippedVariance, radius, lower, upper,
+                moments.exceedanceProbability, pUpper,
+                conditionalMeanExcessBound, tailUpper,
                 lower, meanUpper, epsilon,
                 Double.NaN, Double.NaN, Double.NaN);
     }
@@ -390,13 +394,13 @@ public final class PackStarFrequencySeverityPAC {
                               int unreachableSamples,
                               double targetEpsilon,
                               double safetyFraction,
-                              double conditionalSeverityCap,
-                              double bulkDelta,
-                              double frequencyDelta) {
+                              double conditionalMeanExcessBound,
+                              double clippedComponentDelta,
+                              double exceedanceProbabilityDelta) {
         if (maxSamples <= 1 || unreachableSamples <= 1
                 || unreachableSamples > maxSamples) {
             throw new IllegalArgumentException(
-                    "invalid frequency/severity maximum/unreachable sample counts");
+                    "invalid mean-excess maximum/unreachable sample counts");
         }
         if (!Double.isFinite(targetEpsilon)
                 || !(targetEpsilon > 0.0) || targetEpsilon >= 1.0) {
@@ -411,10 +415,10 @@ public final class PackStarFrequencySeverityPAC {
 
         double sizingTarget = targetEpsilon * safetyFraction;
         Interval atMax = project(maxSamples, moments,
-                conditionalSeverityCap, bulkDelta, frequencyDelta);
+                conditionalMeanExcessBound, clippedComponentDelta, exceedanceProbabilityDelta);
         if (atMax.epsilon > targetEpsilon) {
             Interval unreachable = project(unreachableSamples, moments,
-                    conditionalSeverityCap, bulkDelta, frequencyDelta);
+                    conditionalMeanExcessBound, clippedComponentDelta, exceedanceProbabilityDelta);
             return new Sizing(unreachableSamples, false,
                     unreachable.epsilon, atMax.epsilon, sizingTarget);
         }
@@ -428,13 +432,13 @@ public final class PackStarFrequencySeverityPAC {
         while (low < high) {
             int middle = (low + high) >>> 1;
             double epsilon = project(middle, moments,
-                    conditionalSeverityCap, bulkDelta,
-                    frequencyDelta).epsilon;
+                    conditionalMeanExcessBound, clippedComponentDelta,
+                    exceedanceProbabilityDelta).epsilon;
             if (epsilon <= sizingTarget) high = middle;
             else low = middle + 1;
         }
         Interval selected = project(low, moments,
-                conditionalSeverityCap, bulkDelta, frequencyDelta);
+                conditionalMeanExcessBound, clippedComponentDelta, exceedanceProbabilityDelta);
         return new Sizing(low, true, selected.epsilon,
                 atMax.epsilon, sizingTarget);
     }
@@ -476,30 +480,30 @@ public final class PackStarFrequencySeverityPAC {
     }
 
     /**
-     * Test the conditional severity premise on a fresh, fixed-size IID batch.
+     * Test the conditional mean-excess assumption on a fresh, fixed-size IID batch.
      * The proposal, clipping scale, cap, and sample count must be fixed before
      * drawing it. The same batch may also supply the partition-function
      * interval: rejection merely suppresses an otherwise reported estimate.
      * Failure to reject is never interpreted as validation. Markov
-     * inequality gives p=min(1,S0/meanPositiveExcess), conditional on the
+     * inequality gives p=min(1,m_u/meanPositiveExcess), conditional on the
      * number of exceedances. This is a fixed-batch, not sequential, test.
      */
-    public static SeverityTest testConditionalSeverity(
+    public static MeanExcessTest testConditionalMeanExcess(
             double[] logRelativeWeights,
-            double logRelativeClip,
-            double conditionalSeverityCap,
+            double logKappa,
+            double conditionalMeanExcessBound,
             double testAlpha) {
         requireLogWeights(logRelativeWeights);
-        if (!Double.isFinite(logRelativeClip)) {
+        if (!Double.isFinite(logKappa)) {
             throw new IllegalArgumentException(
                     "relative log clip must be finite");
         }
-        requireSeverity(conditionalSeverityCap);
-        requireDelta(testAlpha, "severity-test alpha");
+        requireMeanExcessBound(conditionalMeanExcessBound);
+        requireDelta(testAlpha, "mean-excess diagnostic alpha");
 
         List<Double> logExcesses = new ArrayList<>();
         for (double logWeight : logRelativeWeights) {
-            double relative = logWeight - logRelativeClip;
+            double relative = logWeight - logKappa;
             if (relative <= 0.0) continue;
             if (relative > 40.0) {
                 logExcesses.add(relative + Math.log1p(-Math.exp(-relative)));
@@ -507,20 +511,20 @@ public final class PackStarFrequencySeverityPAC {
                 logExcesses.add(Math.log(Math.expm1(relative)));
             }
         }
-        int tailCount = logExcesses.size();
-        if (tailCount == 0) {
-            return new SeverityTest(0, false, false, false, 0.0, 1.0);
+        int exceedanceCount = logExcesses.size();
+        if (exceedanceCount == 0) {
+            return new MeanExcessTest(0, false, false, false, 0.0, 1.0);
         }
-        if (conditionalSeverityCap == 0.0) {
-            return new SeverityTest(tailCount, true, true, true,
+        if (conditionalMeanExcessBound == 0.0) {
+            return new MeanExcessTest(exceedanceCount, true, true, true,
                     Double.NEGATIVE_INFINITY, 0.0);
         }
         // Compute in log space, including a single exceedance and huge tails.
-        double logMeanExcess = logSumExp(logExcesses) - Math.log(tailCount);
-        double logP = Math.min(0.0, Math.log(conditionalSeverityCap) - logMeanExcess);
+        double logMeanExcess = logSumExp(logExcesses) - Math.log(exceedanceCount);
+        double logP = Math.min(0.0, Math.log(conditionalMeanExcessBound) - logMeanExcess);
         double p = Math.exp(logP);
         boolean rejected = logP <= Math.log(testAlpha);
-        return new SeverityTest(tailCount, true, false, rejected, logP, p);
+        return new MeanExcessTest(exceedanceCount, true, false, rejected, logP, p);
     }
 
     private static double intervalEpsilon(double lower, double upper) {
@@ -581,10 +585,10 @@ public final class PackStarFrequencySeverityPAC {
         }
     }
 
-    private static void requireSeverity(double severity) {
-        if (!Double.isFinite(severity) || severity < 0.0) {
+    private static void requireMeanExcessBound(double meanExcessBound) {
+        if (!Double.isFinite(meanExcessBound) || meanExcessBound < 0.0) {
             throw new IllegalArgumentException(
-                    "conditional severity cap must be finite and nonnegative");
+                    "conditional mean-excess bound must be finite and nonnegative");
         }
     }
 

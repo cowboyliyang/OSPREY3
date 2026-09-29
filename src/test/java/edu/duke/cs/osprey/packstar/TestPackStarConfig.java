@@ -85,9 +85,9 @@ public class TestPackStarConfig {
 
     @Test
     public void packStarAdmissionCountsAdaptiveFrequencySeveritySweeps() {
-        assertEquals(2, PackStarBranchDpBackend.frequencySeverityDpSweeps(0));
-        assertEquals(6, PackStarBranchDpBackend.frequencySeverityDpSweeps(4));
-        assertEquals(2, PackStarBranchDpBackend.frequencySeverityDpSweeps(-3));
+        assertEquals(2, PackStarBranchDpBackend.meanExcessDpSweeps(0));
+        assertEquals(6, PackStarBranchDpBackend.meanExcessDpSweeps(4));
+        assertEquals(2, PackStarBranchDpBackend.meanExcessDpSweeps(-3));
     }
 
     private static void withProperties(Map<String, String> values, Runnable test) {

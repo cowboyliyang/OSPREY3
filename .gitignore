@@ -65,6 +65,7 @@ src/main/cu/CudaConfEcalc/build_sm86/
 *.rst
 *.pdf
 !/README.md
+!/README_PACKSTAR.md
 /doc/
 /docs/
 /.claude/

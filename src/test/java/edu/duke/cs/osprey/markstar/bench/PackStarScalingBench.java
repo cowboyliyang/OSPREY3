@@ -25,7 +25,7 @@ import java.util.List;
  * PACK* paper Table 2 ("scaling with n") driver.
  *
  * Runs MARK* (deterministic, branch-decomposition DP) and PACK* (adaptive
- * frequency/severity PAC estimator) on the SAME
+ * mean-excess PAC estimator) on the SAME
  * {@link ConfSpaces2RL0#buildWildTypeConfSpace(int)}
  * system already used by {@link TestBranchMARKStar}'s numFlexible harness (the
  * "10-position benchmark" referenced in the PACK* paper's Introduction), so the
@@ -46,7 +46,7 @@ import java.util.List;
  *   osprey.scalingpac.numCPUs   — CPU count (default TestBranchMARKStar.NUM_CPUs)
  *   osprey.scalingpac.outputCsv — output CSV path (appended; header written once)
  *   plus every packstar.pac.* / packstar.dp.* property (samples, trainSamples,
- *   pilotSamples, confidence, frequencySeverity.*, randomSeed, dp.gpu, ...) —
+ *   pilotSamples, confidence, meanExcess.*, randomSeed, dp.gpu, ...) —
  *   these are read directly by PackStarEstimator /
  *   PackStarPartitionFunction from system properties, exactly as in the real
  *   38-system benchmark, so no extra plumbing is needed here.

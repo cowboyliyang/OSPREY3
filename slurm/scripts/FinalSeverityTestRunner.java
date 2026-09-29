@@ -47,10 +47,10 @@ public class FinalSeverityTestRunner {
                 String[] fields = line.split("\t", -1);
                 double[] weights = Arrays.stream(fields[7].split(","))
                         .mapToDouble(FinalSeverityTestRunner::number).toArray();
-                var test = PackStarFrequencySeverityPAC.testConditionalSeverity(
+                var test = PackStarFrequencySeverityPAC.testConditionalMeanExcess(
                         weights, number(fields[1]), number(fields[2]), number(fields[3]));
                 double expectedLogP = number(fields[5]);
-                if (test.tailCount != Integer.parseInt(fields[4])
+                if (test.exceedanceCount != Integer.parseInt(fields[4])
                         || test.rejected != Boolean.parseBoolean(fields[6])
                         || Double.isNaN(test.logPValue) != Double.isNaN(expectedLogP)
                         || (!Double.isNaN(expectedLogP)
@@ -64,7 +64,7 @@ public class FinalSeverityTestRunner {
                     saw3cal |= fields[0].startsWith("rb1:3cal:");
                     saw4u3s |= fields[0].startsWith("rb1:4u3s:");
                     saw4wyu |= fields[0].startsWith("rb1:4wyu:");
-                    System.out.println("REJECT " + fields[0] + " tail=" + test.tailCount
+                    System.out.println("REJECT " + fields[0] + " tail=" + test.exceedanceCount
                             + " p=" + test.pValueUpper);
                 }
             }
