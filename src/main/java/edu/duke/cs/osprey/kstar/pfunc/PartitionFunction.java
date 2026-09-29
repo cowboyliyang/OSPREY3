@@ -203,7 +203,7 @@ public interface PartitionFunction {
 		public final Values values;
 		public final int numConfs;
 		/**
-		 * Optional, pfunc-specific counters (e.g., S9 GNN bound counts).
+		 * Optional, pfunc-specific counters (e.g., minimization counts).
 		 * Implementations can add entries via {@link #setStat(String, long)}.
 		 */
 		private final java.util.Map<String, Long> stats = new java.util.LinkedHashMap<>();

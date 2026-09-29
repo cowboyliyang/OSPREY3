@@ -15,9 +15,6 @@ import edu.duke.cs.osprey.kstar.*;
 import edu.duke.cs.osprey.kstar.pfunc.BoltzmannCalculator;
 import edu.duke.cs.osprey.kstar.pfunc.GradientDescentPfunc;
 import edu.duke.cs.osprey.kstar.pfunc.PartitionFunction;
-import edu.duke.cs.osprey.energy.approximation.branch.GNNConfEnergyCalculator;
-import edu.duke.cs.osprey.energy.approximation.branch.GNNSubtreeEnergyCalculator;
-import edu.duke.cs.osprey.energy.approximation.branch.GNNDataExporter;
 import edu.duke.cs.osprey.markstar.framework.BranchMARKStarBound;
 import edu.duke.cs.osprey.markstar.framework.MARKStarBound;
 import edu.duke.cs.osprey.markstar.framework.MARKStarBoundFastQueues;
@@ -336,18 +333,6 @@ public class TestBranchMARKStar {
     public static void main(String[] args) throws Exception {
         String mode = args.length > 0 ? args[0] : "benchmark";
         switch (mode) {
-            case "export4pos":
-                new edu.duke.cs.osprey.markstar.bench.GNNDataExport().exportGNNDataAllMutable();
-                break;
-            case "exportHighrot8pos":
-                new edu.duke.cs.osprey.markstar.bench.GNNDataExport().exportGNNDataHighrot8pos();
-                break;
-            case "patchRigidHighrot8pos":
-                new edu.duke.cs.osprey.markstar.bench.GNNDataExport().patchRigidEmatHighrot8pos();
-                break;
-            case "egfr_5pos":
-                new edu.duke.cs.osprey.markstar.bench.EGFRBench().exportGNNDataEGFR5pos();
-                break;
             case "scaling_bench":
                 new edu.duke.cs.osprey.markstar.bench.ScalingBench().benchmarkScaling8pos();
                 break;
@@ -443,7 +428,7 @@ public class TestBranchMARKStar {
             }
             case "benchmark":
             default:
-                new edu.duke.cs.osprey.markstar.bench.GNNStrategyBench().benchmarkGNNStrategies();
+                new edu.duke.cs.osprey.markstar.bench.ScalingBench().benchmarkScaling8pos();
                 break;
         }
     }

@@ -33,8 +33,7 @@ public class CsvOutputTimingProbe {
                 values.qstar, PartitionFunction.decimalPrecision);
         var result = new PartitionFunction.Result(PartitionFunction.Status.valueOf(row[offset + 2]),
                 values, Integer.parseInt(row[offset + 4]));
-        String[] stats = {"numConfsScored", "numPartialMinimizations", "s9LeafGNNBounded",
-                "s9SubtreeGNNBounded", "s9CCDFromGNN", "s9LeafOnnxCalls"};
+        String[] stats = {"numConfsScored", "numPartialMinimizations"};
         for (int i = 0; i < stats.length; i++) result.setStat(stats[i], Long.parseLong(row[offset + 5 + i]));
         return result;
     }

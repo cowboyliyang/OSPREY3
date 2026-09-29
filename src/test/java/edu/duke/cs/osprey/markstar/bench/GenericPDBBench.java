@@ -10,9 +10,6 @@ import edu.duke.cs.osprey.ematrix.SimplerEnergyMatrixCalculator;
 import edu.duke.cs.osprey.ematrix.UpdatingEnergyMatrix;
 import edu.duke.cs.osprey.energy.ConfEnergyCalculator;
 import edu.duke.cs.osprey.energy.EnergyCalculator;
-import edu.duke.cs.osprey.energy.approximation.branch.GNNConfEnergyCalculator;
-import edu.duke.cs.osprey.energy.approximation.branch.GNNDataExporter;
-import edu.duke.cs.osprey.energy.approximation.branch.GNNSubtreeEnergyCalculator;
 import edu.duke.cs.osprey.astar.conf.RCs;
 import edu.duke.cs.osprey.branchdp.BranchDpAdmission;
 import edu.duke.cs.osprey.branchdp.InteractionGraph;
@@ -52,7 +49,7 @@ import java.io.*;
 import java.util.*;
 
 /**
- * Generic PDB benchmark runner for comparing K*, MARK*, and MARK*+GNN S9.
+ * Generic PDB benchmark runner for comparing K*, MARK*, and PACK*.
  *
  * Reads design specification from system properties:
  *   osprey.bench.pdbPath       — path to prepped PDB
@@ -60,18 +57,12 @@ import java.util.*;
  *   osprey.bench.ligandChains  — comma-separated chain IDs for ligand (e.g. "C")
  *   osprey.bench.mutable       — semicolon-separated mutable residue IDs (e.g. "A96;B85")
  *   osprey.bench.flexible      — semicolon-separated flexible residue IDs (e.g. "C7;C6;C5")
- *   osprey.bench.method        — kstar | markstar | packstar | pac | kstar_lute | dp_profile | gnn_s9 | gnn_s10 | gnn_s11
+ *   osprey.bench.method        — kstar | markstar | packstar | pac | kstar_lute | dp_profile
  *   osprey.bench.epsilon       — approximation ratio (default 0.683)
  *   osprey.bench.numCPUs       — number of CPUs (default 8)
  *   osprey.bench.designId      — design identifier for output
  *   osprey.bench.outputDir     — output directory
  *
- * For GNN S9:
- *   osprey.gnn.eval.proteinModelPath
- *   osprey.gnn.eval.complexModelPath
- *   osprey.gnn.eval.proteinSubtreeModelPath
- *   osprey.gnn.eval.complexSubtreeModelPath
- *   osprey.gnn.gpuBatchSize
  */
 public class GenericPDBBench {
 
@@ -244,13 +235,13 @@ public class GenericPDBBench {
                 runKStarLute(confSpaces, epsilon, parallelism, ematDir, designId, outputDir);
                 break;
             case "markstar":
-                runMARKStar(confSpaces, epsilon, parallelism, ematDir, designId, outputDir, false, false, false);
+                runMARKStar(confSpaces, epsilon, parallelism, ematDir, designId, outputDir, false, false);
                 break;
             case "wmb_decoupled":
                 runWmbDecoupled(confSpaces, epsilon, designId, outputDir);
                 break;
             case "branch":
-                runMARKStar(confSpaces, epsilon, parallelism, ematDir, designId, outputDir, false, true, false);
+                runMARKStar(confSpaces, epsilon, parallelism, ematDir, designId, outputDir, true, false);
                 break;
             case "packstar":
             case "pac":
@@ -265,20 +256,6 @@ public class GenericPDBBench {
             case "dp_profile":
                 runDPProfile(confSpaces, parallelism, ematDir, designId);
                 break;
-            case "gnn_s9":
-                runMARKStar(confSpaces, epsilon, parallelism, ematDir, designId, outputDir, true, false, false);
-                break;
-            case "gnn_s10":
-                runMARKStar(confSpaces, epsilon, parallelism, ematDir, designId, outputDir, true, false, false);
-                break;
-            case "gnn_s11":
-                runMARKStar(confSpaces, epsilon, parallelism, ematDir, designId, outputDir, true, false, false);
-                break;
-            case "export_gnn":
-                String gnnOutputDir = System.getProperty("osprey.gnn.outputDir", outputDir + "/gnn_models/" + designId);
-                int numSamples = Integer.getInteger("osprey.gnn.numSamples", 200000);
-                exportGNNData(confSpaces, parallelism, ematDir, gnnOutputDir, numSamples);
-                break;
             default:
                 System.err.println("Unknown method: " + method);
                 System.exit(1);
@@ -286,65 +263,6 @@ public class GenericPDBBench {
 
         long elapsed = System.currentTimeMillis() - t0;
         System.out.println("\n=== TOTAL TIME: " + String.format("%.1f", elapsed / 1000.0) + " s ===");
-    }
-
-    private static void exportGNNData(TestKStar.ConfSpaces confSpaces,
-                                       Parallelism parallelism, String ematDir,
-                                       String gnnOutputDir, int numSamples) {
-        System.out.println("\n=== Exporting GNN training data ===");
-        System.out.println("  Output: " + gnnOutputDir);
-        System.out.println("  Samples: " + numSamples);
-
-        try (EnergyCalculator ecalcMin = new EnergyCalculator.Builder(
-                confSpaces.complex, confSpaces.ffparams)
-                .setParallelism(parallelism).build();
-             EnergyCalculator ecalcRigid = new EnergyCalculator.Builder(
-                confSpaces.complex, confSpaces.ffparams)
-                .setParallelism(parallelism).setIsMinimizing(false).build()) {
-
-            for (String spaceName : new String[]{"protein", "ligand", "complex"}) {
-                SimpleConfSpace cs = spaceName.equals("protein") ? confSpaces.protein
-                        : spaceName.equals("ligand") ? confSpaces.ligand : confSpaces.complex;
-
-                if (cs.positions.isEmpty()) {
-                    System.out.println("  SKIP " + spaceName + ": no positions");
-                    continue;
-                }
-
-                System.out.println("\n--- " + spaceName + " (" + cs.positions.size() + " positions) ---");
-
-                ConfEnergyCalculator confEcalcMin = new ConfEnergyCalculator.Builder(cs, ecalcMin)
-                        .setReferenceEnergies(new SimplerEnergyMatrixCalculator.Builder(cs, ecalcMin)
-                                .build().calcReferenceEnergies())
-                        .build();
-
-                EnergyMatrix ematMin = new SimplerEnergyMatrixCalculator.Builder(confEcalcMin)
-                        .setCacheFile(new File(ematDir + "/export." + spaceName + ".min.dat"))
-                        .build().calcEnergyMatrix();
-
-                ConfEnergyCalculator confEcalcRigid = new ConfEnergyCalculator.Builder(cs, ecalcRigid)
-                        .setReferenceEnergies(new SimplerEnergyMatrixCalculator.Builder(cs, ecalcRigid)
-                                .build().calcReferenceEnergies())
-                        .build();
-
-                EnergyMatrix ematRigid = new SimplerEnergyMatrixCalculator.Builder(confEcalcRigid)
-                        .setCacheFile(new File(ematDir + "/export." + spaceName + ".rigid.dat"))
-                        .build().calcEnergyMatrix();
-
-                RCs rcs = new RCs(cs);
-                InteractionGraph ig = InteractionGraph.buildFromEnergyMatrix(ematRigid, ematMin, rcs, 0.1);
-
-                GNNDataExporter exporter = new GNNDataExporter(
-                        confEcalcMin, ematMin, ematRigid, ig, rcs);
-
-                File outDir = new File(gnnOutputDir + "/" + spaceName);
-                exporter.export(numSamples, outDir);
-                System.out.println("  Exported " + spaceName + " to " + outDir);
-            }
-        } catch (Exception e) {
-            System.err.println("Export failed: " + e.getMessage());
-            e.printStackTrace();
-        }
     }
 
     /**
@@ -839,25 +757,25 @@ public class GenericPDBBench {
     private static void runMARKStar(TestKStar.ConfSpaces confSpaces, double epsilon,
                                      Parallelism parallelism, String ematDir,
                                      String designId, String outputDir,
-                                     boolean useGNN, boolean useBranch,
+                                     boolean useBranch,
                                      boolean fullParallelLeafBatch) {
         runMARKStar(confSpaces, epsilon, parallelism, ematDir, designId, outputDir,
-                useGNN, useBranch, fullParallelLeafBatch, 0, true);
+                useBranch, fullParallelLeafBatch, 0, true);
     }
 
     private static void runMARKStar(TestKStar.ConfSpaces confSpaces, double epsilon,
                                      Parallelism parallelism, String ematDir,
                                      String designId, String outputDir,
-                                     boolean useGNN, boolean useBranch,
+                                     boolean useBranch,
                                      boolean fullParallelLeafBatch, int leafMinimizationBatchSize) {
         runMARKStar(confSpaces, epsilon, parallelism, ematDir, designId, outputDir,
-                useGNN, useBranch, fullParallelLeafBatch, leafMinimizationBatchSize, true);
+                useBranch, fullParallelLeafBatch, leafMinimizationBatchSize, true);
     }
 
     private static void runMARKStar(TestKStar.ConfSpaces confSpaces, double epsilon,
                                      Parallelism parallelism, String ematDir,
                                      String designId, String outputDir,
-                                     boolean useGNN, boolean useBranch,
+                                     boolean useBranch,
                                      boolean fullParallelLeafBatch, int leafMinimizationBatchSize,
                                      boolean correctionTighteningEnabled) {
         EnergyCalculator.Type ecalcType = Integer.getInteger("osprey.wmb.numGpus", 0) > 0
@@ -890,131 +808,13 @@ public class GenericPDBBench {
                 confSpaces.complex, rigidEcalc, minimizingEcalc, confEcalcFactory, sb.build());
         markstar.precalcEmats();
 
-        if (useGNN) {
-            String pModel = System.getProperty("osprey.gnn.eval.proteinModelPath");
-            String cModel = System.getProperty("osprey.gnn.eval.complexModelPath");
-            String lModel = System.getProperty("osprey.gnn.eval.ligandModelPath");
-            String pSub = System.getProperty("osprey.gnn.eval.proteinSubtreeModelPath");
-            String cSub = System.getProperty("osprey.gnn.eval.complexSubtreeModelPath");
-            String lSub = System.getProperty("osprey.gnn.eval.ligandSubtreeModelPath");
-            int gpuBatch = Integer.getInteger("osprey.gnn.gpuBatchSize", 1000);
-
-            // Pick strategy: s9 (default), s10, or s11.
-            String gnnMethod = System.getProperty("osprey.bench.method", "gnn_s9");
-            boolean useS10 = "gnn_s10".equals(gnnMethod);
-            boolean useS11 = "gnn_s11".equals(gnnMethod);
-            String s11LandscapeMode = System.getProperty("osprey.gnn.s11.landscapeMode", "mix")
-                    .trim().toLowerCase();
-            boolean s11NavigatorOn = !useS11
-                    || (Boolean.parseBoolean(System.getProperty("osprey.gnn.s11.subtreeNavigator", "true"))
-                    && !s11LandscapeMode.equals("off")
-                    && !s11LandscapeMode.equals("none")
-                    && !s11LandscapeMode.equals("false"));
-            if (useS11 && !s11NavigatorOn) {
-                System.out.println("  S11 subtree navigator disabled: skipping subtree model load");
-            }
-
-            // Per-confspace independent GNN setup: each (protein/ligand/complex) is enabled
-            // independently if its leaf model exists; subtree is also independent.
-            boolean anyGNN = false;
-            String pState = "off", cState = "off", lState = "off";
-
-            // Protein leaf GNN — enable both S9 (preferred) and S7 (fallback if no subtree)
-            if (pModel != null && !pModel.isEmpty() && new File(pModel).isFile()
-                    && confSpaces.protein.positions.size() > 0) {
-                markstar.protein.gnnCalc = new GNNConfEnergyCalculator(
-                        new File(pModel), markstar.protein.minimizingEmat,
-                        confSpaces.protein.positions.size());
-                if (useS11) {
-                    markstar.protein.useStrategy11 = true;
-                } else if (useS10) {
-                    markstar.protein.useStrategy10 = true;
-                } else {
-                    markstar.protein.useStrategy9 = true;
-                    markstar.protein.useStrategy7 = true;
-                }
-                markstar.protein.s7GPUBatchSize = gpuBatch;
-                pState = "leaf";
-                anyGNN = true;
-            }
-            // Complex leaf GNN
-            if (cModel != null && !cModel.isEmpty() && new File(cModel).isFile()
-                    && confSpaces.complex.positions.size() > 0) {
-                markstar.complex.gnnCalc = new GNNConfEnergyCalculator(
-                        new File(cModel), markstar.complex.minimizingEmat,
-                        confSpaces.complex.positions.size());
-                if (useS11) {
-                    markstar.complex.useStrategy11 = true;
-                } else if (useS10) {
-                    markstar.complex.useStrategy10 = true;
-                } else {
-                    markstar.complex.useStrategy9 = true;
-                    markstar.complex.useStrategy7 = true;
-                }
-                markstar.complex.s7GPUBatchSize = gpuBatch;
-                cState = "leaf";
-                anyGNN = true;
-            }
-            // Ligand leaf GNN
-            if (lModel != null && !lModel.isEmpty() && new File(lModel).isFile()
-                    && confSpaces.ligand.positions.size() > 0) {
-                markstar.ligand.gnnCalc = new GNNConfEnergyCalculator(
-                        new File(lModel), markstar.ligand.minimizingEmat,
-                        confSpaces.ligand.positions.size());
-                if (useS11) {
-                    markstar.ligand.useStrategy11 = true;
-                } else if (useS10) {
-                    markstar.ligand.useStrategy10 = true;
-                } else {
-                    markstar.ligand.useStrategy9 = true;
-                    markstar.ligand.useStrategy7 = true;
-                }
-                markstar.ligand.s7GPUBatchSize = gpuBatch;
-                lState = "leaf";
-                anyGNN = true;
-            }
-            // Subtree GNN (independent per confspace)
-            if (s11NavigatorOn && pSub != null && !pSub.isEmpty() && new File(pSub).isFile()
-                    && confSpaces.protein.positions.size() > 0) {
-                markstar.protein.subtreeGnnCalc = new GNNSubtreeEnergyCalculator(
-                        new File(pSub), markstar.protein.minimizingEmat,
-                        confSpaces.protein.positions.size());
-                pState = (pState.equals("leaf") ? "leaf+sub" : "sub");
-                anyGNN = true;
-            }
-            if (s11NavigatorOn && cSub != null && !cSub.isEmpty() && new File(cSub).isFile()
-                    && confSpaces.complex.positions.size() > 0) {
-                markstar.complex.subtreeGnnCalc = new GNNSubtreeEnergyCalculator(
-                        new File(cSub), markstar.complex.minimizingEmat,
-                        confSpaces.complex.positions.size());
-                cState = (cState.equals("leaf") ? "leaf+sub" : "sub");
-                anyGNN = true;
-            }
-            if (s11NavigatorOn && lSub != null && !lSub.isEmpty() && new File(lSub).isFile()
-                    && confSpaces.ligand.positions.size() > 0) {
-                markstar.ligand.subtreeGnnCalc = new GNNSubtreeEnergyCalculator(
-                        new File(lSub), markstar.ligand.minimizingEmat,
-                        confSpaces.ligand.positions.size());
-                lState = (lState.equals("leaf") ? "leaf+sub" : "sub");
-                anyGNN = true;
-            }
-
-            if (anyGNN) {
-                String strategyName = useS11 ? "S11" : (useS10 ? "S10" : "S9");
-                System.out.println("  GNN " + strategyName + " enabled: gpuBatch=" + gpuBatch
-                        + "  protein=" + pState + "  ligand=" + lState + "  complex=" + cState);
-            } else {
-                System.err.println("WARNING: no GNN models available, falling back to MARK* CCD");
-            }
-        }
-
         long markT0 = System.currentTimeMillis();
         List<MARKStar.ScoredSequence> scores = markstar.run();
         minimizingEcalc.tasks.waitForFinish();
         rigidEcalc.tasks.waitForFinish();
         double markElapsed = (System.currentTimeMillis() - markT0) / 1000.0;
         String outputMethodName = System.getProperty("osprey.bench.method",
-                useGNN ? "gnn_s9" : "markstar");
+                "markstar");
         writeMARKStarResults(scores, designId, outputMethodName, outputDir, epsilon, markElapsed);
     }
 
@@ -1467,7 +1267,7 @@ public class GenericPDBBench {
         }
     }
 
-    /** CSV columns shared by K* / MARK* / GNN-S9 outputs. */
+    /** Stable CSV schema shared by K*, MARK*, and PACK*; legacy counters remain zero. */
     private static final String RESULTS_HEADER =
         "rank,sequence,method,target_eps,score_log10,lb_log10,ub_log10," +
         "prot_qstar_lb_log10,prot_qstar_ub_log10,prot_status,prot_eps,prot_nconf," +
@@ -1519,14 +1319,10 @@ public class GenericPDBBench {
             // MARK*/PackStar bounds can use MagicBigDecimal infinities; keep the
             // CSV row writable even when epsilon is not numerically meaningful.
         }
-        long leafGNN  = r.getStat("s9LeafGNNBounded");
-        long subGNN   = r.getStat("s9SubtreeGNNBounded");
-        long ccdFromGNN = r.getStat("s9CCDFromGNN");
-        long onnxCalls = r.getStat("s9LeafOnnxCalls") + r.getStat("s9SubtreeOnnxCalls");
-        return String.format("%s,%s,%s,%s,%d,%d,%d,%d,%d,%d,%d",
+        // Preserve the historical CSV schema; removed surrogate counters stay zero.
+        return String.format("%s,%s,%s,%s,%d,%d,%d,0,0,0,0",
             lbStr, ubStr, r.status.name(), epsStr, r.numConfs,
-            r.getStat("numConfsScored"), r.getStat("numPartialMinimizations"),
-            leafGNN, subGNN, ccdFromGNN, onnxCalls);
+            r.getStat("numConfsScored"), r.getStat("numPartialMinimizations"));
     }
 
     private static void writeKStarResults(List<KStar.ScoredSequence> scores,

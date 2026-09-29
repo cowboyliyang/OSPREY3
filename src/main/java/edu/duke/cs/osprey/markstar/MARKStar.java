@@ -49,12 +49,6 @@ import edu.duke.cs.osprey.kstar.pfunc.PartitionFunction;
 import edu.duke.cs.osprey.markstar.framework.BranchMARKStarBound;
 import edu.duke.cs.osprey.markstar.framework.MARKStarBound;
 import edu.duke.cs.osprey.markstar.framework.MARKStarBoundFastQueues;
-import edu.duke.cs.osprey.markstar.framework.MARKStarBoundGNNS7;
-import edu.duke.cs.osprey.markstar.framework.MARKStarBoundGNNS8;
-import edu.duke.cs.osprey.markstar.framework.MARKStarBoundGNNS9;
-import edu.duke.cs.osprey.markstar.framework.MARKStarBoundGNNS10;
-import edu.duke.cs.osprey.markstar.framework.MARKStarBoundGNNS11;
-import edu.duke.cs.osprey.energy.approximation.branch.GNNSubtreeEnergyCalculator;
 import edu.duke.cs.osprey.parallelism.Parallelism;
 import edu.duke.cs.osprey.tools.MathTools;
 import edu.duke.cs.osprey.tools.Stopwatch;
@@ -363,20 +357,7 @@ public class MARKStar {
 
 		public EnergyMatrix rigidEmat = null;
 		public EnergyMatrix minimizingEmat = null;
-		public edu.duke.cs.osprey.energy.approximation.branch.GNNConfEnergyCalculator gnnCalc = null;
 		public edu.duke.cs.osprey.lute.LUTEConfEnergyCalculator luteCalc = null; // optional, for accuracy comparison
-		// Conformal Prediction parameters for MARK* S7/S8/S9 GNN pools
-		// Calibrated from val set: protein q(α=0.001)=0.055, complex q(α=0.001)=0.058
-		public double cpAlpha = 0.001;    // per-prediction miscoverage rate
-		public double cpDelta = 0.1;      // total pfunc failure probability
-		public double cpQ = 0.06;         // CP quantile bound (kcal/mol) — max(protein,complex) rounded up
-		public boolean useStrategy10 = false; // Strategy 10: decoupled GNN-augmented MARK* (no A* interference)
-		public boolean useStrategy11 = false; // Strategy 11: auditable leaf GNN + optional subtree navigator
-		public boolean useStrategy7 = false;  // Strategy 7: decoupled GNN pool
-		public int s7GPUBatchSize = 1000;     // GPU batch size for Strategy 7
-		public boolean useStrategy8 = false;  // Strategy 8: S7 + subtree GNN for internal nodes
-		public boolean useStrategy9 = false;  // Strategy 9: conformal logZ subtree bound oracle
-		public GNNSubtreeEnergyCalculator subtreeGnnCalc = null;
 		public final Map<Sequence,PartitionFunction.Result> pfuncResults = new HashMap<>();
 
 		public ConfSpaceInfo(ConfSpaceType type, SimpleConfSpace confSpace, ConfEnergyCalculator rigidConfEcalc, ConfEnergyCalculator minimizingConfEcalc) {
@@ -430,56 +411,7 @@ public class MARKStar {
 
 			// make the partition function
 			MARKStarBound pfunc;
-			if (useStrategy11 && gnnCalc != null) {
-				// Strategy 11: leaf GNN direct replacement with audit logging;
-				// subtree GNN is only a search-order navigator.
-				MARKStarBoundGNNS11 s11Pfunc = new MARKStarBoundGNNS11(
-						confSpace, rigidEmat, minimizingEmat, minimizingConfEcalc,
-						sequence.makeRCs(confSpace), settings.parallelism);
-				if (subtreeGnnCalc != null) s11Pfunc.setSubtreeGNN(subtreeGnnCalc);
-				s11Pfunc.setGPUBatchSize(s7GPUBatchSize);
-				s11Pfunc.setAuditContext(
-						System.getProperty("osprey.bench.designId", "unknown"),
-						type.name(),
-						sequenceIndex,
-						sequence.toString());
-				pfunc = s11Pfunc;
-			} else if (useStrategy10 && gnnCalc != null) {
-				// Strategy 10: Decoupled GNN-augmented MARK*
-				MARKStarBoundGNNS10 s10Pfunc = new MARKStarBoundGNNS10(
-						confSpace, rigidEmat, minimizingEmat, minimizingConfEcalc,
-						sequence.makeRCs(confSpace), settings.parallelism);
-				s10Pfunc.setLeafGNN(gnnCalc);
-				if (subtreeGnnCalc != null) s10Pfunc.setSubtreeGNN(subtreeGnnCalc);
-				s10Pfunc.setGPUBatchSize(s7GPUBatchSize);
-				pfunc = s10Pfunc;
-				} else if (useStrategy8 && gnnCalc != null && subtreeGnnCalc != null) {
-					MARKStarBoundGNNS8 s8Pfunc = new MARKStarBoundGNNS8(
-							confSpace, rigidEmat, minimizingEmat, minimizingConfEcalc,
-							sequence.makeRCs(confSpace), settings.parallelism);
-				s8Pfunc.setGNNBatchCalculator(gnnCalc);
-				s8Pfunc.setSubtreeGNN(subtreeGnnCalc);
-				s8Pfunc.setCPParams(cpAlpha, cpDelta, cpQ);
-				s8Pfunc.setGPUBatchSize(s7GPUBatchSize);
-				pfunc = s8Pfunc;
-				} else if (useStrategy9 && gnnCalc != null && subtreeGnnCalc != null) {
-					MARKStarBoundGNNS9 s9Pfunc = new MARKStarBoundGNNS9(
-							confSpace, rigidEmat, minimizingEmat, minimizingConfEcalc,
-							sequence.makeRCs(confSpace), settings.parallelism);
-					s9Pfunc.setGNNBatchCalculator(gnnCalc);
-					s9Pfunc.setSubtreeGNN(subtreeGnnCalc);
-					s9Pfunc.setCPParams(cpAlpha, cpDelta, cpQ);
-					s9Pfunc.setGPUBatchSize(s7GPUBatchSize);
-					pfunc = s9Pfunc;
-				} else if (useStrategy7 && gnnCalc != null) {
-					MARKStarBoundGNNS7 s7Pfunc = new MARKStarBoundGNNS7(
-							confSpace, rigidEmat, minimizingEmat, minimizingConfEcalc,
-							sequence.makeRCs(confSpace), settings.parallelism);
-				s7Pfunc.setGNNBatchCalculator(gnnCalc);
-				s7Pfunc.setCPParams(cpAlpha, cpDelta, cpQ);
-				s7Pfunc.setGPUBatchSize(s7GPUBatchSize);
-				pfunc = s7Pfunc;
-			} else if (settings.useBranchDecomposition) {
+			if (settings.useBranchDecomposition) {
 				pfunc = new BranchMARKStarBound(confSpace, rigidEmat, minimizingEmat, minimizingConfEcalc,
 						sequence.makeRCs(confSpace), settings.parallelism);
 			} else {
@@ -507,11 +439,6 @@ public class MARKStar {
 			pfunc.setReportProgress(settings.showPfuncProgress);
 
 			pfunc.setCorrections(correctionEmat);
-
-			// GNN energy surrogate (optional, single-conf prediction)
-			if (gnnCalc != null) {
-				pfunc.setGNNCalculator(gnnCalc);
-			}
 
 			// Phase 7: Grid DP upper bound
 			if (settings.useGridDP) {

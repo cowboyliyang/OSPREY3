@@ -279,20 +279,6 @@ public class MARKStarNode implements Comparable<MARKStarNode> {
     }
 
     /**
-     * Collapse this subtree: set both lower and upper bounds to the exact Z value.
-     * Used by GNN batch strategy when all conformations in a subtree are predicted.
-     * Clears children so updateSubtreeBounds() won't overwrite these values.
-     * Also directly sets nodeEpsilon=0 so computeEpsilonErrorBounds() returns 0.
-     */
-    public void setExactSubtreeZ(BigDecimal exactZ) {
-        confSearchNode.subtreeUpperBound = exactZ;
-        confSearchNode.subtreeLowerBound = exactZ;
-        children = null; // prevent updateSubtreeBounds from overwriting
-        nodeEpsilon = 0;
-        markUpdated();
-    }
-
-    /**
      * Set subtree bounds directly (lower != upper).
      * Used by Strategy 4 when we have a tight but non-exact bound.
      */
@@ -305,25 +291,6 @@ public class MARKStarNode implements Comparable<MARKStarNode> {
                     .divide(upper, java.math.RoundingMode.HALF_UP).doubleValue();
         } else {
             nodeEpsilon = 0;
-        }
-        markUpdated();
-    }
-
-    /**
-     * Tighten subtree Z bounds without clearing children.
-     * Used by S8 subtree GNN to narrow bounds on internal nodes that may still be expanded.
-     * Only tightens (raises lower, lowers upper); never loosens.
-     */
-    public void tightenSubtreeBounds(BigDecimal newLower, BigDecimal newUpper) {
-        if (newLower.compareTo(confSearchNode.subtreeLowerBound) > 0) {
-            confSearchNode.subtreeLowerBound = newLower;
-        }
-        if (newUpper.compareTo(confSearchNode.subtreeUpperBound) < 0) {
-            confSearchNode.subtreeUpperBound = newUpper;
-        }
-        if (confSearchNode.subtreeUpperBound.compareTo(BigDecimal.ZERO) > 0) {
-            nodeEpsilon = confSearchNode.subtreeUpperBound.subtract(confSearchNode.subtreeLowerBound)
-                    .divide(confSearchNode.subtreeUpperBound, java.math.RoundingMode.HALF_UP).doubleValue();
         }
         markUpdated();
     }

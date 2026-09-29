@@ -30,7 +30,7 @@ src=(root/'source/GenericPDBBench.original.java').read_text()
 src=src.replace('public class GenericPDBBench {','public class Census3calBench {')
 src=src.replace('public static void main(String[] args)', 'public static TestKStar.ConfSpaces buildSpaces(String[] args)')
 start=src.index('        int wmbGpus = Integer.getInteger("osprey.wmb.numGpus", 0);')
-end=src.index('    private static void exportGNNData(')
+end=src.index('    /**\n     * Parse a comma-separated list')
 src=src[:start]+'        return confSpaces;\n    }\n\n'+src[end:]
 (root/'source/Census3calBench.java').write_text(src)
 PY

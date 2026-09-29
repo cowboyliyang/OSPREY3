@@ -101,9 +101,6 @@ dependencies {
 	implementation("ch.qos.logback:logback-classic:1.2.3")
 	implementation("org.slf4j:jul-to-slf4j:1.7.30")
 
-	// ONNX Runtime for GNN inference
-	implementation("com.microsoft.onnxruntime:onnxruntime:1.20.0")
-
 	// internal osprey libs
 	implementation("colt:colt:1.2.0")
 	implementation("org.apache.commons:commons-math3:3.6.1")
@@ -205,7 +202,7 @@ distributions {
 	}
 }
 
-// Avoid build failures when multiple deps ship the same native lib (e.g. libonnxruntime.so)
+// Avoid build failures when multiple deps ship the same native lib
 tasks.withType<Copy> {
 	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }

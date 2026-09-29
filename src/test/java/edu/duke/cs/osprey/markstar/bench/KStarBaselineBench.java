@@ -22,10 +22,10 @@ import java.util.List;
 import java.util.function.Function;
 
 /**
- * K* baseline benchmark for comparison with MARK* and GNN S9.
+ * K* baseline benchmark for comparison with MARK*.
  *
  * Uses the same 2RL0 conf spaces from {@link ConfSpaces2RL0} so results are
- * directly comparable with {@link GNNStrategyBench}.
+ * directly comparable with MARK* benchmarks.
  *
  * System properties:
  *   osprey.kstar.confSpace  — medium | highrot | highrot8 | all20

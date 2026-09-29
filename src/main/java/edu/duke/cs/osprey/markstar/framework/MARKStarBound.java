@@ -509,21 +509,6 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
         // no-op
     }
 
-    /**
-     * Hook for subclasses that need to audit or account for GNN leaf replacements.
-     * The default MARK* behavior remains unchanged.
-     */
-    protected void onGNNLeafReplacement(
-            MARKStarNode markNode,
-            Node confNode,
-            double oldLower,
-            double oldUpper,
-            double gnnEnergy,
-            double newLower,
-            double newUpper,
-            boolean rejectedAboveUpper) {
-        // no-op
-    }
 
     // We keep track of the root node for computing our K* bounds
     protected MARKStarNode rootNode;
@@ -547,7 +532,6 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
     protected EnergyMatrix rigidEmat;
     protected UpdatingEnergyMatrix correctionMatrix;
     protected ConfEnergyCalculator minimizingEcalc;
-    private edu.duke.cs.osprey.energy.approximation.branch.GNNConfEnergyCalculator gnnCalc; // GNN surrogate (optional)
     // Phase 7: Grid DP upper bound
     private GridDPMinimizer gridDPMinimizer;
     private boolean useGridDP = false;
@@ -640,9 +624,6 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
 
 
 
-    public void setGNNCalculator(edu.duke.cs.osprey.energy.approximation.branch.GNNConfEnergyCalculator gnn) {
-        this.gnnCalc = gnn;
-    }
 
     public void setUseGridDP(boolean use) {
         this.useGridDP = use;
@@ -1315,37 +1296,6 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
         // Decision 3: (PartialFixCache removed — skip logic no longer applicable)
         double quickUpperBound = tryQuickUpperBound(node);
 
-        // GNN fast path: synchronous prediction for full conformation (replaces CCD)
-        if (gnnCalc != null) {
-            double energy = gnnCalc.calcEnergy(node.assignments);
-            double oldConfUpper = node.getConfUpperBound();
-            double oldConfLower = node.getConfLowerBound();
-            double newConfUpper = energy;
-            double newConfLower = energy;
-            boolean rejected = false;
-            if (newConfUpper > oldConfUpper) {
-                newConfUpper = oldConfUpper;
-                newConfLower = oldConfUpper;
-                rejected = true;
-            }
-            System.out.println(String.format("[GNN_LEAF] old=[%.4f,%.4f] gap=%.4f GNN=%.4f → new=[%.4f,%.4f] gap=%.4f%s",
-                oldConfLower, oldConfUpper, oldConfUpper-oldConfLower, energy,
-                newConfLower, newConfUpper, newConfUpper-newConfLower,
-                rejected ? " REJECTED(GNN>upper)" : ""));
-            onGNNLeafReplacement(curNode, node, oldConfLower, oldConfUpper,
-                    energy, newConfLower, newConfUpper, rejected);
-            curNode.setBoundsFromConfLowerAndUpper(newConfLower, newConfUpper);
-            node.gscore = newConfLower;
-            curNode.markUpdated();
-            synchronized(this) {
-                numConfsEnergied++;
-                minList.set(node.assignments.length-1, minList.get(node.assignments.length-1)+1);
-                recordReduction(oldConfLower, oldConfUpper, energy);
-            }
-            newNodes.add(curNode);
-            return;
-        }
-
         // No skip triggered — proceed to full CCD minimization
         loopTasks.submit(() -> {
             try (ObjectPool.Checkout<ScoreContext> checkout = contexts.autoCheckout()) {
@@ -1630,10 +1580,6 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
         if(correctionMatrix.hasHigherOrderTermFor(tuple))
             return;
 
-        // GNN mode: skip tuple correction (GNN handles full conf energy directly)
-        if (gnnCalc != null) {
-            return;
-        }
 
         minimizingEcalc.calcEnergyAsync(tuple, (minimizedTuple) -> {
             double tripleEnergy = minimizedTuple.energy;
@@ -1720,10 +1666,6 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
             return;
         double pairwiseLower = minimizingEmat.getInternalEnergy(overlap);
 
-        // GNN mode: skip overlap correction (GNN handles full conf energy directly)
-        if (gnnCalc != null) {
-            return;
-        }
 
         double partiallyMinimizedLower = ecalc.calcEnergy(overlap).energy;
         progress.reportPartialMinimization(1, epsilonBound);

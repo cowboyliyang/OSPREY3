@@ -74,7 +74,7 @@ public final class ConfSpaces2RL0 {
 
     /**
      * 4 mutable positions, high-rotamer AA palette (ARG, LYS, MET, GLU + wt) = 5^4 = 625 sequences.
-     * Positions A156, A164, A172, A192. Used by GNN benchmark on highrot conf space.
+     * Positions A156, A164, A172, A192. Used by benchmark benchmark on highrot conf space.
      */
     public static TestKStar.ConfSpaces buildHighRotamerConfSpace() {
         ForcefieldParams ffp = new ForcefieldParams();
@@ -93,7 +93,7 @@ public final class ConfSpaces2RL0 {
 
     /**
      * 8 mutable highrot positions = 5^8 = 390,625 sequences. Primary scaling benchmark
-     * conf space; matches the 8-pos GNN training set.
+     * conf space for the 8-position benchmark.
      */
     public static TestKStar.ConfSpaces buildHighRotamerConfSpace8pos() {
         ForcefieldParams ffp = new ForcefieldParams();
@@ -143,7 +143,7 @@ public final class ConfSpaces2RL0 {
 
     /**
      * 4 mutable positions, limited AA palette = 4*3*3*3 = 108 sequences.
-     * Same 4 positions as buildAllMutableConfSpace; matches GNN model's 4-pos input.
+     * Same 4 positions as buildAllMutableConfSpace.
      */
     public static TestKStar.ConfSpaces buildMediumMutableConfSpace() {
         ForcefieldParams ffp = new ForcefieldParams();
