@@ -100,7 +100,7 @@ for row in designs:
     command = [java, '--add-opens', 'java.base/java.util=ALL-UNNAMED', '--add-opens',
         'java.base/java.lang=ALL-UNNAMED', '--add-opens', 'java.base/java.lang.invoke=ALL-UNNAMED',
         '-Xmx8g', '-XX:ActiveProcessorCount=4', '-Djava.io.tmpdir=' + os.environ['TMPDIR'],
-        '-Dosprey.bench.method=sequence_dump', '-Dosprey.bench.numCPUs=4', '-Dosprey.wmb.numGpus=0',
+        '-Dosprey.bench.method=sequence_dump', '-Dosprey.bench.numCPUs=4', '-Dosprey.bench.numGpus=0',
         '-Dosprey.bench.designId=' + row['design_id'], '-Dosprey.bench.outputDir=' + str(out),
         '-Dosprey.bench.pdbPath=' + str(package / row['pdb_relative']),
         '-Dosprey.bench.mutable=' + row['mutable'], '-Dosprey.bench.flexible=' + row['flexible'],

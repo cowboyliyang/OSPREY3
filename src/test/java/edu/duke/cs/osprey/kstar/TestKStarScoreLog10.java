@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -99,14 +100,17 @@ public class TestKStarScoreLog10 {
             writer.invoke(null, scores, "extreme", "packstar", output.toString(), 0.683, 12.3);
             List<String> lines = Files.readAllLines(output.resolve("extreme_packstar.csv"));
             assertEquals(scores.size() + 1, lines.size());
+            List<String> header = Arrays.asList(lines.get(0).split(",", -1));
+            assertEquals(29, header.size());
             for (int i = 0; i < scores.size(); i++) {
                 if (i > 0) assertTrue(scores.get(i - 1).score.lowerBound.compareTo(scores.get(i).score.lowerBound) > 0);
                 String[] columns = lines.get(i + 1).split(",", -1);
+                assertEquals(header.size(), columns.length);
                 assertEquals(Integer.toString(i + 1), columns[0]);
                 assertTrue(Double.isFinite(Double.parseDouble(columns[4])));
-                assertEquals("Estimated", columns[9]);
-                assertEquals("Estimated", columns[20]);
-                assertEquals("Estimated", columns[31]);
+                for (String state : new String[]{"prot", "lig", "comp"}) {
+                    assertEquals("Estimated", columns[header.indexOf(state + "_status")]);
+                }
                 assertEquals(scores.get(i).score.complex.status, PartitionFunction.Status.Estimated);
             }
         });

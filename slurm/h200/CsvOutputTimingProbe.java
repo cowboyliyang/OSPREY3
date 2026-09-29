@@ -65,6 +65,7 @@ public class CsvOutputTimingProbe {
                 String design = item[header.indexOf("design_id")];
                 Path input = Path.of(item[header.indexOf("path")]).resolve(design + "_packstar.csv");
                 var rows = Files.readAllLines(input);
+                var csvHeader = Arrays.asList(rows.get(0).split(",", -1));
                 var scores = new ArrayList<KStar.ScoredSequence>();
                 for (String raw : rows.subList(1, rows.size())) {
                     String[] row = raw.split(",", -1);
@@ -73,7 +74,10 @@ public class CsvOutputTimingProbe {
                     for (int i = 0; i < 3; i++) {
                         var field = KStarScore.class.getField(new String[]{"protein", "ligand", "complex"}[i]);
                         field.setAccessible(true);
-                        field.set(score, result(row, 7 + 11*i));
+                        int offset = csvHeader.indexOf(new String[]{"prot", "lig", "comp"}[i]
+                                + "_qstar_lb_log10");
+                        if (offset < 0) throw new IllegalArgumentException("Missing state columns: " + input);
+                        field.set(score, result(row, offset));
                     }
                     scores.add(new KStar.ScoredSequence(sequence(row[1]), score));
                 }

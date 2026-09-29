@@ -74,12 +74,6 @@ import edu.duke.cs.osprey.tools.MathTools;
 import edu.duke.cs.osprey.tools.ObjectPool;
 import edu.duke.cs.osprey.tools.Stopwatch;
 import edu.duke.cs.osprey.tools.TimeTools;
-import edu.duke.cs.osprey.energy.forcefield.ForcefieldParams;
-import edu.duke.cs.osprey.ematrix.SimpleReferenceEnergies;
-import edu.duke.cs.osprey.branchdp.InteractionGraph;
-import edu.duke.cs.osprey.branchdp.BranchDecomposition;
-import edu.duke.cs.osprey.branchdp.RootedTreeNode;
-import edu.duke.cs.osprey.branchdp.RootedTreeEdge;
 
 public class MARKStarBound implements PartitionFunction.WithConfDB {
 
@@ -532,12 +526,6 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
     protected EnergyMatrix rigidEmat;
     protected UpdatingEnergyMatrix correctionMatrix;
     protected ConfEnergyCalculator minimizingEcalc;
-    // Phase 7: Grid DP upper bound
-    private GridDPMinimizer gridDPMinimizer;
-    private boolean useGridDP = false;
-    private static final int GRIDDP_GRID_SIZE = 2;
-    private static final double GRIDDP_DIST_CUTOFF = 8.0;
-    private static final double GRIDDP_ENERGY_CUTOFF = 0.1;
     private Stopwatch stopwatch = new Stopwatch().start();
     // Variables for reporting pfunc reductions more accurately
     BigDecimal startUpperBound = null; //can't start with infinity
@@ -624,55 +612,6 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
 
 
 
-
-    public void setUseGridDP(boolean use) {
-        this.useGridDP = use;
-        if (use && this.gridDPMinimizer == null) {
-            initGridDP();
-        }
-        if (!use) {
-            this.gridDPMinimizer = null;
-        }
-    }
-
-    private void initGridDP() {
-        try {
-            SimpleConfSpace confSpace = minimizingEcalc.confSpace;
-            ForcefieldParams ffparams = minimizingEcalc.ecalc.resPairCache.ffparams;
-            SimpleReferenceEnergies eref = minimizingEcalc.eref;
-
-            // Build interaction graph
-            InteractionGraph ig = InteractionGraph.buildWithDualCutoff(
-                confSpace, rigidEmat, minimizingEmat, RCs,
-                GRIDDP_DIST_CUTOFF, GRIDDP_ENERGY_CUTOFF);
-
-            // Compute branch decomposition
-            BranchDecomposition bd = new BranchDecomposition(ig);
-            bd.compute();
-
-            // Root the tree
-            RootedTreeNode rootedRoot = bd.rootBranchTree(RCs);
-            if (rootedRoot == null) {
-                System.out.println("[Phase 7] Grid DP: empty tree, disabled.");
-                this.gridDPMinimizer = null;
-                return;
-            }
-            RootedTreeEdge.postOrderCompLlambda(rootedRoot);
-            RootedTreeEdge rootEdge = rootedRoot.getLeftChild().getChildOfEdge();
-            rootEdge.compactTree();
-
-            // Create GridDPMinimizer with cache enabled
-            this.gridDPMinimizer = new GridDPMinimizer(
-                confSpace, ig, rootEdge,
-                GRIDDP_GRID_SIZE, ffparams, eref, true);
-
-            System.out.println("[Phase 7] Grid DP minimizer initialized. Branchwidth="
-                + bd.getBranchwidth() + ", gridSize=" + GRIDDP_GRID_SIZE);
-        } catch (Exception e) {
-            System.err.println("[Phase 7] Grid DP init failed: " + e.getMessage());
-            this.gridDPMinimizer = null;
-        }
-    }
 
     public void setParallelism(Parallelism val) {
 
@@ -1279,20 +1218,6 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
             return;
         }
 
-        // Decision 2 (Phase 7): Grid DP upper bound (~10ms cached) — DISABLED
-        // double gridDPUpper = tryGridDPUpperBound(node);
-        // boolean shouldSkipDueToGridDP =
-        //     (gridDPMinimizer != null && gridDPUpper < currentUpper);
-        //
-        // if (shouldSkipDueToGridDP) {
-        //     // Grid DP tightened upper bound enough — skip without running PartialFixCache or CCD
-        //     node.gscore = confCorrection;
-        //     node.setBoundsFromConfLowerAndUpper(confCorrection, gridDPUpper);
-        //     curNode.markUpdated();
-        //     newNodes.add(curNode);
-        //     return;
-        // }
-
         // Decision 3: (PartialFixCache removed — skip logic no longer applicable)
         double quickUpperBound = tryQuickUpperBound(node);
 
@@ -1735,26 +1660,5 @@ public class MARKStarBound implements PartitionFunction.WithConfDB {
      */
     protected double tryQuickUpperBound(Node node) {
         return node.getConfUpperBound();
-    }
-
-    /**
-     * Phase 7: Try to get a tighter upper bound using Grid DP.
-     * Grid DP discretizes DOFs and uses branch decomposition DP to find
-     * optimal grid combination — result is a valid upper bound on minimized energy.
-     */
-    protected double tryGridDPUpperBound(Node node) {
-        if (gridDPMinimizer == null) {
-            return node.getConfUpperBound();
-        }
-        try {
-            GridDPMinimizer.Result result = gridDPMinimizer.minimize(node.assignments);
-            return result.energy;
-        } catch (Exception e) {
-            if (debug) {
-                System.err.println("WARNING: GridDP failed for conf "
-                    + SimpleConfSpace.formatConfRCs(node.assignments) + ": " + e.getMessage());
-            }
-            return node.getConfUpperBound();
-        }
     }
 }

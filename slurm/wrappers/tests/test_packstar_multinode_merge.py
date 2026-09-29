@@ -16,6 +16,10 @@ import packstar_compare_merged as comparator
 
 class PackStarMultinodeMergeTest(unittest.TestCase):
 
+    def test_canonical_schema(self) -> None:
+        self.assertEqual(29, len(merger.EXPECTED_HEADER))
+        self.assertEqual(29, len(set(merger.EXPECTED_HEADER)))
+
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.root = Path(self.tmp.name)
@@ -235,7 +239,7 @@ class PackStarMultinodeMergeTest(unittest.TestCase):
         ]
         self.assertEqual(0, comparator.main(compare_argv))
 
-        rows[0]["comp_s9_onnxCalls"] = "1"
+        rows[0]["comp_npartial"] = "1"
         with candidate.open("w", encoding="utf-8", newline="") as handle:
             writer = csv.DictWriter(
                 handle, fieldnames=merger.EXPECTED_HEADER, lineterminator="\n"

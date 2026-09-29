@@ -269,12 +269,6 @@ public class TestBranchMARKStar {
 
     public static MARKStarResult runMARKStarOnly(int numFlexible, double epsilon,
                                             boolean useBranchDecomposition, String label) {
-        return runMARKStarOnly(numFlexible, epsilon, useBranchDecomposition, false, label);
-    }
-
-    public static MARKStarResult runMARKStarOnly(int numFlexible, double epsilon,
-                                            boolean useBranchDecomposition,
-                                            boolean useGridDP, String label) {
         TestKStar.ConfSpaces confSpaces = ConfSpaces2RL0.buildWildTypeConfSpace(numFlexible);
 
         Parallelism parallelism = Parallelism.makeCpu(NUM_CPUs);
@@ -301,8 +295,7 @@ public class TestBranchMARKStar {
                 .setEpsilon(epsilon)
                 .setShowPfuncProgress(false)
                 .setParallelism(parallelism)
-                .setUseBranchDecomposition(useBranchDecomposition)
-                .setUseGridDP(useGridDP);
+                .setUseBranchDecomposition(useBranchDecomposition);
         MARKStar.Settings settings = settingsBuilder.build();
 
         MARKStar markstar = new MARKStar(confSpaces.protein, confSpaces.ligand, confSpaces.complex,

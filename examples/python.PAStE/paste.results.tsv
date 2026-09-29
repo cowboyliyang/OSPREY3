@@ -1,3 +1,3 @@
 Sequence	PAStE Score (ddG)	PAStE Lower Bound	PAStE Upper Bound	Variant Bounds	WT Bounds	Total # Confs.	Protein Partition Function	Protein Epsilon	Protein # Confs.	Time (sec)
-B781=ALY	2.268133  in [0.007844 , 2.358235]              Mutation Decreases Stability	36.091680	37.746904	[36.091680,37.746904] (log10,NoWindowOverlap)   	[37.752649,37.818630] (log10,ConfLimitReached)  	2168	1.235036e+36	0.9778804922468392	2168
-B781=SLL	3.137375  in [0.019024 , 3.227477]              Mutation Decreases Stability	35.455128	37.738717	[35.455128,37.738717] (log10,NoWindowOverlap)   	[37.752649,37.818630] (log10,ConfLimitReached)  	410	2.851860e+35	0.9947951175110895	410
+A42=THR	-0.644907 in [-2.090674,-0.039152]              Mutation Increases Stability	30.773468	31.832213	[30.773468,31.832213] (log10,NoWindowOverlap)   	[30.301199,30.744797] (log10)	19	5.935652e+30	0.912651594079664	19
+A42=ala	-0.000000 in [-0.605755, 0.605755]               Affect on Stability Unclear	30.301199	30.744797	[30.301199,30.744797] (log10)	[30.301199,30.744797] (log10)	33	2.000779e+30	0.6399178014997661	33

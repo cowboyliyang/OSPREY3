@@ -1,5 +1,0 @@
-task printTestClasspath {
-    doLast {
-        println sourceSets.test.runtimeClasspath.asPath
-    }
-}

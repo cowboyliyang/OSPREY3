@@ -141,7 +141,6 @@ public class MARKStar {
 			private int leafMinimizationBatchSize = 0;
 			private boolean correctionTighteningEnabled = true;
 			
-			private boolean useGridDP = false;
 
 			public Builder setEpsilon(double val) {
 				epsilon = val;
@@ -206,7 +205,7 @@ public class MARKStar {
 				return new Settings(epsilon, stabilityThreshold, maxSimultaneousMutations, scoreWriters,
 						showPfuncProgress, energyMatrixCachePattern, parallelism, maxNumConfs, reduceMinimizations,
 						useBranchDecomposition, fullParallelLeafBatch, leafMinimizationBatchSize,
-						correctionTighteningEnabled, useGridDP);
+						correctionTighteningEnabled);
 			}
 
 			public Builder setReduceMinimizations(boolean reudceMinimizations) {
@@ -238,10 +237,6 @@ public class MARKStar {
 			}
 
 
-			public Builder setUseGridDP(boolean val) {
-			    this.useGridDP = val;
-			    return this;
-			}
 		}
 
 		public final double epsilon;
@@ -258,13 +253,12 @@ public class MARKStar {
 		public final int leafMinimizationBatchSize;
 		public final boolean correctionTighteningEnabled;
 		
-		public final boolean useGridDP;
 
 		public Settings(double epsilon, Double stabilityThreshold, int maxSimultaneousMutations,
 						KStarScoreWriter.Writers scoreWriters, boolean dumpPfuncConfs, String energyMatrixCachePattern,
 						Parallelism parallelism, int maxNumConfs, boolean reduceMinimizations,
 						boolean useBranchDecomposition, boolean fullParallelLeafBatch,
-						int leafMinimizationBatchSize, boolean correctionTighteningEnabled, boolean useGridDP) {
+						int leafMinimizationBatchSize, boolean correctionTighteningEnabled) {
 			this.epsilon = epsilon;
 			this.stabilityThreshold = stabilityThreshold;
 			this.maxSimultaneousMutations = maxSimultaneousMutations;
@@ -278,7 +272,6 @@ public class MARKStar {
 			this.fullParallelLeafBatch = fullParallelLeafBatch;
 			this.leafMinimizationBatchSize = leafMinimizationBatchSize;
 			this.correctionTighteningEnabled = correctionTighteningEnabled;
-			this.useGridDP = useGridDP;
 		}
 
 		public String applyEnergyMatrixCachePattern(String type) {
@@ -440,10 +433,6 @@ public class MARKStar {
 
 			pfunc.setCorrections(correctionEmat);
 
-			// Phase 7: Grid DP upper bound
-			if (settings.useGridDP) {
-				pfunc.setUseGridDP(true);
-			}
 
 			// compute it
 			pfunc.init(settings.epsilon);

@@ -142,8 +142,8 @@ if [ "$PREFLIGHT_ONLY" != true ]; then
         -Dbranchdp.dp.gpu.failIfNoGpuPath=true
         -Dbranchdp.pac.sampling.gpu.multiGpu=true
         -Dbranchdp.pac.sampling.gpu.maxGpus="$GPU_COUNT_PER_NODE"
-        -Dosprey.wmb.numGpus="$GPU_COUNT_PER_NODE"
-        -Dosprey.wmb.streamsPerGpu="${GPU_STREAMS_PER_GPU:-8}"
+        -Dosprey.bench.numGpus="$GPU_COUNT_PER_NODE"
+        -Dosprey.bench.streamsPerGpu="${GPU_STREAMS_PER_GPU:-8}"
     )
 fi
 

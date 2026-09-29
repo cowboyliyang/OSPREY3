@@ -29,7 +29,7 @@ assert hashlib.sha256((root/'input/3cal.pdb').read_bytes()).hexdigest()=='ae9d61
 src=(root/'source/GenericPDBBench.original.java').read_text()
 src=src.replace('public class GenericPDBBench {','public class Census3calBench {')
 src=src.replace('public static void main(String[] args)', 'public static TestKStar.ConfSpaces buildSpaces(String[] args)')
-start=src.index('        int wmbGpus = Integer.getInteger("osprey.wmb.numGpus", 0);')
+start=src.index('        int numGpus = Integer.getInteger("osprey.bench.numGpus", 0);')
 end=src.index('    /**\n     * Parse a comma-separated list')
 src=src[:start]+'        return confSpaces;\n    }\n\n'+src[end:]
 (root/'source/Census3calBench.java').write_text(src)

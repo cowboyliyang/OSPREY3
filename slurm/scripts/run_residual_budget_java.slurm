@@ -36,7 +36,7 @@ CP="build/classes/java/main:build/classes/java/test:build/resources/main:build/r
 for jar in lib/*.jar; do
     CP="$CP:$jar"
 done
-for jar in $(find /home/users/lz280/.gradle/caches/modules-2 -name "*.jar" -path "*/files-2.1/*" 2>/dev/null | grep -v "onnxruntime" | sort -u); do
+for jar in $(find /home/users/lz280/.gradle/caches/modules-2 -name "*.jar" -path "*/files-2.1/*" 2>/dev/null | sort -u); do
     CP="$CP:$jar"
 done
 

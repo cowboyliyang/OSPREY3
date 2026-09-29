@@ -63,8 +63,7 @@ for info in kstar.confSpaceInfos():
     ematMinimized = osprey.EnergyMatrix(info.confEcalc, cacheFile='emat.%s.dat' % info.id)
 
     # if you want to use MARK*, pass in a rigid energy calculator and energy matrix as well
-    erefRigid = osprey.ReferenceEnergies(info.confSpace, ecalcRigid)
-    confEcalcRigid = osprey.ConfEnergyCalculator(info.confSpace, ecalcRigid, referenceEnergies=erefRigid)
+    confEcalcRigid = osprey.ConfEnergyCalculatorCopy(info.confEcalc, ecalcRigid)
     ematRigid = osprey.EnergyMatrix(confEcalcRigid, cacheFile='emat.%s.rigid.dat' % info.id)
 
     # how should we score each sequence?

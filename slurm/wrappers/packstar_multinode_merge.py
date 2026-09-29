@@ -24,16 +24,11 @@ EXPECTED_HEADER = [
     "lb_log10", "ub_log10",
     "prot_qstar_lb_log10", "prot_qstar_ub_log10", "prot_status",
     "prot_eps", "prot_nconf", "prot_nscored", "prot_npartial",
-    "prot_s9_leafGNN", "prot_s9_subtreeGNN", "prot_s9_ccdFromGNN",
-    "prot_s9_onnxCalls",
     "lig_qstar_lb_log10", "lig_qstar_ub_log10", "lig_status",
     "lig_eps", "lig_nconf", "lig_nscored", "lig_npartial",
-    "lig_s9_leafGNN", "lig_s9_subtreeGNN", "lig_s9_ccdFromGNN",
-    "lig_s9_onnxCalls",
     "comp_qstar_lb_log10", "comp_qstar_ub_log10", "comp_status",
     "comp_eps", "comp_nconf", "comp_nscored", "comp_npartial",
-    "comp_s9_leafGNN", "comp_s9_subtreeGNN", "comp_s9_ccdFromGNN",
-    "comp_s9_onnxCalls", "total_time_s",
+    "total_time_s",
 ]
 NON_ESTIMATOR_COLUMNS = {"rank", "total_time_s"}
 

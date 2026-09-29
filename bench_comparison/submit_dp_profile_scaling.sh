@@ -68,7 +68,7 @@ for jar in lib/*.jar; do
 done
 while IFS= read -r jar; do
     CP="$CP:$jar"
-done < <(find /home/users/lz280/.gradle/caches/modules-2 -name "*.jar" -path "*/files-2.1/*" 2>/dev/null | grep -v "onnxruntime" | sort -u)
+done < <(find /home/users/lz280/.gradle/caches/modules-2 -name "*.jar" -path "*/files-2.1/*" 2>/dev/null | sort -u)
 echo "$CP" > "$LOGDIR/.classpath_dp_profile.txt"
 
 JARGS="--add-opens java.base/java.util=ALL-UNNAMED \

@@ -33,7 +33,7 @@ text = source.read_text()
 replacements = {
     '/usr/xtmp/lz280/packstar_frontier_fullnode_20260917/A':
         '/usr/xtmp/lz280/packstar_frontier_gpu_ccd_20260917/A',
-    '-Dosprey.wmb.numGpus=0': '-Dosprey.wmb.numGpus=8',
+    '-Dosprey.bench.numGpus=0': '-Dosprey.bench.numGpus=8',
     "printf 'ccdMode\\tcpu\\n'":
         "printf 'ccdMode\\tResidueCudaCCD\\n'\n"
         "    printf 'ccdPrecision\\tFP64-double-kernel\\n'\n"
@@ -46,7 +46,7 @@ for old, new in replacements.items():
 (task/'runner.slurm').write_text(text)
 (task/'protocol_changes.txt').write_text(
     'Baseline build: 12626762; CPU CCD baselines: 12626765 and 12627258.\n'
-    'Changed osprey.wmb.numGpus from 0 to 8, selecting ResidueCudaCCD.\n'
+    'Changed osprey.bench.numGpus from 0 to 8, selecting ResidueCudaCCD.\n'
     'Retained 64 streams/GPU, FP64 DP, all learning/sampling parameters and historical emat caches.\n'
     'Energy kernel and CCD coordinates/line search use double.\n')
 PY

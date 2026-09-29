@@ -22,7 +22,7 @@ mkdir -p "$LOGDIR" "$OUTDIR/results"
 ./gradlew testClasses 2>&1 | tail -3
 CP="build/classes/java/main:build/classes/java/test:build/resources/main:build/resources/test"
 for jar in lib/*.jar; do CP="$CP:$jar"; done
-for jar in $(find /home/users/lz280/.gradle/caches/modules-2 -name "*.jar" -path "*/files-2.1/*" 2>/dev/null | grep -v "onnxruntime" | sort -u); do CP="$CP:$jar"; done
+for jar in $(find /home/users/lz280/.gradle/caches/modules-2 -name "*.jar" -path "*/files-2.1/*" 2>/dev/null | sort -u); do CP="$CP:$jar"; done
 echo "$CP" > "$LOGDIR/.classpath_bench.txt"
 
 submit_one() {
