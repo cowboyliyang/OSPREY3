@@ -33,16 +33,7 @@ import java.util.List;
  */
 public final class PackStarFrequencySeverityPAC {
 
-    private static final double[] DEFAULT_BETTING_LAMBDAS = {
-            1.0e-4, 3.0e-4, 1.0e-3, 3.0e-3,
-            1.0e-2, 3.0e-2, 0.1, 0.3, 0.5, 0.8
-    };
-
     private PackStarFrequencySeverityPAC() {}
-
-    static double[] severityBettingLambdas() {
-        return DEFAULT_BETTING_LAMBDAS.clone();
-    }
 
     /** Point estimates used only for adaptation-time sizing and ranking. */
     public static final class Moments {
@@ -270,20 +261,20 @@ public final class PackStarFrequencySeverityPAC {
         public final boolean sufficientTailSamples;
         public final boolean logicalViolation;
         public final boolean rejected;
-        public final double logEValue;
+        public final double logPValue;
         public final double pValueUpper;
 
         private SeverityTest(int tailCount,
                              boolean sufficientTailSamples,
                              boolean logicalViolation,
                              boolean rejected,
-                             double logEValue,
+                             double logPValue,
                              double pValueUpper) {
             this.tailCount = tailCount;
             this.sufficientTailSamples = sufficientTailSamples;
             this.logicalViolation = logicalViolation;
             this.rejected = rejected;
-            this.logEValue = logEValue;
+            this.logPValue = logPValue;
             this.pValueUpper = pValueUpper;
         }
     }
@@ -489,8 +480,9 @@ public final class PackStarFrequencySeverityPAC {
      * The proposal, clipping scale, cap, and sample count must be fixed before
      * drawing it. The same batch may also supply the partition-function
      * interval: rejection merely suppresses an otherwise reported estimate.
-     * Failure to reject is never interpreted as validation. This statistic
-     * includes a sample-mean component and is not an anytime-valid e-process.
+     * Failure to reject is never interpreted as validation. Markov
+     * inequality gives p=min(1,S0/meanPositiveExcess), conditional on the
+     * number of exceedances. This is a fixed-batch, not sequential, test.
      */
     public static SeverityTest testConditionalSeverity(
             double[] logRelativeWeights,
@@ -516,37 +508,19 @@ public final class PackStarFrequencySeverityPAC {
             }
         }
         int tailCount = logExcesses.size();
+        if (tailCount == 0) {
+            return new SeverityTest(0, false, false, false, 0.0, 1.0);
+        }
         if (conditionalSeverityCap == 0.0) {
-            boolean violation = tailCount > 0;
-            return new SeverityTest(tailCount, tailCount > 1,
-                    violation, violation,
-                    violation ? Double.POSITIVE_INFINITY : 0.0,
-                    violation ? 0.0 : 1.0);
+            return new SeverityTest(tailCount, true, true, true,
+                    Double.NEGATIVE_INFINITY, 0.0);
         }
-        if (tailCount <= 1) {
-            return new SeverityTest(tailCount, false, false,
-                    false, Double.NaN, Double.NaN);
-        }
-
-        double logCap = Math.log(conditionalSeverityCap);
-        List<Double> components = new ArrayList<>();
-        components.add(logSumExp(logExcesses)
-                - Math.log(tailCount) - logCap);
-        for (double lambda : DEFAULT_BETTING_LAMBDAS) {
-            double sum = 0.0;
-            double logOneMinus = Math.log1p(-lambda);
-            double logLambda = Math.log(lambda);
-            for (double logExcess : logExcesses) {
-                sum += logAddExp(logOneMinus,
-                        logLambda + logExcess - logCap);
-            }
-            components.add(sum);
-        }
-        double logE = logSumExp(components) - Math.log(components.size());
-        double p = logE > 0.0 ? Math.min(1.0, Math.exp(-logE)) : 1.0;
-        boolean rejected = logE >= -Math.log(testAlpha);
-        return new SeverityTest(tailCount, true, false,
-                rejected, logE, p);
+        // Compute in log space, including a single exceedance and huge tails.
+        double logMeanExcess = logSumExp(logExcesses) - Math.log(tailCount);
+        double logP = Math.min(0.0, Math.log(conditionalSeverityCap) - logMeanExcess);
+        double p = Math.exp(logP);
+        boolean rejected = logP <= Math.log(testAlpha);
+        return new SeverityTest(tailCount, true, false, rejected, logP, p);
     }
 
     private static double intervalEpsilon(double lower, double upper) {

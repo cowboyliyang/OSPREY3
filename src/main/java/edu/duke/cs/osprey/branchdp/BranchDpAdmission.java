@@ -54,6 +54,12 @@ public final class BranchDpAdmission {
     private BranchDpAdmission() {
     }
 
+    /** Resolved inside the caller's PACK* alias scope, including worker threads. */
+    public static boolean automaticOptimization() {
+        return "auto".equalsIgnoreCase(BranchDpConfig.getBackendProperty(
+                "branchdp.admission.mode", "sla").trim());
+    }
+
     /** Hardware conversion used for both root comparison and SLA accounting. */
     public static final class Hardware {
 
@@ -248,8 +254,13 @@ public final class BranchDpAdmission {
         public final List<Prediction> predictions;
         public final double totalSeconds;
         public final double slaHours;
+        public final boolean runtimeAdmission;
 
         public CaseSummary(List<Prediction> predictions, double slaHours) {
+            this(predictions, slaHours, true);
+        }
+
+        private CaseSummary(List<Prediction> predictions, double slaHours, boolean runtimeAdmission) {
             this.predictions = Collections.unmodifiableList(
                     new ArrayList<>(predictions));
             double total = 0.0;
@@ -258,6 +269,11 @@ public final class BranchDpAdmission {
             }
             this.totalSeconds = total;
             this.slaHours = slaHours;
+            this.runtimeAdmission = runtimeAdmission;
+        }
+
+        public static CaseSummary structural(List<Prediction> predictions) {
+            return new CaseSummary(predictions, 0.0, false);
         }
 
         public double totalHours() {
@@ -265,9 +281,9 @@ public final class BranchDpAdmission {
         }
 
         public boolean withinSla() {
-            return slaHours <= 0.0
+            return runtimeAdmission && (slaHours <= 0.0
                     || (Double.isFinite(totalSeconds)
-                    && totalHours() <= slaHours);
+                    && totalHours() <= slaHours));
         }
 
         public List<Prediction> contributorsDescending() {
@@ -285,6 +301,7 @@ public final class BranchDpAdmission {
         public final int maxDrop;
         public final long maxMillis;
         public final double maxPredictedSeconds;
+        public final BigInteger maxTotalGpuWork;
 
         public ExactPolicy(int minDrop, int maxDrop, long maxMillis) {
             this(minDrop, maxDrop, maxMillis, Double.POSITIVE_INFINITY);
@@ -292,15 +309,29 @@ public final class BranchDpAdmission {
 
         public ExactPolicy(int minDrop, int maxDrop, long maxMillis,
                            double maxPredictedSeconds) {
+            this(minDrop, maxDrop, maxMillis, maxPredictedSeconds, null);
+        }
+
+        private ExactPolicy(int minDrop, int maxDrop, long maxMillis,
+                            double maxPredictedSeconds, BigInteger maxTotalGpuWork) {
             this.minDrop = Math.max(1, minDrop);
             this.maxDrop = Math.max(this.minDrop, maxDrop);
             this.maxMillis = Math.max(1L, maxMillis);
             this.maxPredictedSeconds = maxPredictedSeconds > 0.0
                     ? maxPredictedSeconds : Double.POSITIVE_INFINITY;
+            this.maxTotalGpuWork = maxTotalGpuWork;
         }
 
         public ExactPolicy withPredictionCeiling(double seconds) {
-            return new ExactPolicy(minDrop, maxDrop, maxMillis, seconds);
+            return new ExactPolicy(minDrop, maxDrop, maxMillis, seconds, maxTotalGpuWork);
+        }
+
+        public ExactPolicy withWorkCeiling(BigInteger work) {
+            if (work == null || work.signum() < 0) {
+                throw new IllegalArgumentException("nonnegative work ceiling is required");
+            }
+            return new ExactPolicy(minDrop, maxDrop, maxMillis,
+                    Double.POSITIVE_INFINITY, work);
         }
     }
 
@@ -356,8 +387,11 @@ public final class BranchDpAdmission {
         }
         int written = 0;
         try (BufferedWriter out = new BufferedWriter(new FileWriter(file))) {
-            out.write("# packstar exact-policy dump v1: "
-                    + "minDrop\tmaxDrop\tmaxMillis\tmaxPredictedSeconds\tstateKey");
+            boolean structural = EXACT_POLICIES.values().stream()
+                    .anyMatch(p -> p.maxTotalGpuWork != null);
+            out.write(structural
+                    ? "# packstar exact-policy dump v2: minDrop\tmaxDrop\tmaxMillis\tmaxPredictedSeconds\tmaxTotalGpuWork\tstateKey"
+                    : "# packstar exact-policy dump v1: minDrop\tmaxDrop\tmaxMillis\tmaxPredictedSeconds\tstateKey");
             out.newLine();
             List<Map.Entry<String, ExactPolicy>> entries =
                     new ArrayList<>(EXACT_POLICIES.entrySet());
@@ -366,6 +400,8 @@ public final class BranchDpAdmission {
                 ExactPolicy p = entry.getValue();
                 out.write(p.minDrop + "\t" + p.maxDrop + "\t" + p.maxMillis
                         + "\t" + Double.toString(p.maxPredictedSeconds)
+                        + (structural ? "\t" + (p.maxTotalGpuWork == null
+                        ? "-" : p.maxTotalGpuWork.toString()) : "")
                         + "\t" + entry.getKey());
                 out.newLine();
                 written++;
@@ -392,16 +428,17 @@ public final class BranchDpAdmission {
                 if (line.isEmpty() || line.charAt(0) == '#') {
                     continue;
                 }
-                String[] f = line.split("\t", 5);
-                if (f.length < 5) {
+                String[] f = line.split("\t", -1);
+                if (f.length != 5 && f.length != 6) {
                     throw new IllegalStateException(
                             "malformed exact-policy line: " + line);
                 }
-                EXACT_POLICIES.put(f[4], new ExactPolicy(
+                EXACT_POLICIES.put(f[f.length - 1], new ExactPolicy(
                         Integer.parseInt(f[0].trim()),
                         Integer.parseInt(f[1].trim()),
                         Long.parseLong(f[2].trim()),
-                        Double.parseDouble(f[3].trim())));
+                        Double.parseDouble(f[3].trim()),
+                        f.length == 6 && !f[4].equals("-") ? new BigInteger(f[4]) : null));
                 loaded++;
             }
         } catch (IOException ex) {
@@ -419,6 +456,13 @@ public final class BranchDpAdmission {
             Prediction prediction, String logPrefix) {
         if (prediction == null) return;
         ExactPolicy policy = getExactPolicy(prediction.stateKey);
+        if (policy != null && policy.maxTotalGpuWork != null
+                && prediction.totalGpuWork().compareTo(policy.maxTotalGpuWork) > 0) {
+            throw new IllegalStateException("retained preflight work ceiling could not be reproduced for "
+                    + prediction.stateKey + ": dpWork=" + prediction.totalGpuWork()
+                    + " exceeds " + policy.maxTotalGpuWork
+                    + " before DP-table materialization");
+        }
         if (policy == null || !Double.isFinite(policy.maxPredictedSeconds)) {
             return;
         }

@@ -182,7 +182,7 @@ public class TestPackStarFrequencySeverityPAC {
         assertEquals(13, interval.tailCount);
         assertEquals(interval.tailCount, test.tailCount);
         assertTrue(test.rejected);
-        assertTrue(test.logEValue >= Math.log(20.0));
+        assertTrue(test.pValueUpper <= 0.05);
     }
 
     @Test
@@ -203,14 +203,15 @@ public class TestPackStarFrequencySeverityPAC {
     }
 
     @Test
-    public void singleTailRemainsInconclusiveUnlessCapIsZero() {
+    public void singleTailCanRejectPositiveOrZeroCap() {
         double[] weights = {Math.log(0.5), Math.log1p(1.0e9)};
         PackStarFrequencySeverityPAC.SeverityTest positiveCap =
                 PackStarFrequencySeverityPAC.testConditionalSeverity(
                         weights, 0.0, 20.0, 0.05);
         assertEquals(1, positiveCap.tailCount);
-        assertFalse(positiveCap.sufficientTailSamples);
-        assertFalse(positiveCap.rejected);
+        assertTrue(positiveCap.sufficientTailSamples);
+        assertTrue(positiveCap.rejected);
+        assertEquals(2.0e-8, positiveCap.pValueUpper, 1.0e-18);
         PackStarFrequencySeverityPAC.SeverityTest zeroCap =
                 PackStarFrequencySeverityPAC.testConditionalSeverity(
                         weights, 0.0, 0.0, 0.05);
@@ -219,28 +220,50 @@ public class TestPackStarFrequencySeverityPAC {
     }
 
     @Test
-    public void fixedBatchEvalueHasUnitExpectationUnderFiniteNull() {
-        // U=1 with probability .9, U=191 with probability .1: E[U]=20.
-        // Enumerate the whole four-draw experiment rather than simulate it.
-        double expectedE = 0.0;
-        double rejectionProbability = 0.0;
-        for (int mask = 0; mask < 16; mask++) {
-            double[] weights = new double[4];
-            double probability = 1.0;
-            for (int i = 0; i < weights.length; i++) {
-                boolean high = (mask & (1 << i)) != 0;
-                weights[i] = Math.log1p(high ? 191.0 : 1.0);
-                probability *= high ? 0.1 : 0.9;
+    public void fixedBatchPvalueIsSuperUniformWithRandomTailCount() {
+        // Probabilities .5/.49/.01 for U=0/1/951 give E[U|U>0]=20.
+        // Exhaust all 3^4 outcomes, including zero and one exceedance.
+        for (double alpha : new double[]{0.01, 0.05, 0.10, 0.5}) {
+            double rejectionProbability = 0.0;
+            for (int code = 0; code < 81; code++) {
+                double[] weights = new double[4];
+                double probability = 1.0;
+                int digits = code;
+                for (int i = 0; i < 4; i++, digits /= 3) {
+                    int value = digits % 3;
+                    weights[i] = value == 0 ? Math.log(0.5)
+                            : Math.log1p(value == 1 ? 1.0 : 951.0);
+                    probability *= value == 0 ? .5 : value == 1 ? .49 : .01;
+                }
+                var test = PackStarFrequencySeverityPAC.testConditionalSeverity(
+                        weights, 0.0, 20.0, alpha);
+                if (test.rejected) rejectionProbability += probability;
             }
-            PackStarFrequencySeverityPAC.SeverityTest test =
-                    PackStarFrequencySeverityPAC.testConditionalSeverity(
-                            weights, 0.0, 20.0, 0.05);
-            expectedE += probability * Math.exp(test.logEValue);
-            if (test.rejected) rejectionProbability += probability;
+            assertTrue(rejectionProbability <= alpha + 1e-12);
         }
-        assertEquals(1.0, expectedE, 1.0e-12);
-        assertTrue(rejectionProbability > 0.0);
-        assertTrue(rejectionProbability <= 0.05);
+    }
+
+    @Test
+    public void meanPvalueDistinguishesFiveAndTenPercent() {
+        double[] weights = {Math.log(0.5), Math.log1p(298.155882256389)};
+        var five = PackStarFrequencySeverityPAC.testConditionalSeverity(weights, 0, 20, .05);
+        var ten = PackStarFrequencySeverityPAC.testConditionalSeverity(weights, 0, 20, .10);
+        assertFalse(five.rejected);
+        assertTrue(ten.rejected);
+        assertEquals(0.06707900527953253, ten.pValueUpper, 1e-14);
+    }
+
+    @Test
+    public void meanPvalueHandlesNoTailAndOverflow() {
+        var none = PackStarFrequencySeverityPAC.testConditionalSeverity(new double[]{-1, 0}, 0, 20, .10);
+        assertEquals(1.0, none.pValueUpper, 0.0);
+        assertFalse(none.sufficientTailSamples);
+        var huge = PackStarFrequencySeverityPAC.testConditionalSeverity(new double[]{-1, 1000}, 0, 20, .10);
+        assertTrue(huge.rejected);
+        assertTrue(Double.isFinite(huge.logPValue));
+        assertEquals(0.0, huge.pValueUpper, 0.0);
+        var mild = PackStarFrequencySeverityPAC.testConditionalSeverity(new double[]{-1, Math.log1p(61.83)}, 0, 20, .10);
+        assertFalse(mild.rejected);
     }
 
     @Test

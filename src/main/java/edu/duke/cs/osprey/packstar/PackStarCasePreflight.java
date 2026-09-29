@@ -51,6 +51,11 @@ public final class PackStarCasePreflight {
      * construction unchanged and return {@code null}.
      */
     public static BranchDpAdmission.CaseSummary runIfConfigured(KStar kstar) {
+        String mode = PackStarConfig.getProperty("packstar.admission.mode", "sla").trim();
+        if (mode.equalsIgnoreCase("auto")) return runAutomatic(kstar);
+        if (!mode.equalsIgnoreCase("sla")) {
+            throw new IllegalArgumentException("unknown preflight mode: " + mode);
+        }
         double slaHours = Math.max(0.0, PackStarConfig.getDouble(
                 BranchDpAdmission.CASE_SLA_HOURS_PROPERTY, 0.0, LOG_PREFIX));
         if (slaHours <= 0.0) {
@@ -241,6 +246,73 @@ public final class PackStarCasePreflight {
                 replicatedBundleOrdinal,
                 slaHours, decisionSlaHours, distributed);
         return summary;
+    }
+
+    private static BranchDpAdmission.CaseSummary runAutomatic(KStar kstar) {
+        if (PackStarConfig.getBoolean(DISTRIBUTED_PROPERTY, false)
+                || PackStarConfig.getInteger(SHARD_COUNT_PROPERTY,
+                environmentInteger("SLURM_NTASKS", 1), LOG_PREFIX) > 1
+                || PackStarConfig.getBoolean(LOCKED_POLICY_ONLY_PROPERTY, false)) {
+            throw new IllegalArgumentException("auto preflight uses one canonical process with CPU workers; "
+                    + "distributed SLA admission and lockedPolicyOnly require mode=sla");
+        }
+        BranchDpAdmission.clearExactPolicies();
+        String input = PackStarConfig.getProperty("packstar.admission.policyIn", "").trim();
+        String output = PackStarConfig.getProperty("packstar.admission.policyOut", "").trim();
+        if (!input.isEmpty()) BranchDpAdmission.loadExactPolicies(new File(input));
+        int cpus = Math.max(1, Math.min(Runtime.getRuntime().availableProcessors(),
+                environmentInteger("SLURM_CPUS_PER_TASK", Runtime.getRuntime().availableProcessors())));
+        PackStarAutoPreflight.Settings settings = new PackStarAutoPreflight.Settings(
+                PackStarConfig.getInteger("packstar.admission.auto.patience", 3, LOG_PREFIX),
+                PackStarConfig.getInteger("packstar.admission.auto.maxRounds", 12, LOG_PREFIX),
+                PackStarConfig.getInteger("packstar.admission.previewThreads", Math.min(8, cpus), LOG_PREFIX),
+                PackStarConfig.getDouble("packstar.admission.auto.minGain", 0.01, LOG_PREFIX),
+                PackStarConfig.getLong("packstar.admission.auto.initialMillis", 5_000L, LOG_PREFIX),
+                PackStarConfig.getLong("packstar.admission.auto.maxMillis", 60_000L, LOG_PREFIX));
+        List<PackStarAutoPreflight.State> states = new ArrayList<>();
+        for (Request request : collectUniqueRequests(kstar)) {
+            states.add(new PackStarAutoPreflight.State(() -> preview(request)));
+        }
+        System.out.println(LOG_PREFIX + " mode=auto uniqueStates=" + states.size()
+                + " objective=structural-dp-work patience=" + settings.patience
+                + " minGain=" + settings.minGain + " maxRounds=" + settings.maxRounds
+                + " previewThreads=" + settings.threads + " hours=not-requested");
+        PackStarAutoPreflight.Result result;
+        try (DryRunScope ignored = new DryRunScope()) {
+            result = PackStarAutoPreflight.optimize(states, settings, !input.isEmpty(), () -> {
+                if (!output.isEmpty()) checkpointPolicies(new File(output));
+            });
+        }
+        if (!output.isEmpty()) {
+            File report = new File(output + ".summary.tsv");
+            try (BufferedWriter out = new BufferedWriter(new FileWriter(report))) {
+                out.write("# mode=auto stopReason=" + result.stopReason + " rounds=" + result.rounds
+                        + " initialDpWork=" + result.initialWork + " finalDpWork=" + result.finalWork);
+                out.newLine();
+                out.write("stateKey\tbranchwidth\troot\ttotalDpWork\tgpuUnsupportedEdges");
+                out.newLine();
+                for (BranchDpAdmission.Prediction p : result.summary.predictions) {
+                    out.write(p.stateKey + "\t" + p.branchwidth + "\t" + p.rootSplitEdge
+                            + "\t" + p.totalGpuWork() + "\t" + p.gpuUnsupportedEdges);
+                    out.newLine();
+                }
+            } catch (IOException ex) {
+                throw new java.io.UncheckedIOException("could not write auto preflight report", ex);
+            }
+        }
+        return result.summary;
+    }
+
+    private static void checkpointPolicies(File output) {
+        File pending = new File(output.getPath() + ".pending");
+        BranchDpAdmission.writeExactPolicies(pending);
+        try {
+            java.nio.file.Files.move(pending.toPath(), output.toPath(),
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException ex) {
+            throw new java.io.UncheckedIOException("could not checkpoint preflight policy", ex);
+        }
     }
 
     private static int environmentInteger(String name, int defaultValue) {

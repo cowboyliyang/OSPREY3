@@ -192,7 +192,7 @@ public class PackStarEstimator {
     private static final int DEFAULT_FREQUENCY_SEVERITY_MIN_TRAIN_COUNT = 5;
     private static final double DEFAULT_FREQUENCY_SEVERITY_MAX_UNDERTRAINED_AMPLIFICATION = 1.25;
     private static final double DEFAULT_FREQUENCY_SEVERITY_SIZE_SAFETY = 0.9;
-    private static final double DEFAULT_FREQUENCY_SEVERITY_TEST_ALPHA = 0.05;
+    private static final double DEFAULT_FREQUENCY_SEVERITY_TEST_ALPHA = 0.10;
     // Inputs
     private RootedTreeNode rootedRoot;
     private RootedTreeEdge rootedRootEdge;
@@ -1195,7 +1195,7 @@ public class PackStarEstimator {
      * while final samples are fresh. Conditional on the frozen
      * severity premise and the pilot, the final sample size is fixed for the
      * empirical-Bernstein PAC calculation. The same fixed final batch also
-     * supplies one severity e-value test; rejection suppresses the estimate.
+     * supplies one severity p-value test; rejection suppresses the estimate.
      */
     private static class FrequencySeverityEtaCoverage {
         final int[][] unaryDistinctContexts;
@@ -3527,12 +3527,12 @@ public class PackStarEstimator {
         if (finalSeverityTest.rejected) {
             String reason = finalSeverityTest.logicalViolation
                     ? "AdaptiveFrequencySeverityPAC: final sample logically violates zero severity premise"
-                    : "AdaptiveFrequencySeverityPAC: final severity e-value rejected premise "
+                    : "AdaptiveFrequencySeverityPAC: final severity p-value rejected premise "
                             + frequencySeverityPremiseId;
             reason += ", tail=" + finalSeverityTest.tailCount
                     + "/" + finalInterval.sampleCount
                     + ", empiricalSeverity=" + finalInterval.empiricalConditionalSeverity
-                    + ", logE=" + finalSeverityTest.logEValue
+                    + ", logP=" + finalSeverityTest.logPValue
                     + ", alpha=" + frequencySeverityTestAlpha;
             writeFrequencySeverityFailureArtifactQuietly(
                     artifactDir, reason, trainCCD.size(),
@@ -3996,7 +3996,7 @@ public class PackStarEstimator {
         try (PrintWriter writer = openFrequencySeverityWriter(output)) {
             writer.println("key\tvalue");
             writeFrequencySeverityKey(writer, "schema",
-                    "packstar-adaptive-frequency-severity-protocol-v10");
+                    "packstar-adaptive-frequency-severity-protocol-v11");
             writeFrequencySeverityKey(writer, "proposalLearningEnabled",
                     frequencySeverityProposalLearning);
             writeFrequencySeverityKey(writer, "tripleFitThreads",
@@ -4159,10 +4159,8 @@ public class PackStarEstimator {
             writeFrequencySeverityKey(writer, "severityTestDataReuse",
                     "same-fixed-final-batch-as-partition-function-interval");
             writeFrequencySeverityKey(writer, "severityTest",
-                    "equal-mixture-of-sample-mean-and-fixed-betting-products");
-            writeFrequencySeverityKey(writer, "severityBettingLambdas",
-                    Arrays.toString(
-                            PackStarFrequencySeverityPAC.severityBettingLambdas()));
+                    "markov-conditional-mean-pvalue");
+            writeFrequencySeverityKey(writer, "severityTestMinimumTailCount", 1);
             writeFrequencySeverityKey(writer, "candidateSpecificCcd", 0);
             writeFrequencySeverityKey(writer, "candidateSpecificDp", 0);
             writeFrequencySeverityKey(writer, "proposalCorrectedDpMaximum",
@@ -4911,12 +4909,12 @@ public class PackStarEstimator {
                     + "\tempiricalTailMean\tempiricalConditionalSeverity"
                     + "\tobservedMaxConditionalSeverity"
                     + "\tseverityTestTailCount\tseverityTestSufficient"
-                    + "\tseverityTestRejected\tseverityTestLogE"
+                    + "\tseverityTestRejected\tseverityTestLogP"
                     + "\tseverityTestPUpper\tpredictedFinalN"
                     + "\treachableAtMax\tpredictedEpsilonAtMax"
                     + "\tlogMuTrain\tlogZProposal\tseverityPremiseId");
             writer.printf(Locale.ROOT,
-                    "packstar-adaptive-frequency-severity-stage-v1\t%s\t%d\t%d"
+                    "packstar-adaptive-frequency-severity-stage-v2\t%s\t%d\t%d"
                             + "\t%.17g\t%.17g\t%.17g\t%.17g\t%.17g"
                             + "\t%.17g\t%.17g\t%.17g\t%.17g"
                             + "\t%.17g\t%.17g\t%.17g\t%.17g\t%.17g"
@@ -4943,7 +4941,7 @@ public class PackStarEstimator {
                     severityTest == null ? "NA"
                             : Boolean.toString(severityTest.rejected),
                     severityTest == null ? Double.NaN
-                            : severityTest.logEValue,
+                            : severityTest.logPValue,
                     severityTest == null ? Double.NaN
                             : severityTest.pValueUpper,
                     sizing == null ? -1 : sizing.finalSamples,
@@ -4971,7 +4969,7 @@ public class PackStarEstimator {
         try (PrintWriter writer = openFrequencySeverityWriter(output)) {
             writer.println("key\tvalue");
             writeFrequencySeverityKey(writer, "schema",
-                    "packstar-adaptive-frequency-severity-final-v3");
+                    "packstar-adaptive-frequency-severity-final-v4");
             writeFrequencySeverityKey(writer, "selectedCandidate", winner.id);
             writeFrequencySeverityKey(writer, "certificateValid", valid);
             writeFrequencySeverityKey(writer, "certificateFailureReason", certificateFailureReason);
@@ -4983,7 +4981,7 @@ public class PackStarEstimator {
             writeFrequencySeverityKey(writer, "severityTestTailCount", severityTest.tailCount);
             writeFrequencySeverityKey(writer, "severityTestSufficient", severityTest.sufficientTailSamples);
             writeFrequencySeverityKey(writer, "severityTestRejected", severityTest.rejected);
-            writeFrequencySeverityKey(writer, "severityTestLogE", severityTest.logEValue);
+            writeFrequencySeverityKey(writer, "severityTestLogP", severityTest.logPValue);
             writeFrequencySeverityKey(writer, "severityTestPUpper", severityTest.pValueUpper);
             writeFrequencySeverityKey(writer, "empiricalConditionalSeverity",
                     interval.empiricalConditionalSeverity);

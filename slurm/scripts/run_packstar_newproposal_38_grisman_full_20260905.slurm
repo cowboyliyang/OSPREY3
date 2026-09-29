@@ -187,7 +187,7 @@ JARGS=(
     -Dpackstar.pac.frequencySeverity.minTrainCount=5
     -Dpackstar.pac.frequencySeverity.maxUndertrainedAmplification=1.25
     -Dpackstar.pac.frequencySeverity.sizeSafety=0.9
-    -Dpackstar.pac.frequencySeverity.severityTestAlpha=0.05
+    -Dpackstar.pac.frequencySeverity.severityTestAlpha=0.10
     "-Dpackstar.pac.frequencySeverity.outputDir=$OUT_DIR/adaptive_frequency_severity"
 
     -Dpackstar.pac.samples=1000

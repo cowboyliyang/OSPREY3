@@ -434,7 +434,12 @@ public class BranchDecomposition {
 
         int lowerBound = 0;
         try {
-            lowerBound = ExactTreewidth.compute(interactionGraph).branchwidthLowerBound;
+            // The optional exponential diagnostic has no time budget. Automatic
+            // preflight uses zero as a valid lower bound and spends its budget
+            // on the bounded branchwidth search instead.
+            if (!BranchDpAdmission.automaticOptimization()) {
+                lowerBound = ExactTreewidth.compute(interactionGraph).branchwidthLowerBound;
+            }
         } catch (RuntimeException e) {
             System.err.println("BranchDecomposition exact_improve: exact treewidth lower bound failed: "
                     + e.getMessage() + ". Using lowerBound=0.");

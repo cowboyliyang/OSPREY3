@@ -74,6 +74,7 @@ src/main/cu/CudaConfEcalc/build_sm86/
 *.rst
 *.pdf
 !H200_EXPERIMENTS.md
+!/README.md
 /doc/
 /docs/
 /.claude/

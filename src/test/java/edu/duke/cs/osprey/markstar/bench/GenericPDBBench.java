@@ -611,7 +611,11 @@ public class GenericPDBBench {
                     PackStarCasePreflight.runIfConfigured(kstar);
             if (admission != null && Boolean.getBoolean(
                     "osprey.bench.packstarPreflightOnly")) {
-                System.out.println(String.format(Locale.ROOT,
+                if ("auto".equalsIgnoreCase(edu.duke.cs.osprey.packstar.PackStarConfig
+                        .getProperty("packstar.admission.mode", "sla").trim())) {
+                    System.out.println("PACK* automatic preflight complete: structural optimization only; "
+                            + "formal K* run and DP-table materialization were not started.");
+                } else System.out.println(String.format(Locale.ROOT,
                         "PACK* preflight-only complete: predictedCaseHours=%.4f caseSlaHours=%.4f; formal K* run and DP-table materialization were not started.",
                         admission.totalHours(), admission.slaHours));
                 return;

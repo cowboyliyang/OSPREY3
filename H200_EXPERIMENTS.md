@@ -1,8 +1,96 @@
 # PACK* H200 实验执行说明
 
-## 2026-09-22 当前执行清单：38 系统 / 162 项
+## 2026-09-29 PRO6000 剩余 38 项完成及比较口径
 
-**H200 后续实验统一以 [frontier_active.tsv](slurm/h200/frontier_active.tsv) 为准。** 原 139 项移除用户确定不补的 `3k3q_flex_p1`、`3k3q_flex_p2`，再加入下表 25 项，得到 **162 项**。`3k3q_flex_p0` 保留。下面各日期章节和旧四个 manifest 保留提交历史与原 index；它们不再代表当前待执行清单，也不要直接拼接用于新提交。已有结果按 `design_id` 对齐，无需重复计算。
+作业 `12711429` 于 2026-09-29 16:13:26（美国东部时间）正常结束，
+总耗时 15:55:37。38 项均正常跑完整个配置 workload：11 项为
+`COMPLETED`，27 项为 `INCOMPLETE_ESTIMATES`。后者表示部分序列
+未得到估计，仍算正常完成；节点包装层的 `FAILED_OR_INCOMPLETE`
+不能直接解释为进程失败。核对 manifest 的正常退出、完整 CSV 行数和 wall time。
+
+按用户指定，MARK*/PACK* 总耗时比较纳入双方正常完成的相同 design，
+不按 Estimated 序列数量筛选。并列列出各自 Estimated/总序列数；
+原始输出停顿影响的 timing 保留标记。本文后面的旧日期对照及成功集合
+筛选说明保留为历史协议，不覆盖此处的当前正文统计口径。
+
+## 2026-09-28 撤回 3BUA 最高档：当前有效清单 38 系统 / 161 项
+
+用户明确撤回 **`3bua_flex_p0`**：冻结总表 `frontier_active.tsv` 的原 index **68**，
+旧 `frontier_add4.tsv` 的 index **24**。后续 H200 / Duke PACK* 与 MARK* 提交均跳过此项；
+`3bua_flex_m2`、`3bua_flex_m1`（总表 index 66、67）继续保留。
+冻结的 162 行 manifest、输入包、原 index 及已有结果均保留，不删除该行或重新编号。
+因此当前有效执行范围为 **0–67、69–161**；从任意待跑子集里也必须排除 index 68。
+下方按日期保存的 162 项提交记录是历史范围，不覆盖本次撤回决定。
+
+撤回依据：`3bua_flex_p0` 的四卡 PRO6000 运行触及 90 分钟上限，
+2026-09-27 grisman 的四卡 A5000 测量又触及 6 小时上限，均未完成。
+对应 Duke MARK* 子任务 **`12633775_24`** 在运行约 10 天 3 小时后按用户要求取消，
+这是主动撤回，不应记为已运行满 14 天超时。历史日志与中间结果保留。
+较小两档 PACK* 已分别在约 33.1 / 59.9 分钟输出 39 行，均有 34/39 条序列的
+三个状态全部为 Estimated；它们的 MARK* 子任务 `12633775_22`、`12633775_23` 不取消。
+
+Duke 待跑 PRO6000 清单由 39 项减为 **38 项**；旧待跑作业 `12711401` 已取消，
+替代作业 **`12711429`** 已提交并放行。准备作业 `12711426` 验证仅移除 index 68，
+新清单位于 `/usr/xtmp/lz280/pro6000_remaining38_20260928/prep_12711426/cases.tsv`。
+每项 **120 分钟**（含预检），
+整批 80 小时，继续使用 128 CPU、1000G 内存、4 张 PRO6000、850 GiB heap、
+800 GiB host budget，以及原 build、输入、seed=42、pair-only / RB=1 参数。
+CPU32 后续按用户要求合并为单个串行作业 **`12711467`**，替代已取消的待跑数组
+`12710387`：一次申请 128 CPU、1000G、EPYC 9554、无 GPU，连续运行 32 项，
+每项上限 150 分钟，整批时限 4 天。case 之间不释放节点；失败或超时记录后继续下一项。
+本次更新 H200 的后续执行说明，没有操作远端 H200 调度器；若远端已提交该项，
+须按 design ID 对应到当地任务，不能直接使用 Duke 的 job ID。
+
+## 2026-09-25 Duke PRO 6000 全清单运行
+
+用户要求把当前 162 个 design 对半分给两台空闲 PRO 6000 节点。
+本批使用同一 `frontier_active.tsv` 和 `handoff_12686177/package`，作为独立
+PRO 6000 资源配置记录，不标为 H200 结果。
+
+| 节点 | Slurm job | active index | design 数 |
+|---|---|---|---:|
+| 任意完整 PRO 6000 节点 | 12701384 | 0–80 | 81 |
+| 任意完整 PRO 6000 节点 | 12701385 | 81–161 | 81 |
+
+用户随后允许任意 PRO 6000 节点：已原地清除两个作业的 ReqNodeList，保留原 job ID、
+整节点独占、128 CPU、全部内存及 `gpu:rtx_pro_6000:4`；不再固定 fitz-48/49。
+
+两组均 `account=grisman`、`partition=compsci-gpu`，每个节点作业串行运行 81 项；
+每项独占 128 CPU、全部节点内存、4×RTX PRO 6000，850 GiB Java heap、
+800 GiB host budget、每卡 85 GiB GPU budget。每项先核验完整输入包 checksum，
+再以当前 build 运行位点/序列预检，通过后运行正式 PACK*；新建 EMAT、FP64、
+CPU CCD。用户最终指定 **RB=1、tripleEta=false、jointMomentLearning=true、
+proposalLearning=true**，使用 Duke 最近 pair-only 的冻结 production.properties
+和 `--arm pair-only --rb 1`，不使用 H200 triple 开启方案。
+**每个 design（含预检）限时 90 分钟**，终止信号后最多 10 秒强制收尾；
+**每个节点的 Slurm 总时限为 7 天**。81×90 分钟为 121.5 小时。
+任一 design 超时或失败保留记录，并继续下一项；节点 `status.tsv` 记录每项状态，
+被 timeout 终止时不能把子目录遗留 RUNNING manifest 当作仍在运行。
+每项 mapped workspace 上限 512 GiB，
+全部保留时预算合计最多 81 TiB，另计 EMAT 与日志；提交前共享盘可用约 177 TiB。
+
+准备作业 `12701382` 在 fitz-49 使用两张空闲 PRO 6000 验证五条真实 GPU 路径，
+复用 Duke 已验证 build `12677588` 的 Java/Kotlin/classpath；若原 kernel 不兼容，
+仅用节点系统 CUDA 重编译该 build 的同一 dp.cu，独立资源 overlay 不修改旧构建。
+两组以 `afterok:12701382` 为依赖。此前 `12701338` 因缺少 CUDA module、
+`12701342` 因 conda 旧编译器不支持 sm_120 失败，关联数组未执行正式 design。
+待运行任务 12701375/12701376/12701377/12701379/12701380 已由上述任务替代。
+提交期间其他用户占用了 fitz-48 全部四卡及 fitz-49 两卡，整节点任务需要排队。
+此处提交记录不表示实验已完成。
+
+准备作业 `12701382` 已完成：Duke 原有二进制直接通过全部五项 GPU 数值测试
+（5 successful、0 skipped、0 aborted、0 failed），无需重编译 kernel；
+`duke_12701382/READY` 已生成，正式任务等待调度及整节点资源。
+
+脚本：[prepare_duke_pro6000_20260925.slurm](slurm/h200/prepare_duke_pro6000_20260925.slurm)、
+[node_pro6000_20260925.slurm](slurm/h200/node_pro6000_20260925.slurm)、
+[run_pro6000_20260925.slurm](slurm/h200/run_pro6000_20260925.slurm)。
+构建与结果根目录：`/usr/xtmp/lz280/packstar_pro6000_20260925/`；
+Slurm 日志：`/usr/xtmp/lz280/slurm_logs/ps_pro6000_{build,active}_*.{out,err}`。
+
+## 2026-09-22 冻结清单记录：38 系统 / 162 项
+
+**H200 后续实验使用 [frontier_active.tsv](slurm/h200/frontier_active.tsv) 的冻结 index，并应用本文顶部的撤回清单（目前跳过 index 68）。** 原 139 项移除用户确定不补的 `3k3q_flex_p1`、`3k3q_flex_p2`，再加入下表 25 项，得到当时的 **162 项**，2026-09-28 撤回一项后有效范围为 **161 项**。`3k3q_flex_p0` 保留。下面各日期章节和旧四个 manifest 保留提交历史与原 index；它们不再代表当前待执行清单，也不要直接拼接用于新提交。已有结果按 `design_id` 对齐，无需重复计算。
 
 Duke MARK* 补档已提交为 **`12686144_0–24`**，首次核验 **25 项全部 RUNNING**，分布在 compsci 的 fitz-35/36/37/38/39/43/44。每项 **16 CPU、192 GiB 内存、160 GiB Java heap、14 天、account=grisman、partition=compsci**，没有数组并发上限或逐档依赖；合计 400 CPU / 4800 GiB。FP64、CPU CCD、epsilon=0.683、关闭 stability filter、独立新建 EMAT，沿用已验证编译协议。Duke 的内存配额不替代 H200 PACK* 的统一资源设置。
 
@@ -49,7 +137,7 @@ Duke MARK* 补档已提交为 **`12686144_0–24`**，首次核验 **25 项全�
 
 ### H200 按更新清单继续实验
 
-更新工作 checkout 后使用 [run_active.slurm](slurm/h200/run_active.slurm)。复用原已验证 BUILD_ROOT 和原实验统一的 GPU/CPU/内存/heap/host 参数。先按 `design_id` 排除已完成或正在运行的任务：若此前四批均已安排，仅新增 **137–161**；若此前只安排到 small4，需安排 **85–161**。这些范围是总表索引；更零散的缺项可传逗号分隔索引。
+更新工作 checkout 后使用 [run_active.slurm](slurm/h200/run_active.slurm)。复用原已验证 BUILD_ROOT 和原实验统一的 GPU/CPU/内存/heap/host 参数。先按 `design_id` 排除已完成、正在运行以及已撤回的任务（`3bua_flex_p0` / index 68）：若此前四批均已安排，仅新增 **137–161**；若此前只安排到 small4，需安排 **85–161**。这些范围是总表索引；更零散的缺项可传逗号分隔索引。若从总表重新选择全部有效项，使用 **0–67、69–161**，不要直接提交 0–161。
 
 下面示例沿用旧文档的 2 H200 / 64 CPU / 960 GiB / 4 路并发；若当前 H200 实验配额不同，继续沿用当前配额及相应 heap/host 参数。
 

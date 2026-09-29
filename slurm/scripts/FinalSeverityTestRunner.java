@@ -35,9 +35,11 @@ public class FinalSeverityTestRunner {
         int rejected = 0;
         boolean saw2rl0 = false;
         boolean saw3cal = false;
+        boolean saw4u3s = false;
+        boolean saw4wyu = false;
         try (var reader = Files.newBufferedReader(Path.of(args[0]))) {
             String header = reader.readLine();
-            if (!header.startsWith("case_id\tlog_clip\tcap\talpha\ttail_count\texpected_log_e\texpected_rejected\tlog_weights")) {
+            if (!header.startsWith("case_id\tlog_clip\tcap\talpha\ttail_count\texpected_log_p\texpected_rejected\tlog_weights")) {
                 throw new IllegalArgumentException("unexpected replay header");
             }
             String line;
@@ -47,12 +49,12 @@ public class FinalSeverityTestRunner {
                         .mapToDouble(FinalSeverityTestRunner::number).toArray();
                 var test = PackStarFrequencySeverityPAC.testConditionalSeverity(
                         weights, number(fields[1]), number(fields[2]), number(fields[3]));
-                double expectedLogE = number(fields[5]);
+                double expectedLogP = number(fields[5]);
                 if (test.tailCount != Integer.parseInt(fields[4])
                         || test.rejected != Boolean.parseBoolean(fields[6])
-                        || Double.isNaN(test.logEValue) != Double.isNaN(expectedLogE)
-                        || (!Double.isNaN(expectedLogE)
-                            && Math.abs(test.logEValue - expectedLogE) > 1.0e-8)) {
+                        || Double.isNaN(test.logPValue) != Double.isNaN(expectedLogP)
+                        || (!Double.isNaN(expectedLogP)
+                            && Math.abs(test.logPValue - expectedLogP) > 1.0e-8)) {
                     throw new AssertionError("Python/Java replay mismatch: " + fields[0]);
                 }
                 count++;
@@ -60,12 +62,14 @@ public class FinalSeverityTestRunner {
                     rejected++;
                     saw2rl0 |= fields[0].startsWith("rb2:2rl0:");
                     saw3cal |= fields[0].startsWith("rb1:3cal:");
+                    saw4u3s |= fields[0].startsWith("rb1:4u3s:");
+                    saw4wyu |= fields[0].startsWith("rb1:4wyu:");
                     System.out.println("REJECT " + fields[0] + " tail=" + test.tailCount
-                            + " e=" + Math.exp(test.logEValue));
+                            + " p=" + test.pValueUpper);
                 }
             }
         }
-        if (count != 6065 || rejected != 3 || !saw2rl0 || !saw3cal) {
+        if (count != 6065 || rejected != 4 || !saw2rl0 || !saw3cal || !saw4u3s || !saw4wyu) {
             throw new AssertionError("unexpected frozen replay coverage or decisions");
         }
         System.out.println("PASS: Java replay agrees with independent Python calculation for "

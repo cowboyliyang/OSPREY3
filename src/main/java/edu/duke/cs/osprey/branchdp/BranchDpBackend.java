@@ -602,7 +602,9 @@ public abstract class BranchDpBackend extends MARKStarBound {
         if (decompStrategyValue == null) {
             decompStrategyValue = getConfigProperty(DECOMP_STRATEGY_SHORT_PROPERTY, null);
         }
-        this.decompStrategy = BranchDecomposition.Strategy.fromProperty(decompStrategyValue);
+        this.decompStrategy = BranchDpAdmission.automaticOptimization()
+                ? BranchDecomposition.Strategy.ADAPTIVE
+                : BranchDecomposition.Strategy.fromProperty(decompStrategyValue);
         this.exactTreewidthDiagnostic = getConfigBoolean(EXACT_TREEWIDTH_PROPERTY, false);
         this.exactTreewidthMaxPositions = Math.max(0,
                 getConfigInteger(EXACT_TREEWIDTH_MAX_POSITIONS_PROPERTY, DEFAULT_EXACT_TREEWIDTH_MAX_POSITIONS));
@@ -610,7 +612,8 @@ public abstract class BranchDpBackend extends MARKStarBound {
         this.edgeLookaheadMaxStates = getEdgeLookaheadMaxStates();
         this.edgeLookaheadMaxPendingEdges = getEdgeLookaheadMaxPendingEdges();
         this.edgeLookaheadParallel = getEdgeLookaheadParallel();
-        this.rootSplitStrategy = getConfigProperty(ROOT_SPLIT_PROPERTY, "work").trim();
+        this.rootSplitStrategy = BranchDpAdmission.automaticOptimization()
+                ? "structural" : getConfigProperty(ROOT_SPLIT_PROPERTY, "work").trim();
         this.dryRun = getConfigBoolean(DRY_RUN_PROPERTY, false);
         this.admissionDpSweeps = Math.max(1, getAdmissionDpSweeps());
         this.rootSplitMaxFset = Math.max(1,
@@ -1202,6 +1205,9 @@ public abstract class BranchDpBackend extends MARKStarBound {
             return true;
         }
 
+        // The automatic case search controls retries, without a hardware soft SLA.
+        if (BranchDpAdmission.automaticOptimization()) return false;
+
         double softHours = Math.max(0.0, getConfigDouble(
                 BranchDpAdmission.SOFT_STATE_HOURS_PROPERTY, 0.0));
         if (softHours > 0.0) {
@@ -1247,9 +1253,11 @@ public abstract class BranchDpBackend extends MARKStarBound {
                 firstStage.gpuUnsupportedEdges);
         if (unsupportedCmp != 0) return unsupportedCmp < 0;
 
-        int predictedCmp = Double.compare(predictedSeconds(candidate),
-                predictedSeconds(firstStage));
-        if (predictedCmp != 0) return predictedCmp < 0;
+        if (!BranchDpAdmission.automaticOptimization()) {
+            int predictedCmp = Double.compare(predictedSeconds(candidate),
+                    predictedSeconds(firstStage));
+            if (predictedCmp != 0) return predictedCmp < 0;
+        }
 
         int workCmp = candidate.gpuWork.compareTo(firstStage.gpuWork);
         if (workCmp != 0) return workCmp < 0;
@@ -1338,7 +1346,8 @@ public abstract class BranchDpBackend extends MARKStarBound {
             InteractionGraph graph, RCs rcs, SimpleConfSpace confSpace,
             boolean initEnumerationArrays) {
         RootSelector selector = new RootSelector(decomposition, graph, confSpace,
-                BranchDpConfig.getBackendProperty(ROOT_SPLIT_PROPERTY, "work").trim(),
+                BranchDpAdmission.automaticOptimization() ? "structural"
+                        : BranchDpConfig.getBackendProperty(ROOT_SPLIT_PROPERTY, "work").trim(),
                 Math.max(1, BranchDpConfig.getBackendInteger(ROOT_SPLIT_MAX_FSET_PROPERTY,
                         2, BranchDpConfig.getBackendLogPrefix())),
                 BranchDpAdmission.Hardware.fromBackendConfig(), 1, false);
@@ -1430,6 +1439,7 @@ public abstract class BranchDpBackend extends MARKStarBound {
             boolean useWorkScoring = strategy.equals("work")
                     || strategy.equals("dpwork")
                     || strategy.equals("dp_work");
+            boolean useStructuralScoring = strategy.equals("structural");
             // GPU-aware exhaustive root scoring: prefer structurally supported roots that
             // fit the single-device budget, minimize exact DP work when resident, and use
             // estimated child-slice traffic before work when every candidate must slice.
@@ -1446,7 +1456,7 @@ public abstract class BranchDpBackend extends MARKStarBound {
             if (!strategy.equals("branching") && !strategy.equals("maxfset")
                     && !strategy.equals("lookahead") && !useReuseScoring
                     && !useMemoryScoring && !useWorkScoring && !useGpuBytesScoring
-                    && !usePredictedScoring) {
+                    && !usePredictedScoring && !useStructuralScoring) {
                 System.err.println(BranchDpConfig.getBackendLogPrefix() + " Unknown root split strategy '" + rootSplitStrategy
                         + "', using legacy split edge 0.");
                 selectedRootGpuBudgetBytes = Long.MAX_VALUE;
@@ -1500,7 +1510,14 @@ public abstract class BranchDpBackend extends MARKStarBound {
                     continue;
                 }
                 boolean better;
-                if (usePredictedScoring) {
+                if (useStructuralScoring) {
+                    better = best == null
+                            || candidate.gpuUnsupportedEdges < best.gpuUnsupportedEdges
+                            || (candidate.gpuUnsupportedEdges == best.gpuUnsupportedEdges
+                            && (candidate.gpuWork.compareTo(best.gpuWork) < 0
+                            || (candidate.gpuWork.equals(best.gpuWork)
+                            && candidate.maxDPTableBytes < best.maxDPTableBytes)));
+                } else if (usePredictedScoring) {
                     better = isBetterPredictedRooting(candidate, best, logNaive);
                 } else if (useGpuBytesScoring) {
                     better = isBetterGpuBytesRooting(candidate, best, logNaive);
@@ -2389,6 +2406,11 @@ public abstract class BranchDpBackend extends MARKStarBound {
      * could not be queried (e.g. no GPU visible) rather than false-aborting.
      */
     private void checkWorstCaseSingleGpuFits(long worstCaseSingleGpuBytes) {
+        // Structural search may preview hundreds of candidates. Creating/querying
+        // device contexts here costs more than many small decompositions and is
+        // irrelevant to its hardware-independent objective. The formal backend
+        // still executes this check before materialization/DP.
+        if (dryRun && BranchDpAdmission.automaticOptimization()) return;
         if (!getConfigBoolean("branchdp.dp.gpu", false)) {
             return; // GPU DP not requested: this VRAM concern doesn't apply
         }
