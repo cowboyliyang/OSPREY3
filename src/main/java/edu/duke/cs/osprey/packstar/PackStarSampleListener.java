@@ -15,7 +15,10 @@
 package edu.duke.cs.osprey.packstar;
 
 /**
- * Receives PACK* sample traces when tracing is enabled.
+ * Receives one trace per draw when registered, including duplicates and cache
+ * hits. Calls are serial, in draw order, on the thread running compute(), after
+ * each CCD batch and before its certificate checks. Listener exceptions
+ * propagate to the caller. Paths that do not sample emit no traces.
  */
 public interface PackStarSampleListener {
 

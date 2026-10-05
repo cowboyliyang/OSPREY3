@@ -30,6 +30,9 @@ final class PackStarBranchDpBackend extends BranchDpBackend implements PackStarB
             PackStarFunctionalObservableResult.notConfigured();
     private final String configuredSeedStateRole;
     private Integer calculationInstanceId = null;
+    private PackStarEstimator activeEstimator = null;
+    private int ccdSampleRecords = 0;
+    private int sampleCallbacks = 0;
 
     PackStarBranchDpBackend(SimpleConfSpace confSpace,
                             EnergyMatrix rigidEmat,
@@ -138,6 +141,22 @@ final class PackStarBranchDpBackend extends BranchDpBackend implements PackStarB
     }
 
     @Override
+    public int getNumConfsEvaluated() {
+        return activeEstimator == null ? super.getNumConfsEvaluated()
+                : activeEstimator.getTotalCCDCalls();
+    }
+
+    @Override
+    protected void attachExtraStats(PartitionFunction.Result result) {
+        super.attachExtraStats(result);
+        result.setStat(PackStarResult.FULL_CCD_STAT, getNumConfsEvaluated());
+        result.setStat(PackStarResult.CCD_SAMPLE_RECORDS_STAT, activeEstimator == null
+                ? ccdSampleRecords : activeEstimator.getTotalCCDSampleRecords());
+        result.setStat(PackStarResult.SAMPLE_CALLBACKS_STAT, activeEstimator == null
+                ? sampleCallbacks : activeEstimator.getTotalSampleCallbacks());
+    }
+
+    @Override
     public void setFunctionalEvent(String name, PackStarFunctionalEvent event) {
         if (event == null) {
             if (name != null && !name.trim().isEmpty()) {
@@ -206,13 +225,23 @@ final class PackStarBranchDpBackend extends BranchDpBackend implements PackStarB
         estimator.setSampleListener(sampleListener);
         estimator.setFunctionalEvent(functionalEventName, functionalEvent);
 
-        double estimatorEpsilon = estimator.compute();
+        double estimatorEpsilon;
+        activeEstimator = estimator;
+        try {
+            estimatorEpsilon = estimator.compute();
+        } finally {
+            // Preserve work on successful, certificate-aborted, and exceptional exits.
+            totalMinimizations = estimator.getTotalCCDCalls();
+            numConfsEnergied = totalMinimizations;
+            ccdSampleRecords = estimator.getTotalCCDSampleRecords();
+            sampleCallbacks = estimator.getTotalSampleCallbacks();
+            activeEstimator = null;
+        }
         functionalObservableResult = estimator.getFunctionalObservableResult();
 
         if (!estimator.hasValidCertificate()
                 || !PackStarEstimator.isValidCertificate(
                 estimator.getZLower(), estimator.getZUpper(), estimatorEpsilon)) {
-            totalMinimizations = estimator.getTotalCCDCalls();
             abortPackStar("estimator certificate is invalid: "
                     + estimator.getCertificateFailureReason());
             return;
@@ -226,7 +255,6 @@ final class PackStarBranchDpBackend extends BranchDpBackend implements PackStarB
         flatSumZLower = estimator.getZLower();
         flatSumZUpper = estimator.getZUpper();
         epsilonBound = estimatorEpsilon;
-        totalMinimizations = estimator.getTotalCCDCalls();
 
         System.out.println("PACK*: estimator finished. epsilon=" + String.format("%.6f", estimatorEpsilon)
                 + ", CCD calls=" + estimator.getTotalCCDCalls()

@@ -18,13 +18,21 @@ import java.util.Arrays;
 
 /**
  * Read-only sample record emitted by the PACK* estimator.
+ * Each draw has a run-wide, zero-based sampleIndex, including repeated
+ * assignments and target-energy cache hits. eProposal and logZCorrected refer
+ * to the proposal that generated this draw; xi = eTrue - eProposal and
+ * logWeight = -xi / RT. logZMinDet is the initial q_m log normalizer.
+ * clipLogCap is on the raw logWeight scale, or NaN when no cap is defined
+ * (q_m training). clipped reports a cap exceedance, not a modified energy.
  */
 public class PackStarSampleTrace {
 
 	public enum Stage {
 		TRAIN,
 		PILOT,
-		ESTIMATION
+		ESTIMATION,
+		DISCOVERY,
+		VALIDATION
 	}
 
 	public final Stage stage;

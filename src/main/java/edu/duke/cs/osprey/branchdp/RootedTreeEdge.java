@@ -2412,14 +2412,55 @@ public class RootedTreeEdge {
      * falls back to the Java sampler. Statistically (not bit-) equivalent.
      */
     public int[] sampleLambdaStatesGpu(long[] mIdxPerSample, long baseSeed, boolean progress) {
+        return sampleLambdaStatesGpu(mIdxPerSample, baseSeed, progress, null);
+    }
+
+    /**
+     * One byte-bounded cache per estimator/proposal epoch. The owner MUST clear
+     * it before changing any DP table or EMAT, including in-place corrections.
+     * No static cache retains a rooted tree or a sample batch.
+     */
+    public static final class SamplingRequestCache {
+        private final edu.duke.cs.osprey.tools.ByteBoundedCache<RootedTreeEdge,
+                SamplingGpuPhase1.Request> prepared;
+        private final Object owner = new Object();
+
+        public SamplingRequestCache(long maximumBytes) {
+            prepared = new edu.duke.cs.osprey.tools.ByteBoundedCache<>(maximumBytes);
+        }
+
+        public void clear() {
+            prepared.clear();
+            SamplingGpuPhase1.releasePreparedModel(owner);
+        }
+        public long hits() { return prepared.hits(); }
+        public long bytes() { return prepared.bytes(); }
+    }
+
+    public int[] sampleLambdaStatesGpu(long[] mIdxPerSample, long baseSeed, boolean progress,
+                                       SamplingRequestCache cache) {
         if (mIdxPerSample == null || mIdxPerSample.length == 0) {
             return new int[0];
         }
-        SamplingGpuPhase1.Request req = buildGpuSamplingRequest(mIdxPerSample, baseSeed, progress);
+        SamplingGpuPhase1.Request req = prepareGpuSamplingRequest(
+                mIdxPerSample, baseSeed, progress, cache);
         if (req == null) {
             return null;
         }
         return SamplingGpuPhase1.sample(req);
+    }
+
+    SamplingGpuPhase1.Request prepareGpuSamplingRequest(long[] mIdxPerSample,
+            long baseSeed, boolean progress, SamplingRequestCache cache) {
+        SamplingGpuPhase1.Request cached = cache == null ? null : cache.prepared.get(this);
+        if (cached != null) return cached.forSamples(mIdxPerSample, baseSeed, progress);
+        SamplingGpuPhase1.Request req = buildGpuSamplingRequest(mIdxPerSample, baseSeed, progress);
+        if (req != null && cache != null && cache.prepared.canStore(req.retainedBytes())) {
+            req.modelIdentity = new Object();
+            req.modelOwner = cache.owner;
+            cache.prepared.put(this, req.forSamples(null, 0L, false), req.retainedBytes());
+        }
+        return req;
     }
 
     /** Build the sampling request: the DP upper/min half + per-sample mIdx (no rigid/lower/dpTable). */

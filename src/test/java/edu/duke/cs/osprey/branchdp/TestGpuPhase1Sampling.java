@@ -18,6 +18,37 @@ import java.util.Map;
 public class TestGpuPhase1Sampling {
 
     @Test
+    public void preparedModelsReuseBuffersAndInvalidateWithoutChangingSeededDraws() {
+        Assumptions.assumeTrue(hasCudaGpu(), "no CUDA GPU available");
+        for (SamplingGpuPhase1.Method method : new SamplingGpuPhase1.Method[]{
+                SamplingGpuPhase1.Method.GUMBEL, SamplingGpuPhase1.Method.CDF_DEDUP}) {
+            SamplingGpuPhase1.resetForTesting();
+            SamplingGpuPhase1.Request req = request(512);
+            req.method = method;
+            req.modelIdentity = new Object();
+            req.modelOwner = new Object();
+            try {
+                for (int repeat = 0; repeat < 3; repeat++) {
+                    req = req.forSamples(req.mIdxPerSample, req.baseSeed + 31, false);
+                    int[] expected = method == SamplingGpuPhase1.Method.GUMBEL
+                            ? cpuGumbelReference(req) : cpuCdfReference(req);
+                    assertArrayEquals(expected, SamplingGpuPhase1.sample(req));
+                }
+                req.lambdaOnlyMin = req.lambdaOnlyMin.clone();
+                req.lambdaOnlyMin[0] -= 40.0;
+                req.modelIdentity = new Object();
+                int[] expected = method == SamplingGpuPhase1.Method.GUMBEL
+                        ? cpuGumbelReference(req) : cpuCdfReference(req);
+                assertArrayEquals(expected, SamplingGpuPhase1.sample(req));
+                SamplingGpuPhase1.releasePreparedModel(req.modelOwner);
+                assertArrayEquals(expected, SamplingGpuPhase1.sample(req));
+            } finally {
+                SamplingGpuPhase1.resetForTesting();
+            }
+        }
+    }
+
+    @Test
     public void gpuMatchesCpuReference_gumbel_multiChild() {
         Assumptions.assumeTrue(hasCudaGpu(), "no CUDA GPU available");
         SamplingGpuPhase1.resetForTesting();

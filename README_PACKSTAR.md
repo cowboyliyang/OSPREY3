@@ -39,26 +39,22 @@ and sampling additionally require a compatible CUDA runtime/device. See the
 original OSPREY documentation linked from [README.md](README.md) for its native
 dependencies.
 
-Run compilation and tests through Slurm. Save the following as a build job;
-submit it from the repository root with your site's partition/account settings.
-At Duke, use `--account=grisman`. Place Slurm stdout/stderr under
-`/usr/xtmp/$USER`, for example with
-`--output=/usr/xtmp/$USER/packstar-build-%j.out` and a corresponding `--error`.
-Allow approximately 2 GiB and 20,000 files for an initial source/dependency
-cache; build outputs can require additional space.
+From the repository root, define BUILD_DIR as an absolute directory for build
+outputs, caches, and temporary files. Choose resource allocations and Java heap
+sizes appropriate to your environment.
 
 ```bash
 #!/bin/bash
 set -euo pipefail
-RUN_DIR="/usr/xtmp/$USER/packstar-build/$SLURM_JOB_ID"
-mkdir -p "$RUN_DIR/source" "$RUN_DIR/tmp"
-cd "$SLURM_SUBMIT_DIR"
-git archive HEAD | tar -x -C "$RUN_DIR/source"
-export TMPDIR="$RUN_DIR/tmp"
-export GRADLE_USER_HOME="/usr/xtmp/$USER/packstar-gradle-cache"
-export PACKSTAR_CLASSPATH_FILE="$RUN_DIR/test_classpath.txt"
-cd "$RUN_DIR/source"
+: "${BUILD_DIR:?Set BUILD_DIR to an absolute build directory}"
+mkdir -p "$BUILD_DIR/tmp"
+export TMPDIR="$BUILD_DIR/tmp"
+export GRADLE_USER_HOME="$BUILD_DIR/gradle-cache"
+export OSPREY_GRADLE_XTMP_BUILD_ROOT="$BUILD_DIR/build"
+export PACKSTAR_CLASSPATH_FILE="$BUILD_DIR/test_classpath.txt"
 ./gradlew test writeExperimentClasspath --no-daemon --max-workers=1 \
+  --project-cache-dir "$BUILD_DIR/project-cache" \
+  -I slurm/scripts/gradle_xtmp.init.gradle \
   -I slurm/h200/classpath.init.gradle \
   -Dorg.gradle.jvmargs="-Xmx8g -Djava.io.tmpdir=$TMPDIR" -DtestMaxHeap=8g \
   --tests edu.duke.cs.osprey.kstar.TestKStarScoreLog10 \
@@ -70,10 +66,8 @@ cd "$RUN_DIR/source"
   --tests edu.duke.cs.osprey.branchdp.TestBranchDecompositionStrategies
 ```
 
-The source snapshot and generated classpath remain under RUN_DIR. Allocate
-enough memory for the Java heaps and compilation overhead; the repository's
-local validation job uses 4 CPUs and 24 GiB. Its Slurm scripts contain Duke
-paths and allocation settings and should be adapted before use elsewhere.
+The generated test classpath is written to BUILD_DIR/test_classpath.txt. The
+bundled Gradle init scripts redirect build outputs and export that classpath.
 
 ## Run a design
 
@@ -84,10 +78,10 @@ IDs matching your mutable/flexible lists. Explicit chain selections avoid
 ambiguity in multichain systems. Mutable specifications use entries such as
 `A42=ALA,SER`, separated by semicolons; flexible lists contain residue IDs.
 
-Run the following inside a Slurm job after defining BUILD_DIR, PDB_PATH, and
-OUTPUT_DIR as absolute paths. BUILD_DIR is the preceding RUN_DIR. The residue
-and chain selections below are placeholders for your own system. Keep outputs
-and temporary files under `/usr/xtmp/$USER`.
+Define BUILD_DIR, PDB_PATH, and OUTPUT_DIR as absolute paths. BUILD_DIR is the
+directory used in the build step. Set NUM_CPUS to the number of available CPU
+workers. The residue and chain selections below are placeholders for your own
+system.
 
 ```bash
 #!/bin/bash
@@ -105,7 +99,7 @@ java --add-opens java.base/java.util=ALL-UNNAMED \
   '-Dosprey.bench.mutable=A42=ALA,SER' \
   '-Dosprey.bench.flexible=A43;B15' \
   -Dosprey.bench.outputDir="$OUTPUT_DIR" \
-  -Dosprey.bench.numCPUs="${SLURM_CPUS_PER_TASK:-4}" \
+  -Dosprey.bench.numCPUs="${NUM_CPUS:-4}" \
   -Dpackstar.cutoff.strategy=RESIDUAL_BUDGET \
   -Dpackstar.cutoff.residualBudget=1 \
   -Dpackstar.dp.gpu=false -Dpackstar.pac.sampling.gpu=false \
@@ -148,6 +142,20 @@ and Complex, and elapsed time. Each state's fields are partition-function
 lower/upper bounds, status, epsilon, conformation count, scoring count, and
 partial-minimization count. Historical 41-column files require their original
 reader or explicit conversion; do not mix schemas in a shard merge.
+
+`result.numConfs` and `getNumConfsEvaluated()` report actual full-conformation
+CCD calls, including work completed before a certificate abort. Result stats
+also expose `fullCCD`, `ccdSampleRecords` (draws including duplicates and cache
+hits), and `sampleCallbacks` (successfully delivered listener calls).
+Registering `setSampleListener` delivers one trace per draw, in draw order on
+the compute thread, after each CCD batch and before certificate checks. Stages
+are `TRAIN`, `DISCOVERY`, `VALIDATION`, and `ESTIMATION`; the sample index is
+zero-based across the run. Listener exceptions propagate to the caller.
+Paths that skip sampling emit no traces. The small-system coverage tool requires
+trace counts to match the recorded draws; zero draws are reported as
+`energy_check=NOT_SAMPLED` with `max_energy_error=NaN`, never as a passed energy
+comparison. Its `covered` column only reports interval containment; interpret
+it together with `status`, especially for aborted runs with unbounded intervals.
 
 A normally exiting workload can contain `INCOMPLETE_ESTIMATES`: all configured
 rows can be present even when some state estimates do not meet the requested

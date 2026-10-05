@@ -48,6 +48,36 @@ import java.util.Map;
  */
 public class TestGpuFullDP {
 
+    @Test
+    public void samplingPreparationIsBoundedAndScopedToAnExplicitProposalEpoch() {
+        RootedTreeEdge parent = buildParent(new int[]{2, 2, 3, 2},
+                new int[]{0, 1}, new int[]{2, 3}, new int[][]{{1, 2}, {0}});
+        assertTrue(parent.canUseGpuSampling());
+        var cache = new RootedTreeEdge.SamplingRequestCache(1L << 20);
+        var first = parent.prepareGpuSamplingRequest(new long[]{0, 1}, 10, false, cache);
+        var second = parent.prepareGpuSamplingRequest(new long[]{1, 0, 1}, 20, true, cache);
+        assertSame(first.childUpperAll, second.childUpperAll);
+        assertSame(first.lmMin, second.lmMin);
+        assertSame(first.modelIdentity, second.modelIdentity);
+        assertArrayEquals(new long[]{1, 0, 1}, second.mIdxPerSample);
+        assertEquals(20, second.baseSeed);
+        assertEquals(1, cache.hits());
+        assertTrue(cache.bytes() <= (1L << 20));
+        cache.clear();
+        var child = parent.getFset().iterator().next();
+        child.setLogZ(0, child.getLogZLower(0), child.getLogZUpper(0) + 1.0);
+        var changed = parent.prepareGpuSamplingRequest(new long[]{0}, 10, false, cache);
+        assertNotSame(first.modelIdentity, changed.modelIdentity);
+        assertNotEquals(first.childUpperCacheKey, changed.childUpperCacheKey);
+        var disabled = new RootedTreeEdge.SamplingRequestCache(0);
+        var uncached = parent.prepareGpuSamplingRequest(new long[]{0}, 10, false, disabled);
+        assertNull(uncached.modelIdentity);
+        assertArrayEquals(changed.childUpperAll, uncached.childUpperAll);
+        cache.clear();
+        for (RootedTreeEdge edge : parent.getFset()) edge.releaseLargeMemory();
+        parent.releaseLargeMemory();
+    }
+
     private static final double REL_TOL = 1e-6;
 
     @TempDir

@@ -31,6 +31,20 @@ public final class PackStarSmallCoverage {
         int exponent = x.precision() - x.scale() - 1;
         return Math.log(x.movePointLeft(exponent).doubleValue()) + exponent * Math.log(10);
     }
+    static String checkSampleEnergies(PackStarResult result, int draws, double maxError) {
+        if (!result.getStats().containsKey(PackStarResult.CCD_SAMPLE_RECORDS_STAT))
+            throw new IllegalStateException("sample accounting is unavailable");
+        long expected = result.getStat(PackStarResult.CCD_SAMPLE_RECORDS_STAT);
+        if (draws < 0 || draws != expected
+                || draws != result.getStat(PackStarResult.SAMPLE_CALLBACKS_STAT))
+            throw new IllegalStateException("incomplete sample trace: expected="
+                    + expected + " received=" + draws);
+        // Initial DP bounds and exact base cases can legitimately skip sampling.
+        if (draws == 0) return "NOT_SAMPLED";
+        if (!(maxError >= 0 && maxError <= 1e-7))
+            throw new IllegalStateException("sample CCD target differs from census");
+        return "PASSED";
+    }
     public static void main(String[] args) throws Exception {
         String mode = args[0]; int caseId = Integer.parseInt(args[1]);
         Path out = Path.of(args[2]); Files.createDirectories(out);
@@ -107,12 +121,13 @@ public final class PackStarSmallCoverage {
                 pf.init(Double.parseDouble(System.getProperty("packstar.pac.targetEpsilon")));
                 pf.putTaskContexts(contexts); pf.compute(Integer.MAX_VALUE);
                 PackStarResult r=pf.makeResult();
+                String energyCheck=checkSampleEnergies(r,draws[0],energyError[0]);
                 double lo=log(r.values.calcLowerBound()), hi=log(r.values.calcUpperBound());
                 boolean covered=lo<=logZ+1e-10 && hi>=logZ-1e-10;
                 Files.writeString(out.resolve("result.tsv"),
-                    "system\tseed\tepsilon\tstatus\tlogZ\tlogLower\tlogUpper\tcovered\ttraced_draws\tunique_traced\tmax_energy_error\n"
-                    +system+"\t"+System.getProperty("packstar.pac.randomSeed")+"\t"+System.getProperty("packstar.pac.targetEpsilon")+"\t"+r.status+"\t"+logZ+"\t"+lo+"\t"+hi+"\t"+covered+"\t"+draws[0]+"\t"+sampled.size()+"\t"+energyError[0]+"\n");
-                if (!(energyError[0]<=1e-7)) throw new IllegalStateException("sample CCD target differs from census");
+                    "system\tseed\tepsilon\tstatus\tlogZ\tlogLower\tlogUpper\tcovered\ttraced_draws\tunique_traced\tmax_energy_error\tenergy_check\tfull_ccd\tccd_sample_records\n"
+                    +system+"\t"+System.getProperty("packstar.pac.randomSeed")+"\t"+System.getProperty("packstar.pac.targetEpsilon")+"\t"+r.status+"\t"+logZ+"\t"+lo+"\t"+hi+"\t"+covered+"\t"+draws[0]+"\t"+sampled.size()+"\t"+(draws[0]>0?energyError[0]:Double.NaN)
+                    +"\t"+energyCheck+"\t"+r.numConfs+"\t"+r.getStat(PackStarResult.CCD_SAMPLE_RECORDS_STAT)+"\n");
             }
         }
     }

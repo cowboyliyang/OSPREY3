@@ -26,6 +26,7 @@ import edu.duke.cs.osprey.energy.forcefield.ResidueForcefieldEnergy;
 import edu.duke.cs.osprey.kstar.pfunc.BoltzmannCalculator;
 import edu.duke.cs.osprey.kstar.pfunc.PartitionFunction;
 import edu.duke.cs.osprey.tools.MathTools;
+import edu.duke.cs.osprey.tools.ByteBoundedCache;
 import edu.duke.cs.osprey.branchdp.BranchDecomposition;
 import edu.duke.cs.osprey.branchdp.InteractionGraph;
 import edu.duke.cs.osprey.branchdp.RootedTreeEdge;
@@ -37,6 +38,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReferenceArray;
@@ -90,6 +92,10 @@ public class PackStarEstimator {
             "packstar.pac.ccd.submissionBatchSize";
     private static final String PAC_CCD_INSTRUMENTATION_PROPERTY =
             "packstar.pac.ccd.instrumentation";
+    private static final String PAC_CCD_CACHE_BYTES_PROPERTY = "packstar.pac.ccd.cacheBytes";
+    private static final String PAC_CCD_COMPACT_RESULTS_PROPERTY = "packstar.pac.ccd.compactResults";
+    private static final String PAC_CCD_STREAMING_PROPERTY = "packstar.pac.ccd.streaming";
+    private static final String PAC_CDF_CACHE_BYTES_PROPERTY = "packstar.pac.sampling.cdfCacheBytes";
     // Train/adaptation/final sizing for the adaptive mean-excess route.
     private static final String PAC_TRAIN_SAMPLES_PROPERTY = "packstar.pac.trainSamples";
     private static final String PAC_PILOT_SAMPLES_PROPERTY = "packstar.pac.pilotSamples";
@@ -216,7 +222,7 @@ public class PackStarEstimator {
     private final int[][] interactionEdgeIndicesByFirstPosition;
     /** Lazily materialized interaction templates; templates are read-only after creation. */
     private final ResidueInteractions[][] singleInteractionTemplates;
-    private final Map<Long, ResidueInteractions> pairInteractionTemplates = new HashMap<>();
+    private final Map<Long, ResidueInteractions> pairInteractionTemplates = new ConcurrentHashMap<>();
     private ResidueInteractions shellInteractionTemplate;
     /** Rigid proposal matrix with proposal-only fill edges zeroed, cached by graph signature. */
     private EnergyMatrix proposalRigidEmat;
@@ -250,6 +256,10 @@ public class PackStarEstimator {
      * otherwise the conditional weights disagree with the child DP normalizers.
      */
     private EnergyMatrix activeProposalEmat;
+    /** These caches belong to one fixed target and one estimator, never another K* state. */
+    private final ByteBoundedCache<ConformationKey, CachedTargetEnergy> ccdEnergyCache;
+    private final ByteBoundedCache<ConditionalCdfKey, double[]> conditionalCdfCache;
+    private final RootedTreeEdge.SamplingRequestCache gpuSamplingRequestCache;
 
     // Configuration
     private final int numSamples;
@@ -263,6 +273,8 @@ public class PackStarEstimator {
     private final boolean samplingProgress;
     private final int ccdSubmissionBatchSize;
     private final boolean ccdInstrumentation;
+    private final boolean compactCcdResults;
+    private final boolean streamingCcd;
     private final int trainSamples;
     private final int pilotSamples;
     private final int maxEstSamples;
@@ -314,6 +326,8 @@ public class PackStarEstimator {
     private int totalCCDCalls;
     /** Number of sample records presented to CCD, including duplicates. */
     private int totalCCDSampleRecords;
+    private int totalCCDCacheHits;
+    private int totalSampleCallbacks;
 
     // Statistics
     private double meanPsi;
@@ -460,6 +474,14 @@ public class PackStarEstimator {
         this.ccdInstrumentation = getConfigBoolean(
                 PAC_CCD_INSTRUMENTATION_PROPERTY,
                 DEFAULT_PAC_CCD_INSTRUMENTATION);
+        this.compactCcdResults = getConfigBoolean(PAC_CCD_COMPACT_RESULTS_PROPERTY, true);
+        this.streamingCcd = getConfigBoolean(PAC_CCD_STREAMING_PROPERTY, true);
+        this.ccdEnergyCache = new ByteBoundedCache<>(Math.max(0L,
+                getConfigLong(PAC_CCD_CACHE_BYTES_PROPERTY, 64L << 20)));
+        this.conditionalCdfCache = new ByteBoundedCache<>(Math.max(0L,
+                getConfigLong(PAC_CDF_CACHE_BYTES_PROPERTY, 64L << 20)));
+        this.gpuSamplingRequestCache = new RootedTreeEdge.SamplingRequestCache(Math.max(0L,
+                getConfigLong("packstar.pac.sampling.gpu.preparedCacheBytes", 64L << 20)));
         int twoStageBudget = Math.max(6, this.numSamples);
         int defaultTrainSamples = Math.max(2, (int) Math.floor(twoStageBudget * DEFAULT_TRAIN_FRACTION));
         int defaultPilotSamples = Math.max(2, (int) Math.floor(twoStageBudget * DEFAULT_PILOT_FRACTION));
@@ -1115,6 +1137,10 @@ public class PackStarEstimator {
         // reported CCD savings tied to this run only.
         totalCCDCalls = 0;
         totalCCDSampleRecords = 0;
+        totalCCDCacheHits = 0;
+        totalSampleCallbacks = 0;
+        ccdEnergyCache.clear();
+        invalidateSamplingCaches();
         functionalObservableResult = functionalEvent == null
                 ? PackStarFunctionalObservableResult.notConfigured()
                 : PackStarFunctionalObservableResult.notComputed(functionalEventName);
@@ -3033,6 +3059,9 @@ public class PackStarEstimator {
                         trainSamples, stageRandom(trainStage)),
                 branchMinimizingEmat, initialProposalLogZ,
                 "adaptive-frequency-severity-qm");
+        traceSamples(trainCCD, PackStarSampleTrace.Stage.TRAIN,
+                branchMinimizingEmat, initialProposalLogZ,
+                initialProposalLogZ, Double.NaN);
         boolean qMLowerBoundValid = validateObservedLowerBound(
                 trainCCD, trainStage);
         if (trainCCD.size() != trainSamples || !qMLowerBoundValid) {
@@ -3179,6 +3208,8 @@ public class PackStarEstimator {
                             stageRandom(discoveryStage)),
                     roundEmat, roundLogZ,
                     "adaptive-frequency-severity-proposal-" + round));
+            traceSamples(discoverySamples, PackStarSampleTrace.Stage.DISCOVERY,
+                    roundEmat, roundLogZ, initialProposalLogZ, roundLogMu);
             discoveryCCDCalls += discoverySamples.size();
             if (discoverySamples.size() != meanExcessDiscoverySamples
                     || !validateObservedLowerBound(
@@ -3261,6 +3292,8 @@ public class PackStarEstimator {
                                 stageRandom(extensionStage)),
                         roundEmat, roundLogZ,
                         "adaptive-frequency-severity-proposal-" + round);
+                traceSamples(extensionSamples, PackStarSampleTrace.Stage.DISCOVERY,
+                        roundEmat, roundLogZ, initialProposalLogZ, roundLogMu);
                 extensionDiscoveryCount = extensionSamples.size();
                 discoveryCCDCalls += extensionDiscoveryCount;
                 if (extensionDiscoveryCount != requestedExtension
@@ -3397,6 +3430,8 @@ public class PackStarEstimator {
                         meanExcessValidationSamples,
                         stageRandom(validationStage)),
                 null, Double.NaN, null);
+        traceSamples(validationCCD, PackStarSampleTrace.Stage.VALIDATION,
+                selectedEmat, selectedLogZ, initialProposalLogZ, selectedLogMu);
         if (validationCCD.size() != meanExcessValidationSamples
                 || !validateObservedLowerBound(
                 validationCCD, validationStage)) {
@@ -3470,7 +3505,9 @@ public class PackStarEstimator {
                 sampleConformationsFromDP(
                         validation.sizing.finalSamples,
                         stageRandom(finalStage)),
-                null, Double.NaN, null);
+                null, Double.NaN, null, functionalEvent != null);
+        traceSamples(finalCCD, PackStarSampleTrace.Stage.ESTIMATION,
+                selectedEmat, selectedLogZ, initialProposalLogZ, selectedLogMu);
         if (finalCCD.size() != validation.sizing.finalSamples
                 || !validateObservedLowerBound(finalCCD, finalStage)) {
             writeFrequencySeverityFailureArtifactQuietly(
@@ -3568,6 +3605,32 @@ public class PackStarEstimator {
                 + ", targetReached="
                 + (epsilon <= targetEpsilon + 1.0e-12));
         printFinalSummary(startTime);
+    }
+
+    /** Emit every draw, including duplicates/cache hits, before certificate checks. */
+    private void traceSamples(List<CCDResult> samples, PackStarSampleTrace.Stage stage,
+                              EnergyMatrix proposalEmat, double proposalLogZ,
+                              double initialLogZ, double logMu) {
+        if (sampleListener == null) {
+            return;
+        }
+        // Deliver on the compute thread in draw order, never from CCD workers.
+        // The cap is expressed on the same raw log-weight scale as logWeight.
+        double clipLogCap = Double.isFinite(logMu)
+                ? logMu + meanExcessRelativeBoundKcal / RT : Double.NaN;
+        for (CCDResult sample : samples) {
+            double proposalEnergy = Double.isFinite(sample.sourceProposalEnergy)
+                    ? sample.sourceProposalEnergy
+                    : computeFullConfProposalEnergy(sample.conf, proposalEmat);
+            double xi = sample.eTrue - proposalEnergy;
+            double logWeight = -xi / RT;
+            sampleListener.onSample(new PackStarSampleTrace(
+                    stage, totalSampleCallbacks, sample.conf,
+                    sample.eTrue, sample.eMin, proposalEnergy, xi, logWeight,
+                    proposalLogZ, initialLogZ, clipLogCap,
+                    logWeight > clipLogCap));
+            totalSampleCallbacks++;
+        }
     }
 
     private double computeFrequencySeverityTrainingLogMu(
@@ -5558,7 +5621,8 @@ public class PackStarEstimator {
             }
         }
 
-        int[] lIdxPerSample = edge.sampleLambdaStatesGpu(mIdxPerSample, edgeSeed, samplingProgress);
+        int[] lIdxPerSample = edge.sampleLambdaStatesGpu(
+                mIdxPerSample, edgeSeed, samplingProgress, gpuSamplingRequestCache);
         if (lIdxPerSample == null || lIdxPerSample.length != confs.length) {
             return false;
         }
@@ -5632,17 +5696,38 @@ public class PackStarEstimator {
             return;
         }
 
-        double[] cdf = buildConditionalCDFSerial(
-                edge, group.mIdx, group.mRCs);
+        double[] cdf = conditionalCDF(edge, group, null);
         sampleGroupFromCDF(edge, group, confs, sampleRngs, cdf);
     }
 
     private void sampleGroupWithParallelCDF(RootedTreeEdge edge, SampleGroup group,
                                             int[][] confs, SplittableRandom[] sampleRngs,
                                             ExecutorService samplingPool) {
-        double[] cdf = buildConditionalCDFParallel(
-                edge, group.mIdx, group.mRCs, samplingPool);
+        double[] cdf = conditionalCDF(edge, group, samplingPool);
         sampleGroupFromCDF(edge, group, confs, sampleRngs, cdf);
+    }
+
+    private record ConditionalCdfKey(RootedTreeEdge edge, long mIdx, boolean parallel) {}
+
+    private double[] conditionalCDF(RootedTreeEdge edge, SampleGroup group,
+                                    ExecutorService pool) {
+        ConditionalCdfKey key = new ConditionalCdfKey(edge, group.mIdx, pool != null);
+        double[] cached = conditionalCdfCache.get(key);
+        if (cached != null) return cached;
+        double[] cdf = pool == null
+                ? buildConditionalCDFSerial(edge, group.mIdx, group.mRCs)
+                : buildConditionalCDFParallel(edge, group.mIdx, group.mRCs, pool);
+        long bytes = 160L + Double.BYTES * (long) cdf.length;
+        // Builders use worker-local scratch. Only the retained copy is immutable.
+        if (conditionalCdfCache.canStore(bytes)) {
+            conditionalCdfCache.put(key, cdf.clone(), bytes);
+        }
+        return cdf;
+    }
+
+    private void invalidateSamplingCaches() {
+        conditionalCdfCache.clear();
+        gpuSamplingRequestCache.clear();
     }
 
     private void sampleGroupFromCDF(RootedTreeEdge edge, SampleGroup group,
@@ -5959,6 +6044,14 @@ public class PackStarEstimator {
             samplingPool = null;
         }
         samplingCdfScratch.remove();
+        System.out.println("[PACK*-perf] ccdCacheHits=" + totalCCDCacheHits
+                + ", ccdCacheBytes=" + ccdEnergyCache.bytes()
+                + ", cdfCacheHits=" + conditionalCdfCache.hits()
+                + ", cdfCacheMisses=" + conditionalCdfCache.misses()
+                + ", cdfCacheBytes=" + conditionalCdfCache.bytes()
+                + ", gpuPreparedHits=" + gpuSamplingRequestCache.hits());
+        ccdEnergyCache.clear();
+        invalidateSamplingCaches();
     }
 
     // ========== Phase 2: Parallel CCD minimization ==========
@@ -6068,6 +6161,22 @@ public class PackStarEstimator {
         }
     }
 
+    /** Immutable target data only: proposal provenance and molecule objects are never cached. */
+    private static final class CachedTargetEnergy {
+        final double eTrue, eMin;
+        final SampleFeatures features;
+        CachedTargetEnergy(CCDResult result) {
+            eTrue = result.eTrue;
+            eMin = result.eMin;
+            features = result.features;
+        }
+        long retainedBytes(int positions) {
+            return 256L + 8L * positions + (features == null ? 0L
+                    : 128L + 8L * features.oneBodyCorrections.length
+                    + 8L * features.pairCorrections.length + 8L * features.pairKeys.length);
+        }
+    }
+
     /**
      * Eta-training features for one minimized conformation.  These are raw
      * forcefield-minus-base-EMAT term corrections and do not depend on the
@@ -6100,6 +6209,13 @@ public class PackStarEstimator {
             EnergyMatrix sourceProposalEmat,
             double sourceProposalLogZ,
             String sourceProposalId) {
+        return runParallelCCD(conformations, sourceProposalEmat,
+                sourceProposalLogZ, sourceProposalId, false);
+    }
+
+    private List<CCDResult> runParallelCCD(
+            List<int[]> conformations, EnergyMatrix sourceProposalEmat,
+            double sourceProposalLogZ, String sourceProposalId, boolean retainPose) {
         boolean recordSourceProposal = sourceProposalEmat != null
                 && Double.isFinite(sourceProposalLogZ)
                 && sourceProposalId != null
@@ -6114,7 +6230,6 @@ public class PackStarEstimator {
         // consume their results.  The latter is retained separately for audit
         // files and for checking the requested sample count.
         totalCCDSampleRecords += total;
-        totalCCDCalls += uniqueTotal;
 
         if (uniqueTotal < total) {
             System.out.println("[PACK*-CCD] exact conformation dedup: samples="
@@ -6126,12 +6241,39 @@ public class PackStarEstimator {
 
         AtomicReferenceArray<CCDResult> results =
                 new AtomicReferenceArray<>(uniqueTotal);
+        List<ConformationKey> keys = new ArrayList<>(uniqueTotal);
+        int cacheHits = 0;
+        for (int i = 0; i < uniqueTotal; i++) {
+            int[] conf = uniqueBatch.uniqueConformations.get(i);
+            ConformationKey key = new ConformationKey(conf);
+            keys.add(key);
+            // Geometric final events retain the original minimizer path. An
+            // energy-only hit cannot supply the minimized pose they inspect.
+            CachedTargetEnergy cached = retainPose ? null : ccdEnergyCache.get(key);
+            if (cached != null && (!recordSourceProposal || cached.features != null)) {
+                CCDResult result = new CCDResult(conf, cached.eTrue, cached.eMin, null,
+                        recordSourceProposal ? computeFullConfProposalEnergy(conf, sourceProposalEmat) : Double.NaN,
+                        recordSourceProposal ? sourceProposalLogZ : Double.NaN,
+                        recordSourceProposal ? sourceProposalId : null);
+                result.features = cached.features;
+                results.set(i, result);
+                cacheHits++;
+            }
+        }
+        int ccdCalls = uniqueTotal - cacheHits;
+        totalCCDCalls += ccdCalls;
+        totalCCDCacheHits += cacheHits;
+        if (cacheHits > 0) {
+            System.out.println("[PACK*-CCD] target cache: unique=" + uniqueTotal
+                    + ", hits=" + cacheHits + ", newCCD=" + ccdCalls);
+        }
         AtomicInteger completed = new AtomicInteger(0);
 
         // Instrumentation is useful for tuning, but sorting a timing array for
         // every CCD batch is production overhead.  Keep it opt-in.
         long batchStartNs = ccdInstrumentation ? System.nanoTime() : 0L;
         long[] ccdWallUs = ccdInstrumentation ? new long[uniqueTotal] : null;
+        if (ccdWallUs != null) Arrays.fill(ccdWallUs, -1L);
         Set<String> workerThreads = ccdInstrumentation
                 ? java.util.concurrent.ConcurrentHashMap.newKeySet() : null;
         AtomicInteger inFlight = ccdInstrumentation
@@ -6141,16 +6283,20 @@ public class PackStarEstimator {
         int pendingTasks = 0;
 
         for (int idx = 0; idx < uniqueTotal; idx++) {
+            if (results.get(idx) != null) continue;
+            if (streamingCcd) minimizingEcalc.tasks.waitForCapacity(ccdSubmissionBatchSize);
             int[] conf = uniqueBatch.uniqueConformations.get(idx);
             final int ci = idx;
-            final long submitNs = System.nanoTime();
+            final long submitNs = ccdInstrumentation ? System.nanoTime() : 0L;
             ResidueInteractions inters = makeSparseFullConfInters(conf);
             RCTuple tuple = new RCTuple(conf);
 
+            if (ccdInstrumentation) {
+                int cur = inFlight.incrementAndGet();
+                peakConcurrency.accumulateAndGet(cur, Math::max);
+            }
             minimizingEcalc.calcEnergyAsync(tuple, inters, epmol -> {
                 if (ccdInstrumentation) {
-                    int cur = inFlight.incrementAndGet();
-                    peakConcurrency.accumulateAndGet(cur, Math::max);
                     workerThreads.add(Thread.currentThread().getName());
                 }
 
@@ -6164,12 +6310,26 @@ public class PackStarEstimator {
                 // load.  Preserve the seeded sample order so eta accumulation,
                 // pilot statistics, and all later floating-point reductions do
                 // not inherit that nondeterminism.
-                results.set(ci, new CCDResult(
+                CCDResult result = new CCDResult(
                         conf, eTrue, eMin, epmol,
                         sourceEnergy,
                         recordSourceProposal
                                 ? sourceProposalLogZ : Double.NaN,
-                        recordSourceProposal ? sourceProposalId : null));
+                        recordSourceProposal ? sourceProposalId : null);
+                boolean validTarget = Double.isFinite(eTrue) && Double.isFinite(eMin)
+                        && eTrue >= eMin;
+                if (validTarget && recordSourceProposal
+                        && (compactCcdResults || ccdEnergyCache.canStore(1))) {
+                    result.features = buildSampleFeatures(result);
+                }
+                if (validTarget && compactCcdResults && !retainPose) {
+                    // Violating/nonfinite samples keep their pose for forensic diagnostics.
+                    CCDResult compact = new CCDResult(conf, eTrue, eMin, null,
+                            result.sourceProposalEnergy, result.sourceProposalLogZ, result.sourceProposalId);
+                    compact.features = result.features;
+                    result = compact;
+                }
+                results.set(ci, result);
                 if (ccdInstrumentation) {
                     ccdWallUs[ci] = (System.nanoTime() - submitNs) / 1000L;
                 }
@@ -6178,14 +6338,14 @@ public class PackStarEstimator {
                     inFlight.decrementAndGet();
                 }
                 int done = completed.incrementAndGet();
-                if (done % 100 == 0 || done == uniqueTotal) {
+                if (done % 100 == 0 || done == ccdCalls) {
                     System.out.println("[PACK*] CCD progress: " + done + "/"
-                            + uniqueTotal + " unique (logical samples="
+                            + ccdCalls + " new unique (logical samples="
                             + total + ")");
                 }
             });
 
-            if (++pendingTasks >= ccdSubmissionBatchSize) {
+            if (++pendingTasks >= ccdSubmissionBatchSize && !streamingCcd) {
                 minimizingEcalc.tasks.waitForFinish();
                 pendingTasks = 0;
             }
@@ -6197,30 +6357,39 @@ public class PackStarEstimator {
 
         if (ccdInstrumentation) {
             long batchWallMs = (System.nanoTime() - batchStartNs) / 1_000_000L;
-            long[] sorted = java.util.Arrays.copyOf(ccdWallUs, uniqueTotal);
+            long[] sorted = Arrays.stream(ccdWallUs).filter(value -> value >= 0L).toArray();
             java.util.Arrays.sort(sorted);
             long sumUs = 0L;
-            for (long w : ccdWallUs) sumUs += w;
-            double p50 = uniqueTotal > 0
-                    ? sorted[Math.min(uniqueTotal - 1, uniqueTotal / 2)] / 1000.0 : 0.0;
-            double p95 = uniqueTotal > 0
-                    ? sorted[Math.min(uniqueTotal - 1, (int) (uniqueTotal * 0.95))]
+            for (long w : sorted) sumUs += w;
+            double p50 = ccdCalls > 0
+                    ? sorted[Math.min(ccdCalls - 1, ccdCalls / 2)] / 1000.0 : 0.0;
+            double p95 = ccdCalls > 0
+                    ? sorted[Math.min(ccdCalls - 1, (int) (ccdCalls * 0.95))]
                     / 1000.0 : 0.0;
-            double maxMs = uniqueTotal > 0
-                    ? sorted[uniqueTotal - 1] / 1000.0 : 0.0;
+            double maxMs = ccdCalls > 0
+                    ? sorted[ccdCalls - 1] / 1000.0 : 0.0;
             double sumMs = sumUs / 1000.0;
             double effParallel = batchWallMs > 0 ? sumMs / batchWallMs : 0.0;
             System.out.printf(
                     "[PACK*-INSTR] CCD batch: n=%d batchWall=%dms "
                             + "logicalSamples=%d "
-                            + "distinctThreads=%d peakConcurrency=%d "
+                            + "listenerThreads=%d peakOutstanding=%d "
                             + "perCCD(ms) p50=%.1f p95=%.1f max=%.1f "
                             + "sumCCD=%.0fms effParallel=%.1fx%n",
-                    uniqueTotal, batchWallMs, total, workerThreads.size(),
+                    ccdCalls, batchWallMs, total, workerThreads.size(),
                     peakConcurrency.get(), p50, p95, maxMs, sumMs,
                     effParallel);
         }
 
+        // Commit in assignment order, so scheduling never changes LRU admission.
+        for (int i = 0; i < uniqueTotal; i++) {
+            CCDResult result = results.get(i);
+            if (result != null && Double.isFinite(result.eTrue)
+                    && Double.isFinite(result.eMin) && result.eTrue >= result.eMin) {
+                CachedTargetEnergy cached = new CachedTargetEnergy(result);
+                ccdEnergyCache.put(keys.get(i), cached, cached.retainedBytes(result.conf.length));
+            }
+        }
         List<CCDResult> orderedResults = new ArrayList<>(total);
         for (int i = 0; i < total; i++) {
             CCDResult result = results.get(uniqueBatch.uniqueIndexBySample[i]);
@@ -7010,6 +7179,7 @@ public class PackStarEstimator {
         String signature = interactionGraphSignature(desired);
         if (signature.equals(proposalInteractionGraphSignature)) return;
 
+        invalidateSamplingCaches();
         invalidateProposalRigidEmat();
         samplingTopDownOrder = null;
 
@@ -7078,6 +7248,8 @@ public class PackStarEstimator {
      * Returns logZ_corrected.
      */
     private CorrectedDPResult recomputeDP(EnergyMatrix correctedEmat) {
+        // Corrected matrices are mutated in place: object identity is not a version.
+        invalidateSamplingCaches();
         // Keep the rigid lower-bound matrix unchanged and recompute the
         // corrected proposal tables directly. The only retained route never
         // reuses corrected DP tables across independently learned proposals.
@@ -7188,6 +7360,7 @@ public class PackStarEstimator {
     public int getTotalCCDCalls() { return totalCCDCalls; }
     /** Number of logical CCD sample records, including deduplicated repeats. */
     public int getTotalCCDSampleRecords() { return totalCCDSampleRecords; }
+    public int getTotalSampleCallbacks() { return totalSampleCallbacks; }
     public double getMeanPsi() { return meanPsi; }
     public double getCvPsi() { return cvPsi; }
     public double getMeanResidual() { return meanResidual; }

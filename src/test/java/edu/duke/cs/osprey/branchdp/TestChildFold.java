@@ -134,10 +134,8 @@ public class TestChildFold {
         set(parent, "totalLambdaStates", Integer.valueOf((int) stateCount(rcs, lambdaPos)));
         set(parent, "dpTable", new DenseDPTable(mc));
         set(parent, "Fset", fset);
-        set(parent, "cachedRigidEmat", ematFilled(numPos, cards, 1.0));
-        set(parent, "cachedMinEmat", ematFilled(numPos, cards, 2.0));
-        set(parent, "cachedG", fullyConnected(numPos));
-        set(parent, "cachedRT", Double.valueOf(1.9));
+        parent.initIncrementalEnumeration(ematFilled(numPos, cards, 1.0),
+                ematFilled(numPos, cards, 2.0), fullyConnected(numPos), 1.9);
 
         parent.computeFullDP();
 

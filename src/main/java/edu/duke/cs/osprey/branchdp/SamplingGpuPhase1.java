@@ -71,7 +71,10 @@ final class SamplingGpuPhase1 {
     }
 
     /** Inputs for the sampling kernels: the DP upper/min half + per-sample mIdx. */
-    static final class Request {
+    static final class Request implements Cloneable {
+        /** Only prepared, immutable model arrays receive an identity. */
+        Object modelIdentity;
+        Object modelOwner;
         int totalLambdaStates;
         int blockThreads;
         int numChildren;
@@ -109,6 +112,38 @@ final class SamplingGpuPhase1 {
         boolean persistentContext;
         boolean residentChildTables;
         Method method = Method.GUMBEL;
+
+        Request forSamples(long[] assignments, long seed, boolean reportProgress) {
+            try {
+                Request copy = (Request) clone();
+                copy.mIdxPerSample = assignments;
+                copy.baseSeed = seed;
+                copy.progress = reportProgress;
+                return copy;
+            } catch (CloneNotSupportedException ex) {
+                throw new AssertionError(ex);
+            }
+        }
+
+        long retainedBytes() {
+            return 1024L + 4L * (mCounts.length + (long) lambdaCounts.length
+                    + lmLamSlots.length + lmMSlots.length + lmMCounts.length
+                    + childMSrcAll.length + childMTermOff.length + childMTermCnt.length
+                    + childLSrcAll.length + childLTermOff.length + childLTermCnt.length)
+                    + 8L * (lambdaOnlyMin.length + (long) lmMin.length + lmOffsets.length
+                    + childMStrideAll.length + childLStrideAll.length
+                    + childTableBase.length + childUpperAll.length);
+        }
+    }
+
+    static synchronized void releasePreparedModel(Object owner) {
+        synchronized (persistentLock) {
+            if (persistentPool != null) {
+                for (GpuExecutor executor : persistentPool.executors) {
+                    executor.releasePreparedModel(owner);
+                }
+            }
+        }
     }
 
     enum Method {
@@ -172,32 +207,37 @@ final class SamplingGpuPhase1 {
                         req, gpus.size(), grouped.numSamples);
                 int[] g;
                 long startNanos = System.nanoTime();
-                if (nGpus <= 1) {
-                    g = runGumbel(req, gpus.get(0), grouped);
-                } else {
-                    g = new int[grouped.numSamples];
-                    runMultiGpuGumbel(req, grouped, gpus, nGpus, g);
-                    if (req.progress) {
-                        double ms = (System.nanoTime() - startNanos) / 1e6;
-                        System.out.println(BranchDpConfig.getBackendLogPrefix()
-                                + " GPU sampling done, samples="
-                                + grouped.numSamples
-                                + ", method=" + Method.GUMBEL.propertyValue
-                                + ", distinctMIdx=" + grouped.numGroups
-                                + ", cdfReuse=0"
-                                + ", gpus=" + nGpus
-                                + ", lambdaStates=" + req.totalLambdaStates
-                                + ", children=" + req.numChildren
-                                + ", blockThreads="
-                                + Math.max(1, req.blockThreads)
-                                + ", residentChildTables=false"
-                                + ", elapsedMs="
-                                + String.format(java.util.Locale.ROOT,
-                                "%.1f", ms));
+                GpuExecutor[] gumbelExecutors = makeExecutors(req, gpus, nGpus);
+                try {
+                    if (nGpus <= 1) {
+                        g = runGumbel(req, gumbelExecutors[0], grouped);
+                    } else {
+                        g = new int[grouped.numSamples];
+                        runMultiGpuGumbel(req, grouped, gumbelExecutors, nGpus, g);
+                        if (req.progress) {
+                            double ms = (System.nanoTime() - startNanos) / 1e6;
+                            System.out.println(BranchDpConfig.getBackendLogPrefix()
+                                    + " GPU sampling done, samples="
+                                    + grouped.numSamples
+                                    + ", method=" + Method.GUMBEL.propertyValue
+                                    + ", distinctMIdx=" + grouped.numGroups
+                                    + ", cdfReuse=0"
+                                    + ", gpus=" + nGpus
+                                    + ", lambdaStates=" + req.totalLambdaStates
+                                    + ", children=" + req.numChildren
+                                    + ", blockThreads="
+                                    + Math.max(1, req.blockThreads)
+                                    + ", residentChildTables=" + req.residentChildTables
+                                    + ", elapsedMs="
+                                    + String.format(java.util.Locale.ROOT,
+                                    "%.1f", ms));
+                        }
                     }
+                    consecutiveEdgeFailures = 0;
+                    return g;
+                } finally {
+                    cleanupExecutors(gumbelExecutors);
                 }
-                consecutiveEdgeFailures = 0;
-                return g;
             }
 
             int nGpus = chooseGpuCount(req, gpus.size(), grouped.numGroups);
@@ -288,13 +328,13 @@ final class SamplingGpuPhase1 {
         return cdfValues > 0L && cdfValues <= Integer.MAX_VALUE;
     }
 
-    private static int[] runGumbel(Request req, Gpu gpu, GroupedSamples grouped) {
-        return runGumbel(req, gpu, grouped, 0,
+    private static int[] runGumbel(Request req, GpuExecutor executor, GroupedSamples grouped) {
+        return runGumbel(req, executor, grouped, 0,
                 req.mIdxPerSample.length, req.baseSeed, true);
     }
 
     /** Run Gumbel for one contiguous sample slice. */
-    private static int[] runGumbel(Request req, Gpu gpu,
+    private static int[] runGumbel(Request req, GpuExecutor executor,
                                    GroupedSamples grouped,
                                    int sampleStart, int numSamples,
                                    long baseSeed, boolean reportProgress) {
@@ -307,15 +347,12 @@ final class SamplingGpuPhase1 {
         }
         long[] mIdxSlice = Arrays.copyOfRange(
                 req.mIdxPerSample, sampleStart, (int) sampleEnd);
-        Context context = null;
-        GpuStream stream = null;
+        GpuStream stream = executor.stream;
         List<CUBuffer<?>> buffers = new ArrayList<>();
         List<CUdeviceptr> rawBufs = new ArrayList<>();
 
         try {
-            context = new Context(gpu);
-            context.attachCurrentThread();
-            stream = new GpuStream(context);
+            executor.context.attachCurrentThread();
 
             int blockThreads = resolveBlockThreads(req, stream);
             Kernel kernel = new Kernel(stream, "sampling");
@@ -327,24 +364,25 @@ final class SamplingGpuPhase1 {
                 return warps*(Double.BYTES + Integer.BYTES);
             };
 
-            CUBuffer<IntBuffer> mCounts = uploadInts(stream, req.mCounts, buffers);
-            CUBuffer<IntBuffer> lambdaCounts = uploadInts(stream, req.lambdaCounts, buffers);
-            CUdeviceptr lambdaOnlyMin = uploadDoublesBig(req.lambdaOnlyMin, rawBufs);
-            CUdeviceptr lmMin = uploadDoublesBig(req.lmMin, rawBufs);
-            CUBuffer<IntBuffer> lmLamSlots = uploadInts(stream, req.lmLamSlots, buffers);
-            CUBuffer<IntBuffer> lmMSlots = uploadInts(stream, req.lmMSlots, buffers);
-            CUBuffer<IntBuffer> lmMCounts = uploadInts(stream, req.lmMCounts, buffers);
-            CUBuffer<LongBuffer> lmOffsets = uploadLongs(stream, req.lmOffsets, buffers);
-            CUBuffer<IntBuffer> childMSrcAll = uploadInts(stream, req.childMSrcAll, buffers);
-            CUBuffer<LongBuffer> childMStrideAll = uploadLongs(stream, req.childMStrideAll, buffers);
-            CUBuffer<IntBuffer> childMTermOff = uploadInts(stream, req.childMTermOff, buffers);
-            CUBuffer<IntBuffer> childMTermCnt = uploadInts(stream, req.childMTermCnt, buffers);
-            CUBuffer<IntBuffer> childLSrcAll = uploadInts(stream, req.childLSrcAll, buffers);
-            CUBuffer<LongBuffer> childLStrideAll = uploadLongs(stream, req.childLStrideAll, buffers);
-            CUBuffer<IntBuffer> childLTermOff = uploadInts(stream, req.childLTermOff, buffers);
-            CUBuffer<IntBuffer> childLTermCnt = uploadInts(stream, req.childLTermCnt, buffers);
-            CUBuffer<LongBuffer> childTableBase = uploadLongs(stream, req.childTableBase, buffers);
-            CUdeviceptr childUpperAll = uploadDoublesBig(req.childUpperAll, rawBufs);
+            ModelBuffers model = executor.modelBuffers(req, buffers, rawBufs);
+            CUBuffer<IntBuffer> mCounts = model.mCounts;
+            CUBuffer<IntBuffer> lambdaCounts = model.lambdaCounts;
+            CUdeviceptr lambdaOnlyMin = model.lambdaOnlyMin;
+            CUdeviceptr lmMin = model.lmMin;
+            CUBuffer<IntBuffer> lmLamSlots = model.lmLamSlots;
+            CUBuffer<IntBuffer> lmMSlots = model.lmMSlots;
+            CUBuffer<IntBuffer> lmMCounts = model.lmMCounts;
+            CUBuffer<LongBuffer> lmOffsets = model.lmOffsets;
+            CUBuffer<IntBuffer> childMSrcAll = model.childMSrcAll;
+            CUBuffer<LongBuffer> childMStrideAll = model.childMStrideAll;
+            CUBuffer<IntBuffer> childMTermOff = model.childMTermOff;
+            CUBuffer<IntBuffer> childMTermCnt = model.childMTermCnt;
+            CUBuffer<IntBuffer> childLSrcAll = model.childLSrcAll;
+            CUBuffer<LongBuffer> childLStrideAll = model.childLStrideAll;
+            CUBuffer<IntBuffer> childLTermOff = model.childLTermOff;
+            CUBuffer<IntBuffer> childLTermCnt = model.childLTermCnt;
+            CUBuffer<LongBuffer> childTableBase = model.childTableBase;
+            CUdeviceptr childUpperAll = model.childUpperAll;
             CUBuffer<LongBuffer> mIdxPerSample = uploadLongs(stream,
                     mIdxSlice, buffers);
             CUBuffer<IntBuffer> outLIdx = makeInts(stream, Math.max(1, numSamples), buffers);
@@ -409,7 +447,7 @@ final class SamplingGpuPhase1 {
                         + ", lambdaStates=" + req.totalLambdaStates
                         + ", children=" + req.numChildren
                         + ", blockThreads=" + blockThreads
-                        + ", residentChildTables=false"
+                        + ", residentChildTables=" + req.residentChildTables
                         + ", elapsedMs=" + String.format(java.util.Locale.ROOT, "%.1f", ms));
             }
             return result;
@@ -422,12 +460,6 @@ final class SamplingGpuPhase1 {
                 }
             }
             freeRaw(rawBufs);
-            if (stream != null) {
-                try { stream.cleanup(); } catch (Throwable t) { t.printStackTrace(System.err); }
-            }
-            if (context != null) {
-                try { context.cleanup(); } catch (Throwable t) { t.printStackTrace(System.err); }
-            }
         }
     }
 
@@ -445,7 +477,7 @@ final class SamplingGpuPhase1 {
 
     private static void runMultiGpuGumbel(
             Request req, GroupedSamples grouped,
-            List<Gpu> gpus, int nGpus, int[] result)
+            GpuExecutor[] executors, int nGpus, int[] result)
             throws InterruptedException {
         int base = grouped.numSamples / nGpus;
         int rem = grouped.numSamples % nGpus;
@@ -457,7 +489,7 @@ final class SamplingGpuPhase1 {
             final int start = sampleStart;
             final int count = sampleCount;
             final int gi = gpuIndex;
-            final Gpu gpu = gpus.get(gpuIndex);
+            final GpuExecutor executor = executors[gpuIndex];
             threads[gpuIndex] = new Thread(() -> {
                 try {
                     // The CUDA kernel derives its stateless random value from
@@ -466,7 +498,7 @@ final class SamplingGpuPhase1 {
                     // stream as global slot start+s in the one-GPU path.
                     long sliceSeed = req.baseSeed
                             + SAMPLE_SEED_STRIDE * (long) start;
-                    int[] local = runGumbel(req, gpu, grouped, start,
+                    int[] local = runGumbel(req, executor, grouped, start,
                             count, sliceSeed, false);
                     System.arraycopy(local, 0, result, start, count);
                 } catch (Throwable t) {
@@ -699,6 +731,9 @@ final class SamplingGpuPhase1 {
         private CUdeviceptr childUpperCache;
         private long childUpperCacheKey;
         private int childUpperCacheLength;
+        private ModelBuffers preparedModel;
+        private Object preparedIdentity;
+        private Object preparedOwner;
 
         GpuExecutor(Gpu gpu, boolean owned) {
             this.owned = owned;
@@ -710,6 +745,45 @@ final class SamplingGpuPhase1 {
         synchronized SliceResult runSlice(Request req, WorkSlice slice) {
             context.attachCurrentThread();
             return runOnGpuSlice(req, this, slice);
+        }
+
+        ModelBuffers modelBuffers(Request req, List<CUBuffer<?>> buffers,
+                                  List<CUdeviceptr> rawBufs) {
+            if (req.modelIdentity != null && req.residentChildTables) {
+                if (preparedModel != null && preparedIdentity == req.modelIdentity) return preparedModel;
+                clearPreparedModel();
+                cleanupChildUpperCache();
+                List<CUBuffer<?>> retainedBuffers = new ArrayList<>();
+                List<CUdeviceptr> retainedRaw = new ArrayList<>();
+                try {
+                    preparedModel = new ModelBuffers(req, this, retainedBuffers, retainedRaw, true);
+                    preparedIdentity = req.modelIdentity;
+                    preparedOwner = req.modelOwner;
+                    return preparedModel;
+                } catch (RuntimeException | Error ex) {
+                    cleanBuffers(retainedBuffers);
+                    freeRaw(retainedRaw);
+                    throw ex;
+                }
+            }
+            clearPreparedModel();
+            return new ModelBuffers(req, this, buffers, rawBufs, false);
+        }
+
+        void releasePreparedModel(Object owner) {
+            if (preparedModel != null && preparedOwner == owner) {
+                context.attachCurrentThread();
+                clearPreparedModel();
+            }
+        }
+
+        private void clearPreparedModel() {
+            if (preparedModel != null) {
+                preparedModel.close();
+                preparedModel = null;
+                preparedIdentity = null;
+                preparedOwner = null;
+            }
         }
 
         CUdeviceptr childUpperBuffer(Request req, List<CUdeviceptr> rawBufs) {
@@ -741,6 +815,8 @@ final class SamplingGpuPhase1 {
         }
 
         private void cleanup() {
+            context.attachCurrentThread();
+            clearPreparedModel();
             cleanupChildUpperCache();
             try {
                 stream.cleanup();
@@ -766,6 +842,55 @@ final class SamplingGpuPhase1 {
                     childUpperCacheLength = 0;
                 }
             }
+        }
+    }
+
+    /** Device storage for one immutable prepared model; dynamic samples stay per-call. */
+    private static final class ModelBuffers {
+        final CUBuffer<IntBuffer> mCounts, lambdaCounts, lmLamSlots, lmMSlots, lmMCounts;
+        final CUBuffer<IntBuffer> childMSrcAll, childMTermOff, childMTermCnt;
+        final CUBuffer<IntBuffer> childLSrcAll, childLTermOff, childLTermCnt;
+        final CUBuffer<LongBuffer> lmOffsets, childMStrideAll, childLStrideAll, childTableBase;
+        final CUdeviceptr lambdaOnlyMin, lmMin, childUpperAll;
+        private final List<CUBuffer<?>> buffers;
+        private final List<CUdeviceptr> rawBufs;
+
+        ModelBuffers(Request req, GpuExecutor executor, List<CUBuffer<?>> buffers,
+                     List<CUdeviceptr> rawBufs, boolean retained) {
+            this.buffers = buffers;
+            this.rawBufs = rawBufs;
+            GpuStream stream = executor.stream;
+            mCounts = uploadInts(stream, req.mCounts, buffers);
+            lambdaCounts = uploadInts(stream, req.lambdaCounts, buffers);
+            lambdaOnlyMin = uploadDoublesBig(req.lambdaOnlyMin, rawBufs);
+            lmMin = uploadDoublesBig(req.lmMin, rawBufs);
+            lmLamSlots = uploadInts(stream, req.lmLamSlots, buffers);
+            lmMSlots = uploadInts(stream, req.lmMSlots, buffers);
+            lmMCounts = uploadInts(stream, req.lmMCounts, buffers);
+            lmOffsets = uploadLongs(stream, req.lmOffsets, buffers);
+            childMSrcAll = uploadInts(stream, req.childMSrcAll, buffers);
+            childMStrideAll = uploadLongs(stream, req.childMStrideAll, buffers);
+            childMTermOff = uploadInts(stream, req.childMTermOff, buffers);
+            childMTermCnt = uploadInts(stream, req.childMTermCnt, buffers);
+            childLSrcAll = uploadInts(stream, req.childLSrcAll, buffers);
+            childLStrideAll = uploadLongs(stream, req.childLStrideAll, buffers);
+            childLTermOff = uploadInts(stream, req.childLTermOff, buffers);
+            childLTermCnt = uploadInts(stream, req.childLTermCnt, buffers);
+            childTableBase = uploadLongs(stream, req.childTableBase, buffers);
+            childUpperAll = retained ? uploadDoublesBig(req.childUpperAll, rawBufs)
+                    : executor.childUpperBuffer(req, rawBufs);
+        }
+
+        void close() {
+            cleanBuffers(buffers);
+            freeRaw(rawBufs);
+        }
+    }
+
+    private static void cleanBuffers(List<CUBuffer<?>> buffers) {
+        for (int i = buffers.size() - 1; i >= 0; i--) {
+            try { buffers.get(i).cleanup(); }
+            catch (Throwable t) { t.printStackTrace(System.err); }
         }
     }
 
@@ -800,24 +925,25 @@ final class SamplingGpuPhase1 {
             drawFunc.blockThreads = blockThreads;
             drawFunc.sharedMemCalc = new Kernel.SharedMemCalculator.None();
 
-            CUBuffer<IntBuffer> mCounts = uploadInts(stream, req.mCounts, buffers);
-            CUBuffer<IntBuffer> lambdaCounts = uploadInts(stream, req.lambdaCounts, buffers);
-            CUdeviceptr lambdaOnlyMin = uploadDoublesBig(req.lambdaOnlyMin, rawBufs);
-            CUdeviceptr lmMin = uploadDoublesBig(req.lmMin, rawBufs);
-            CUBuffer<IntBuffer> lmLamSlots = uploadInts(stream, req.lmLamSlots, buffers);
-            CUBuffer<IntBuffer> lmMSlots = uploadInts(stream, req.lmMSlots, buffers);
-            CUBuffer<IntBuffer> lmMCounts = uploadInts(stream, req.lmMCounts, buffers);
-            CUBuffer<LongBuffer> lmOffsets = uploadLongs(stream, req.lmOffsets, buffers);
-            CUBuffer<IntBuffer> childMSrcAll = uploadInts(stream, req.childMSrcAll, buffers);
-            CUBuffer<LongBuffer> childMStrideAll = uploadLongs(stream, req.childMStrideAll, buffers);
-            CUBuffer<IntBuffer> childMTermOff = uploadInts(stream, req.childMTermOff, buffers);
-            CUBuffer<IntBuffer> childMTermCnt = uploadInts(stream, req.childMTermCnt, buffers);
-            CUBuffer<IntBuffer> childLSrcAll = uploadInts(stream, req.childLSrcAll, buffers);
-            CUBuffer<LongBuffer> childLStrideAll = uploadLongs(stream, req.childLStrideAll, buffers);
-            CUBuffer<IntBuffer> childLTermOff = uploadInts(stream, req.childLTermOff, buffers);
-            CUBuffer<IntBuffer> childLTermCnt = uploadInts(stream, req.childLTermCnt, buffers);
-            CUBuffer<LongBuffer> childTableBase = uploadLongs(stream, req.childTableBase, buffers);
-            CUdeviceptr childUpperAll = executor.childUpperBuffer(req, rawBufs);
+            ModelBuffers model = executor.modelBuffers(req, buffers, rawBufs);
+            CUBuffer<IntBuffer> mCounts = model.mCounts;
+            CUBuffer<IntBuffer> lambdaCounts = model.lambdaCounts;
+            CUdeviceptr lambdaOnlyMin = model.lambdaOnlyMin;
+            CUdeviceptr lmMin = model.lmMin;
+            CUBuffer<IntBuffer> lmLamSlots = model.lmLamSlots;
+            CUBuffer<IntBuffer> lmMSlots = model.lmMSlots;
+            CUBuffer<IntBuffer> lmMCounts = model.lmMCounts;
+            CUBuffer<LongBuffer> lmOffsets = model.lmOffsets;
+            CUBuffer<IntBuffer> childMSrcAll = model.childMSrcAll;
+            CUBuffer<LongBuffer> childMStrideAll = model.childMStrideAll;
+            CUBuffer<IntBuffer> childMTermOff = model.childMTermOff;
+            CUBuffer<IntBuffer> childMTermCnt = model.childMTermCnt;
+            CUBuffer<IntBuffer> childLSrcAll = model.childLSrcAll;
+            CUBuffer<LongBuffer> childLStrideAll = model.childLStrideAll;
+            CUBuffer<IntBuffer> childLTermOff = model.childLTermOff;
+            CUBuffer<IntBuffer> childLTermCnt = model.childLTermCnt;
+            CUBuffer<LongBuffer> childTableBase = model.childTableBase;
+            CUdeviceptr childUpperAll = model.childUpperAll;
             CUBuffer<LongBuffer> mIdxByGroup = uploadLongs(stream, slice.mIdxByGroup, buffers);
             CUBuffer<DoubleBuffer> groupCdf = makeDoubles(stream, cdfValues, buffers);
             CUBuffer<DoubleBuffer> groupTotal = makeDoubles(stream, numGroups, buffers);
