@@ -1,0 +1,16 @@
+{
+  "dcc_count": 82,
+  "local_count": 57,
+  "total_hours": 677.4913416666667,
+  "longest_hours": 24.610041666666664,
+  "four_lanes_days": 7.0576627314814795,
+  "lane_hours": [
+    169.36307777777776,
+    169.36872777777782,
+    169.37563055555557,
+    169.38390555555551
+  ],
+  "local_total_hours": 5847.869977777777,
+  "basis": "Historical 16 CPU wall time; four continuously available equivalent-speed workers; shortest cases first selected, longest first scheduled",
+  "output": "/usr/xtmp/lz280/markstar_dcc7days_20261005/12812027"
+}
