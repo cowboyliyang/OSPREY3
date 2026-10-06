@@ -1,0 +1,138 @@
+# Deadline focus: active MARK* execution policy
+
+This policy supersedes the pending launch lists in `markstar_dcc_20261005`
+and `frontier_extension7_20261006`. The user authorized changing all unstarted
+work, including previously submitted DCC tasks. Preserve completed results,
+all started work, and every task that starts before an adjustment reaches it.
+The November 4 submission favors large measured speedups, with at least one
+completed current-round 64-CPU MARK* case below 14 days per system. Near-14-day
+completion is preferred but is not guaranteed by these tier choices.
+
+## DCC: adjust the existing queue
+
+**The DCC changes have not been applied by this repository update.** Read the
+current queue and task mapping before executing the handoff. The report used
+here contains 29 completed designs, three running designs (`2rl0_flex_m1`,
+`5em2_flex_p4`, `5em2_flex_p5`), and the previously started `2xxm_flex_p1` whose
+current status is unconfirmed. Preserve that last task until its status is
+known. Preserve every additional task found to have started since this report.
+
+Use these exact files, preserving the existing array's frozen row order:
+
+- `dcc_cancel_if_pending_cases.txt`: defer these designs only if the matching
+  task is still PENDING and has never started. Retain definitions and results.
+- `dcc_keep_existing_pending_cases.txt`: retain these six existing tasks;
+  do not submit duplicate copies.
+- `dcc_protected_cases.txt`: completed, reported running, or previous-start
+  records that are protected regardless of this plan's priorities.
+- `dcc_new_designs.tsv` and `dcc_new_cases.txt`: four additional definitions,
+  not previously submitted in this campaign. These are not another full cohort.
+- `dcc_actions.tsv`: complete 104-row DCC policy, including the four additions.
+
+The six retained pending designs, in coverage-first order, are:
+
+1. `2xgy_flex_m1`
+2. `2p4a_flex_p9`
+3. `4wwi_flex_p1`
+4. `4wyu_flex_p0`
+5. `3ma2_flex_p0`
+6. `2xgy_flex_p0`
+
+The four additions are `3gxu_flex_p12`, `2q1e_flex_p6`, `5dc0_flex_p10`, and
+`3bua_flex_m4`. The first three are long speedup targets. Start them only after
+a normal PACK* workload measurement of at most 30 minutes, with sequence
+statuses available for a valid comparison. `3bua_flex_m4` is a lower-tier
+coverage candidate: prioritize it and review early progress; it has no
+guaranteed completion forecast. No new design is a measured speedup yet.
+
+Integrate retained tasks and additions into the **existing combined six-worker
+limit**, at **64 CPU threads per task**, with a maximum of 14 days. Use
+`--account=grisman`, sufficient memory for the recorded Java heap, and 192 GiB
+allocation for these new tasks. Coverage cases take the first available slots;
+the primary targets use freed slots. Do not start a second independent six-job
+array. A full 14-day observation must begin by October 16 for an October 30
+data freeze; reconsider unstarted long tasks at that cutoff.
+
+Use one actual CPU model for each system. For new `3gxu`, `2q1e`, and `5dc0`
+tiers, inspect the current-round anchor hardware (`3gxu_p9`, `2q1e_p3`, and
+`5dc0_p4`) and bind the new tier to that model. For `2xgy` and `3bua`, use any
+already-started same-system task as the hardware anchor; otherwise choose one
+model and keep it for all retained tiers. Preserve actual hardware provenance
+for existing heterogeneous results. Do not guess a CPU model from the partition.
+
+The new TSV includes exact residue lists, prepared PDB checksums, sequence
+counts, historical command anchors and heaps. Preserve epsilon 0.683, FP64,
+CPU CCD, disabled stability filtering, sequence order, and the existing MARK*
+implementation. Build fresh energy matrices. Duke paths are provenance; use
+the corresponding already-transferred structures on DCC after checking hashes.
+The new inputs use the same prepared PDBs as their anchors, so a new structure
+download is unnecessary. This is a manifest handoff, not a portable executable.
+
+`dcc_apply_pending.py` accepts a reviewed TSV with `design_id` and `job_id`,
+where each job ID identifies one task. Run it in a small Slurm job under
+account grisman, initially without `--apply`, with an explicit output directory
+on the cluster's scratch storage. Review the resulting exact task list, then
+run with `--apply` if it matches. It checks live state again, rejects array
+parent/range IDs and tasks with prior runtime or restarts, and uses
+`scancel --state=PENDING` to protect tasks that start during the check. It
+does not submit jobs or rewrite existing array indices. Missing mappings are
+listed for inspection, never inferred. All remote actions need an audit back
+in this registry before remote application is claimed.
+
+## Local changes applied
+
+Audit job `12826891` removed 38 of 50 pending local tasks, retained 11 selected
+tasks, and held one `2xxm_flex_p3` fallback while `2xxm_p1` remains unconfirmed.
+All 12 running 64-CPU MARK* tasks were preserved. The two separate 48-CPU jerry
+experiments and unrelated workloads were also preserved. See `local_actions.tsv`.
+
+The three retained coverage tasks are `1b6c_flex_p2`, `2hnu_flex_p5`, and
+`4znc_flex_p6`. Retained primary targets are `5d68_p3`, `2rl0_p3`, `5a6y_p2`,
+`3cal_p4`, `4pxf_p6`, `4u3s_p1`, `5dc4_p6`, and `5it3_p10` (all `_flex_`).
+Dependencies in `local_lane_dependencies.tsv` maintain eight compsci lanes
+on EPYC 9554 and four fennario lanes on Xeon Gold 5320. Started tasks are not
+rebound or restarted. Dependencies can leave a lane idle while its predecessor
+finishes; the counts are concurrency caps, not a utilization guarantee.
+
+The two new local tasks are `4wem_flex_p12` (`12826957_0`, fennario) and
+`3eb6_flex_p7` (`12826958_0`, compsci). They are submitted with dependencies
+on the PACK* screening job and their predecessor lanes. They execute MARK*
+only after normal PACK* completion within 30 minutes and before the October 16
+launch cutoff. A failed screening or an expired cutoff does not become a
+MARK* timing or speedup result.
+
+## One grouped PACK* screening job
+
+Preparation `12826915` passed all ten MARK* and all ten PACK* position and
+sequence preflights. The four retained previous additions are byte-equivalent
+in their residue, sequence-count, and structure definitions. Six new definitions
+appear in `new_designs.tsv`; all ten screening entries are in `pack_designs.tsv`.
+
+Job **12826949** replaces the still-pending seven-design job `12826506` with a
+single ten-design allocation on four RTX PRO 6000 GPUs, 128 CPU threads, and a
+**six-hour total limit**. It retains the allocation between designs, allows at
+most one hour per candidate, and reserves 20 minutes for every later candidate.
+The already-running PACK* job `12814879` was preserved. The three intermediate
+screening entries `4u3s_p2`, `2rl0_p4`, and `5dc4_p5` were removed from this
+unstarted batch. The optimized build and numerical protocol are unchanged.
+
+Screening job `12826950` writes measured times and eligibility after the GPU
+group ends. Current output is
+`/usr/xtmp/lz280/markstar_deadline_focus_20261006/pack_12826949/screening.json`.
+Do not infer eligibility from submission or preflight success. A normally
+finished workload with incomplete binding estimates is distinguished from
+fully estimated sequences; only matched sequence outcomes support a reported
+numerical speedup.
+
+## Registries and provenance
+
+`design_actions.tsv` contains all 169 existing and proposed definitions.
+`NA` denotes unavailable audit values or the absence of a primary target.
+`system_coverage.tsv` covers all 38 systems; 22 had a current-round completion
+at the source snapshot. Coverage candidates are provisions, not promises.
+`policy.json` records the deadline, priorities, source snapshot, and local audit.
+`registry.json` records actual submissions and preflight checks.
+Old array manifests remain intact and must not be submitted as active lists.
+Full scheduler snapshots and generated artifacts remain under
+`/usr/xtmp/lz280/markstar_deadline_focus_20261006`; repository files contain
+only source, definitions, small registries and documentation.

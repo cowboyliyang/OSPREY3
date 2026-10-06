@@ -13,7 +13,12 @@ here=Path(__file__).parent
 def read(p):return list(csv.DictReader(p.open(),delimiter='\t'))
 def write(p,rs):
     with p.open('w') as f:
-        w=csv.DictWriter(f,fieldnames=list(rs[0]),delimiter='\t',lineterminator='\n');w.writeheader();w.writerows(rs)
+        fields=list(rs[0])
+        w=csv.DictWriter(f,fieldnames=fields,delimiter='\t',lineterminator='\n');w.writeheader()
+        for r in rs:
+            row=dict(r)
+            if row[fields[-1]] in ('',None):row[fields[-1]]='NA'
+            w.writerow(row)
 rows=read(Path('/usr/xtmp/lz280/markstar_deadline_proposal_12826811/design_actions.tsv'))
 registry=json.loads((here/'registry.json').read_text())
 registry.update(packstar_status='SUBMITTED',markstar_status='TWO_NEW_LOCAL_JOBS_SUBMITTED_WITH_PACKSTAR_GATE',

@@ -65,7 +65,7 @@
     "After October 16 do not launch a new job that needs a full 14-day observation before the October 30 data freeze."
   ],
   "user_scope": "All unstarted work can be reprioritized; all started work and completed results remain protected.",
-  "snapshot_utc": "2026-10-06T19:57:06.208971+00:00",
+  "snapshot_utc": "2026-10-06T20:00:00.243688+00:00",
   "dcc_counts": {
     "DEFER_UNSTARTED": 57,
     "KEEP_COMPLETED": 29,
