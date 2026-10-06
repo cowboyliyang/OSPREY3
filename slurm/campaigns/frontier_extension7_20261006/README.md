@@ -1,4 +1,52 @@
-# Seven new frontier designs and MARK* extension plan
+# Seven new frontier designs and MARK* launch
+
+## Current submission status
+
+Local MARK* is submitted: **12826673** contains five fennario designs (two
+concurrent), and **12826674** contains eleven compsci designs (four concurrent).
+Each task requests 64 CPU threads, 192 GiB memory, and 14 days. The historical
+reference heap setting is preserved per design. Both arrays are released to
+the scheduler and have no dependency on PACK* completion. Input preparation
+`12826665` passed all 25 actual position and sequence checks, including the
+16 local designs and nine DCC handoff entries.
+
+**DCC: submit only `dcc_submit9_cases.txt`, using `dcc_submit9_designs.tsv`.**
+These nine are:
+
+1. `4wwi_flex_p1` (transferred pending lower tier)
+2. `2xgy_flex_p0`
+3. `3ma2_flex_p1`
+4. `4wyu_flex_p1`
+5. `4wwi_flex_p2`
+6. `4wwi_flex_p3`
+7. `3bua_flex_m2`
+8. `3bua_flex_m1`
+9. `2rfd_flex_p8`
+
+The eight historical noncompletion cases are new to the current campaign;
+4wwi +1 was pending locally and its local copy `12812439_24` is now **held**.
+No DCC submission is claimed here. Retire that held copy only after DCC
+acceptance is confirmed. The nine designs transferred earlier are already
+submitted externally and must not be submitted again.
+
+Configure 64 CPU threads, 14 days, 192 GiB allocation, and the per-row Java
+heap. Use account `grisman`. Keep the existing six-worker DCC limit across
+all original and added work, initially allowing at most three added long
+tasks while the original backlog remains. Integrate these cases into the
+existing worker queue instead of creating an independent six-worker array.
+Run all three 4wwi tiers on one actual CPU model, and likewise keep each
+other system's newly launched tiers on one model. DCC must provide a
+partition permitting 14-day tasks.
+
+Preserve prepared PDB checksums, exact residue lists, full sequence order,
+epsilon 0.683, FP64, CPU CCD, disabled stability filtering, the historical
+MARK* implementation, and fresh energy matrices. Historical runtime lower
+bounds are not completed timings. Paths in the TSV are Duke provenance;
+use corresponding transferred prepared inputs and the existing DCC runtime.
+This is a manifest handoff, not a standalone compiled runtime bundle.
+
+Live launch records: `registry.json`, `markstar_local16_submitted.tsv`,
+`markstar24_status.tsv`, and `dcc_handoff.json`.
 
 The user approved seven new designs outside the existing 161-design paper
 cohort. Historical timeout designs are separate and are not counted as new.
@@ -57,9 +105,9 @@ The preparation package contains four PDB files (3,105,986 bytes), manifests,
 and preflight logs. All experiment outputs and temporary files live under
 `/usr/xtmp/lz280`; this directory contains only source and small registries.
 
-## Proposed MARK* assignment: not submitted
+## MARK* assignment and scheduling basis
 
-`markstar24_proposed.tsv` contains the seven new designs plus all 17 historical
+The original `markstar24_proposed.tsv` records the seven new designs plus all 17 historical
 14-day noncompletion designs. The five failed historical designs and the
 withdrawn 3k3q higher tiers are excluded. The 139-workload assignment remains
 in the separate `markstar_dcc_20261005` directory.
@@ -70,7 +118,7 @@ in the separate `markstar_dcc_20261005` directory.
 | compsci, EPYC 9554 | 8 | 3 | 8 | 11 |
 | DCC, CPU model fixed per system | 6 | 0 | 8 | 8 |
 
-Each proposed MARK* task requests 64 CPU threads and a 14-day limit. CPU
+Each MARK* task requests 64 CPU threads and a 14-day limit. CPU
 thread counts are not physical core counts. At the time of the audit, the
 local slots were already occupied by the current campaign; they represent
 capacity as those jobs finish, not immediately free slots. DCC's six slots
@@ -87,15 +135,11 @@ As that backlog clears, allow the long workloads to use the full 4/8/6 slots.
 Do not create a second independent six-worker DCC array. Actual availability
 can change as other users' allocations change.
 
-The 5/11/8 proposal requires one additional handoff: **4wwi_flex_p1**,
-local job `12812439_24`, was pending and had not started at the audit.
-Transfer it together with the proposed 4wwi +2/+3 tasks so all three tiers
-can use one DCC CPU model. **This extra handoff has not been applied:**
-the pending local task is unchanged and the 139-workload manifests still
-contain 91 DCC and 48 local designs. Before implementing a handoff, recheck
-that +1 has not started, hold its local copy, and retire it only after external
-submission is confirmed. If +1 starts first, keep all 4wwi tiers on compsci;
-the added-design split becomes 5/13/6.
+The extra handoff of **4wwi_flex_p1**, local job `12812439_24`, was applied
+after verifying it had not started. It is now held pending DCC acceptance.
+The 139-workload manifests contain 92 DCC and 47 local designs, preserving
+the original 91 DCC rows and their order. Including the 24 added workloads,
+the assignment is 100 DCC and 63 local designs (163 unique designs).
 
 All other proposed new tiers follow the CPU model of their local same-system
 anchors. DCC must select one actual CPU model per newly launched system and
@@ -103,8 +147,8 @@ use a partition that permits 14-day tasks. Its historical per-case CPU models
 and new job IDs are not available locally. Existing completed measurements
 on other hardware remain separate measurements; the plan does not change them.
 
-Obtain the seven new PACK* full workload timings before launching their
-MARK* counterparts. Keep the original 48-CPU jerry jobs `12825151` and
+The user subsequently authorized MARK* submission immediately, independently
+of PACK* completion. Keep the original 48-CPU jerry jobs `12825151` and
 `12825152` separate: they use the original filtered setup and do not replace
 the frontier timeout reruns.
 

@@ -89,3 +89,4 @@
 5dc0_flex_p6
 2rfd_flex_p6
 5dc0_flex_p5
+4wwi_flex_p1

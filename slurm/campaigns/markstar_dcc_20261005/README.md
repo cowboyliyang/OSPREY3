@@ -1,13 +1,15 @@
 # MARK* DCC assignment, updated 2026-10-06
 
-Assign 91 design workloads to DCC and retain 48 locally. The original split
-was 82/57; the October 6 update transfers nine unstarted local designs to DCC.
+Assign 92 design workloads to DCC and retain 47 locally. The original split
+was 82/57; the first October 6 update transferred nine unstarted local designs
+to DCC, and the second adds the pending `4wwi_flex_p1` handoff.
 This partitions the same 139 normally completed historical MARK* workloads.
 It does not include timeout or failed workloads.
 
 ## Files
 
-- `dcc_cases.txt`: the original 82 design IDs, followed by nine additions.
+- `dcc_cases.txt`: the original 82 design IDs, followed by the accepted nine
+  additions and the pending `4wwi_flex_p1` handoff.
 - `dcc_designs.tsv`: exact residue selections, expected sequence counts,
   prepared PDB paths and checksums, and historical resources and timings.
   Original rows and their order are preserved. `dcc_lane` retains the legacy
@@ -45,6 +47,22 @@ The active local array `12812439` reads its original frozen manifest outside
 this repository. Do not replace that manifest or renumber its task indices.
 This repository update does not submit DCC jobs or restart existing tasks.
 
+## Second October 6 handoff: submit the separate nine-case list
+
+The user authorized the seven new tiers and 17 historical noncompletion
+workloads. Sixteen are submitted locally in arrays 12826673 (fennario) and
+12826674 (compsci). Eight noncompletion cases are assigned to DCC, together
+with the unstarted lower tier `4wwi_flex_p1` so its three tiers can use one
+CPU model. The local +1 job `12812439_24` is held pending external acceptance.
+
+Use `../frontier_extension7_20261006/dcc_submit9_cases.txt` and its accompanying
+`dcc_submit9_designs.tsv` for this new submission. Do not resubmit the nine
+earlier additions or the full 92-design list. The new tasks request 64 CPU
+threads and 14 days; retain the combined six-worker limit. The 139-design
+inventory here still excludes the eight timeout cases, which are recorded
+in the separate extension registry. The full assignment including extensions
+contains 163 unique designs: 100 DCC and 63 local.
+
 ## Requested DCC run
 
 Run MARK* with 64 CPU threads per task and at most six simultaneous tasks.
@@ -74,6 +92,6 @@ seven-day estimate is superseded by six concurrent 64-CPU tasks and the
 October 6 handoff. Historical resource columns remain unchanged as provenance.
 Do not infer physical core counts or fourfold speedup from the CPU allocation.
 
-The updated assignment uses observed rerun timings to relieve the local queue.
+The assignment uses observed rerun timings to relieve the local queue.
 Runtime estimates depend on hardware, current progress, and queue availability;
 they are not measured benchmarks for the transferred designs.

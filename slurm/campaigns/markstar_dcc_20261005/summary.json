@@ -1,9 +1,9 @@
 {
-  "dcc_count": 91,
-  "local_count": 48,
-  "total_hours": 1507.0816916666665,
+  "dcc_count": 92,
+  "local_count": 47,
+  "total_hours": 1590.2052416666668,
   "longest_hours": 150.6355861111111,
-  "local_total_hours": 5018.279627777778,
+  "local_total_hours": 4935.156077777778,
   "requested_cpus_per_task": 64,
   "requested_dcc_concurrency": 6,
   "original_assignment": {
@@ -25,5 +25,10 @@
   "update_date": "2026-10-06",
   "additions_count": 9,
   "inbound_count": 0,
-  "basis": "Historical 16-CPU times are provenance only. Original 82 DCC rows retain their order; nine unstarted local designs are appended for six-worker DCC execution."
+  "basis": "Historical timing provenance; the original 91 DCC rows retain their order. One unstarted 4wwi tier appended to keep its extension on one CPU model.",
+  "extension_handoff_completed_case": "4wwi_flex_p1",
+  "previous_counts": {
+    "dcc": 91,
+    "local": 48
+  }
 }

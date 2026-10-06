@@ -1,0 +1,33 @@
+{
+  "date": "2026-10-06",
+  "status": "AWAITING_DCC_SUBMISSION",
+  "user_instruction": "Push the manifest for remote submission as before",
+  "designs": [
+    "4wwi_flex_p1",
+    "2xgy_flex_p0",
+    "3ma2_flex_p1",
+    "4wyu_flex_p1",
+    "4wwi_flex_p2",
+    "4wwi_flex_p3",
+    "3bua_flex_m2",
+    "3bua_flex_m1",
+    "2rfd_flex_p8"
+  ],
+  "historical_noncompletion": 8,
+  "existing_completed_history_transfer": 1,
+  "cpus": 64,
+  "time_limit_hours": 336,
+  "memory_gib": 192,
+  "combined_dcc_concurrency": 6,
+  "initial_added_long_concurrency": 3,
+  "held_local_copy": {
+    "design": "4wwi_flex_p1",
+    "job": "12812439_24",
+    "status": "PENDING_HELD"
+  },
+  "previously_transferred_nine": "Already externally submitted; do not repeat",
+  "retire_local_copy_only_after_external_acceptance": true,
+  "cpu_model_rule": "Keep all newly launched tiers of each system on one actual CPU model",
+  "frozen_input_package": "/usr/xtmp/lz280/frontier_extension7_20261006/markstar_prep_12826665/package",
+  "launch_audit": "/usr/xtmp/lz280/frontier_extension7_20261006/markstar_launch_12826672"
+}

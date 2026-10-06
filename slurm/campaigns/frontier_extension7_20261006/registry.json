@@ -63,12 +63,37 @@
     }
   ],
   "packstar_status": "SUBMITTED",
-  "markstar_status": "PLAN_ONLY",
+  "markstar_status": "LOCAL_SUBMITTED_DCC_HANDOFF_PENDING",
   "packstar_job": "12826506",
   "packstar_limit_hours": 6,
   "packstar_grouped": true,
   "packstar_cpus": 128,
   "packstar_gpus": 4,
   "packstar_output": "/usr/xtmp/lz280/frontier_extension7_20261006/run_12826506",
-  "markstar_plan": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/frontier_extension7_20261006/markstar_plan.json"
+  "markstar_plan": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/frontier_extension7_20261006/markstar_plan.json",
+  "markstar_prep": "/usr/xtmp/lz280/frontier_extension7_20261006/markstar_prep_12826665",
+  "markstar_arrays": {
+    "fennario": {
+      "array_job": "12826673",
+      "count": 5,
+      "concurrency": 2,
+      "cpus": 64,
+      "memory_gib": 192,
+      "limit_hours": 336
+    },
+    "compsci": {
+      "array_job": "12826674",
+      "count": 11,
+      "concurrency": 4,
+      "cpus": 64,
+      "memory_gib": 192,
+      "limit_hours": 336
+    }
+  },
+  "markstar_local_count": 16,
+  "markstar_dcc_waiting": 8,
+  "dcc_extra_transfer": "4wwi_flex_p1",
+  "markstar_packstar_dependency": null,
+  "markstar_launch_audit": "/usr/xtmp/lz280/frontier_extension7_20261006/markstar_launch_12826672",
+  "markstar_active_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/frontier_extension7_20261006/markstar24_status.tsv"
 }

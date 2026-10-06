@@ -1,6 +1,6 @@
 {
   "snapshot_epoch": 1791311541.7623944,
-  "status": "PLAN_ONLY",
+  "status": "LOCAL_SUBMITTED_DCC_HANDOFF_PENDING",
   "new_tiers": 7,
   "previous_noncompletion": 17,
   "total": 24,
@@ -128,8 +128,8 @@
     "job": "12812439_24",
     "from_group": "compsci",
     "to_group": "DCC",
-    "current_status": "PENDING_UNCHANGED",
-    "applied": false,
+    "current_status": "PENDING_HELD_AWAITING_DCC",
+    "applied": true,
     "reason": "Keep all 4wwi tiers on one DCC CPU model; lower tier has not started."
   },
   "constraints": [
@@ -138,9 +138,9 @@
     "DCC concurrency is six total across original, transferred, and new workloads.",
     "DCC must provide a partition allowing 14-day tasks and enough slots of one CPU model per system.",
     "12825151/12825152 are original 48-CPU filtered runs and do not replace the frontier timeout reruns.",
-    "Wait for PACK* full workload measurements before launching the seven new MARK* designs.",
     "Keep existing short work progressing; initially use at most 2/4/3 slots for added long tasks on fennario/compsci/DCC.",
-    "Raise long-task concurrency only as original backlog clears; no independent six-worker DCC array."
+    "Raise long-task concurrency only as original backlog clears; no independent six-worker DCC array.",
+    "The user authorized MARK* to queue independently of PACK* completion."
   ],
   "external_snapshot": {
     "completed": 24,
@@ -174,5 +174,27 @@
     "12812439_8",
     "12812439_9"
   ],
-  "audit_root": "/usr/xtmp/lz280/frontier_extension7_20261006/markstar_plan_12826543"
+  "audit_root": "/usr/xtmp/lz280/frontier_extension7_20261006/markstar_plan_12826543",
+  "local_arrays": {
+    "fennario": {
+      "array_job": "12826673",
+      "count": 5,
+      "concurrency": 2,
+      "cpus": 64,
+      "memory_gib": 192,
+      "limit_hours": 336
+    },
+    "compsci": {
+      "array_job": "12826674",
+      "count": 11,
+      "concurrency": 4,
+      "cpus": 64,
+      "memory_gib": 192,
+      "limit_hours": 336
+    }
+  },
+  "active_registry": "markstar24_status.tsv",
+  "dcc_handoff": "dcc_handoff.json",
+  "packstar_dependency": null,
+  "launch_audit": "/usr/xtmp/lz280/frontier_extension7_20261006/markstar_launch_12826672"
 }
