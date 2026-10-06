@@ -1,0 +1,10 @@
+design_id	system	flex_delta	anchor_design	destination	kind
+1b6c_flex_p4	1b6c	4	1b6c_flex_p2	compsci	near14_addition
+1gwc_flex_p4	1gwc	4	1gwc_flex_p3	DCC	near14_addition
+2hnu_flex_p11	2hnu	11	2hnu_flex_p5	compsci	near14_addition
+2p4a_flex_p12	2p4a	12	2p4a_flex_p9	DCC	conservative_addition
+2xxm_flex_p7	2xxm	7	2xxm_flex_p3	DCC	near14_addition
+3bu8_flex_p12	3bu8	12	3bu8_flex_p11	DCC	near14_addition
+3k3q_flex_p3	3k3q	3	3k3q_flex_p0	compsci	near14_addition
+4kt6_flex_p4	4kt6	4	4kt6_flex_p2	DCC	near14_addition
+4znc_flex_p14	4znc	14	4znc_flex_p6	compsci	near14_addition

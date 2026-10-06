@@ -13,3 +13,8 @@ priority	design_id	role	prior_submission	gpu_dependency	runtime_evidence
 12	3ma2_flex_p0	COVERAGE_FALLBACK	ALREADY_SUBMITTED_CHECK_LIVE_STATE	NONE	Historical completed MARK* case; retain until system coverage is confirmed
 13	2p4a_flex_p9	COVERAGE_FALLBACK	ALREADY_SUBMITTED_CHECK_LIVE_STATE	NONE	Historical completed MARK* case; retain until system coverage is confirmed
 14	2xgy_flex_m1	COVERAGE_FALLBACK	ALREADY_SUBMITTED_CHECK_LIVE_STATE	NONE	Historical short MARK* case; retain until system coverage is confirmed
+15	1gwc_flex_p4	NEAR14_EXPLORATORY_ADDITION	NEW_DEFINITION_NOT_SUBMITTED_REMOTELY	NONE	Unmeasured; preserve all prior smaller cases; no guaranteed near-14-day runtime
+16	2p4a_flex_p12	CONSERVATIVE_ADDITION	NEW_DEFINITION_NOT_SUBMITTED_REMOTELY	NONE	Unmeasured; preserve all prior smaller cases; no guaranteed near-14-day runtime
+17	2xxm_flex_p7	NEAR14_EXPLORATORY_ADDITION	NEW_DEFINITION_NOT_SUBMITTED_REMOTELY	NONE	Unmeasured; preserve all prior smaller cases; no guaranteed near-14-day runtime
+18	3bu8_flex_p12	NEAR14_EXPLORATORY_ADDITION	NEW_DEFINITION_NOT_SUBMITTED_REMOTELY	NONE	Unmeasured; preserve all prior smaller cases; no guaranteed near-14-day runtime
+19	4kt6_flex_p4	NEAR14_EXPLORATORY_ADDITION	NEW_DEFINITION_NOT_SUBMITTED_REMOTELY	NONE	Unmeasured; preserve all prior smaller cases; no guaranteed near-14-day runtime

@@ -1,0 +1,5 @@
+design	job	group	after_job	gpu_dependency	prep
+1b6c_flex_p4	12827323_0	compsci	12827032_2	NONE	/usr/xtmp/lz280/markstar_near14_20261006/launch_12827320/markstar
+2hnu_flex_p11	12827324_1	compsci	12827031_1	NONE	/usr/xtmp/lz280/markstar_near14_20261006/launch_12827320/markstar
+3k3q_flex_p3	12827325_2	compsci	12826674_9	NONE	/usr/xtmp/lz280/markstar_near14_20261006/launch_12827320/markstar
+4znc_flex_p14	12827326_3	compsci	12827030_0	NONE	/usr/xtmp/lz280/markstar_near14_20261006/launch_12827320/markstar

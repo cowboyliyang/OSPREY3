@@ -1,0 +1,64 @@
+{
+  "verification_job": "12827328",
+  "packstar_job": "12827321",
+  "gpu_designs": 9,
+  "local_markstar_jobs": 4,
+  "dcc_additions_handoff_only": 5,
+  "original_queue_and_definitions_preserved": true,
+  "old_frozen_packages_verified": true,
+  "pack_and_mark_inputs_match": true,
+  "gpu_request_and_dependency_verified": true,
+  "conservative_design": "2p4a_flex_p12",
+  "additional_residues": 3,
+  "expected_sequences": 39,
+  "two_p4a_history": [
+    {
+      "design": "2p4a_flex_p4",
+      "kind": "completed",
+      "mark_hours": 0.30233611111111114,
+      "pack_minutes": 8.196333333333333,
+      "ratio": 2.2132050917076747,
+      "historical_cpu": "Intel(R) Xeon(R) Gold 5320 CPU @ 2.20GHz"
+    },
+    {
+      "design": "2p4a_flex_p5",
+      "kind": "completed",
+      "mark_hours": 0.40399722222222223,
+      "pack_minutes": 9.150666666666666,
+      "ratio": 2.648969109718782,
+      "historical_cpu": "Intel(R) Xeon(R) Gold 5320 CPU @ 2.20GHz"
+    },
+    {
+      "design": "2p4a_flex_p6",
+      "kind": "completed",
+      "mark_hours": 1.1016083333333333,
+      "pack_minutes": 10.064666666666666,
+      "ratio": 6.567182221633437,
+      "historical_cpu": "Intel(R) Xeon(R) Silver 4116 CPU @ 2.10GHz"
+    },
+    {
+      "design": "2p4a_flex_p7",
+      "kind": "failed",
+      "mark_hours": null,
+      "pack_minutes": 12.081333333333333,
+      "ratio": null,
+      "historical_cpu": "AMD EPYC 9554 64-Core Processor"
+    },
+    {
+      "design": "2p4a_flex_p8",
+      "kind": "failed",
+      "mark_hours": null,
+      "pack_minutes": 13.869666666666665,
+      "ratio": null,
+      "historical_cpu": "AMD EPYC 9554 64-Core Processor"
+    },
+    {
+      "design": "2p4a_flex_p9",
+      "kind": "completed",
+      "mark_hours": 4.561761111111111,
+      "pack_minutes": 18.838666666666665,
+      "ratio": 14.528929860570459,
+      "historical_cpu": "AMD EPYC 9554 64-Core Processor"
+    }
+  ]
+}

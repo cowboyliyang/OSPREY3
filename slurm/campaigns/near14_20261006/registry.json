@@ -1,0 +1,227 @@
+{
+  "prep_job": "12827318",
+  "prep_root": "/usr/xtmp/lz280/markstar_near14_20261006/prep_12827318",
+  "package": "/usr/xtmp/lz280/markstar_near14_20261006/prep_12827318/package",
+  "design_count": 9,
+  "new_design_count": 9,
+  "designs_sha256": "9069ed93fc56d3442b16ee81587e6a66834553ca51157183f81a7c556c95a423",
+  "verification": [
+    {
+      "design_id": "1b6c_flex_p4",
+      "positions": 18,
+      "sequences": 20,
+      "anchor_sequences_identical": true,
+      "mark_preflight": "PASS",
+      "pack_preflight": "PASS",
+      "pack_platform": "gpu",
+      "pack_reference_job": "12814879"
+    },
+    {
+      "design_id": "1gwc_flex_p4",
+      "positions": 17,
+      "sequences": 20,
+      "anchor_sequences_identical": true,
+      "mark_preflight": "PASS",
+      "pack_preflight": "PASS",
+      "pack_platform": "gpu",
+      "pack_reference_job": "12814879"
+    },
+    {
+      "design_id": "2hnu_flex_p11",
+      "positions": 22,
+      "sequences": 39,
+      "anchor_sequences_identical": true,
+      "mark_preflight": "PASS",
+      "pack_preflight": "PASS",
+      "pack_platform": "gpu",
+      "pack_reference_job": "12814879"
+    },
+    {
+      "design_id": "2p4a_flex_p12",
+      "positions": 20,
+      "sequences": 39,
+      "anchor_sequences_identical": true,
+      "mark_preflight": "PASS",
+      "pack_preflight": "PASS",
+      "pack_platform": "gpu",
+      "pack_reference_job": "12775476"
+    },
+    {
+      "design_id": "2xxm_flex_p7",
+      "positions": 19,
+      "sequences": 20,
+      "anchor_sequences_identical": true,
+      "mark_preflight": "PASS",
+      "pack_preflight": "PASS",
+      "pack_platform": "gpu",
+      "pack_reference_job": "12814879"
+    },
+    {
+      "design_id": "3bu8_flex_p12",
+      "positions": 16,
+      "sequences": 20,
+      "anchor_sequences_identical": true,
+      "mark_preflight": "PASS",
+      "pack_preflight": "PASS",
+      "pack_platform": "gpu",
+      "pack_reference_job": "12775476"
+    },
+    {
+      "design_id": "3k3q_flex_p3",
+      "positions": 20,
+      "sequences": 39,
+      "anchor_sequences_identical": true,
+      "mark_preflight": "PASS",
+      "pack_preflight": "PASS",
+      "pack_platform": "gpu",
+      "pack_reference_job": "12814879"
+    },
+    {
+      "design_id": "4kt6_flex_p4",
+      "positions": 14,
+      "sequences": 20,
+      "anchor_sequences_identical": true,
+      "mark_preflight": "PASS",
+      "pack_preflight": "PASS",
+      "pack_platform": "gpu",
+      "pack_reference_job": "12814879"
+    },
+    {
+      "design_id": "4znc_flex_p14",
+      "positions": 22,
+      "sequences": 20,
+      "anchor_sequences_identical": true,
+      "mark_preflight": "PASS",
+      "pack_preflight": "PASS",
+      "pack_platform": "gpu",
+      "pack_reference_job": "12814879"
+    }
+  ],
+  "packstar_status": "SUBMITTED",
+  "markstar_status": "FOUR_LOCAL_SUBMITTED_FIVE_DCC_HANDOFF_ONLY",
+  "mode": "APPEND_ONLY_KEEP_SMALLER_DESIGNS_FIRST",
+  "earlier_unsubmitted_preps": [
+    "12827301",
+    "12827308"
+  ],
+  "markstar_prep": "/usr/xtmp/lz280/markstar_near14_20261006/launch_12827320/markstar",
+  "launch_audit": "/usr/xtmp/lz280/markstar_near14_20261006/launch_12827320",
+  "submissions": [
+    {
+      "job": "12827321",
+      "design": "ALL_NINE_GPU_PACKSTAR",
+      "arguments": [
+        "--dependency=afterany:12827169",
+        "--export=ALL,EXTENSION_PREP=/usr/xtmp/lz280/markstar_near14_20261006/prep_12827318",
+        "/usr/xtmp/lz280/markstar_near14_20261006/prep_12827318/run_group.slurm"
+      ]
+    },
+    {
+      "job": "12827322",
+      "design": "PACKSTAR_MEASUREMENT_AUDIT",
+      "arguments": [
+        "--dependency=afterany:12827321",
+        "--export=ALL,PACK_RUN_ROOT=/usr/xtmp/lz280/markstar_near14_20261006/pack_12827321",
+        "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/near14_20261006/collect_pack.slurm"
+      ]
+    },
+    {
+      "job": "12827323",
+      "design": "1b6c_flex_p4",
+      "arguments": [
+        "--job-name=markstar-near14-compsci",
+        "--partition=compsci",
+        "--exclude=linux[31-40]",
+        "--array=0-0%1",
+        "--dependency=afterany:12827032_2",
+        "--export=ALL,MARKSTAR_EXTENSION_PREP=/usr/xtmp/lz280/markstar_near14_20261006/launch_12827320/markstar,MARKSTAR_EXTENSION_GROUP=compsci",
+        "/usr/xtmp/lz280/markstar_near14_20261006/launch_12827320/markstar/markstar_array.slurm"
+      ]
+    },
+    {
+      "job": "12827324",
+      "design": "2hnu_flex_p11",
+      "arguments": [
+        "--job-name=markstar-near14-compsci",
+        "--partition=compsci",
+        "--exclude=linux[31-40]",
+        "--array=1-1%1",
+        "--dependency=afterany:12827031_1",
+        "--export=ALL,MARKSTAR_EXTENSION_PREP=/usr/xtmp/lz280/markstar_near14_20261006/launch_12827320/markstar,MARKSTAR_EXTENSION_GROUP=compsci",
+        "/usr/xtmp/lz280/markstar_near14_20261006/launch_12827320/markstar/markstar_array.slurm"
+      ]
+    },
+    {
+      "job": "12827325",
+      "design": "3k3q_flex_p3",
+      "arguments": [
+        "--job-name=markstar-near14-compsci",
+        "--partition=compsci",
+        "--exclude=linux[31-40]",
+        "--array=2-2%1",
+        "--dependency=afterany:12826674_9",
+        "--export=ALL,MARKSTAR_EXTENSION_PREP=/usr/xtmp/lz280/markstar_near14_20261006/launch_12827320/markstar,MARKSTAR_EXTENSION_GROUP=compsci",
+        "/usr/xtmp/lz280/markstar_near14_20261006/launch_12827320/markstar/markstar_array.slurm"
+      ]
+    },
+    {
+      "job": "12827326",
+      "design": "4znc_flex_p14",
+      "arguments": [
+        "--job-name=markstar-near14-compsci",
+        "--partition=compsci",
+        "--exclude=linux[31-40]",
+        "--array=3-3%1",
+        "--dependency=afterany:12827030_0",
+        "--export=ALL,MARKSTAR_EXTENSION_PREP=/usr/xtmp/lz280/markstar_near14_20261006/launch_12827320/markstar,MARKSTAR_EXTENSION_GROUP=compsci",
+        "/usr/xtmp/lz280/markstar_near14_20261006/launch_12827320/markstar/markstar_array.slurm"
+      ]
+    }
+  ],
+  "packstar_job": "12827321",
+  "packstar_output": "/usr/xtmp/lz280/markstar_near14_20261006/pack_12827321",
+  "packstar_after_job": "12827169",
+  "packstar_cpus": 128,
+  "packstar_gpus": 4,
+  "packstar_limit_hours": 6,
+  "packstar_screening_job": "12827322",
+  "local_markstar_jobs": [
+    {
+      "design": "1b6c_flex_p4",
+      "job": "12827323_0",
+      "group": "compsci",
+      "after_job": "12827032_2",
+      "gpu_dependency": "NONE",
+      "prep": "/usr/xtmp/lz280/markstar_near14_20261006/launch_12827320/markstar"
+    },
+    {
+      "design": "2hnu_flex_p11",
+      "job": "12827324_1",
+      "group": "compsci",
+      "after_job": "12827031_1",
+      "gpu_dependency": "NONE",
+      "prep": "/usr/xtmp/lz280/markstar_near14_20261006/launch_12827320/markstar"
+    },
+    {
+      "design": "3k3q_flex_p3",
+      "job": "12827325_2",
+      "group": "compsci",
+      "after_job": "12826674_9",
+      "gpu_dependency": "NONE",
+      "prep": "/usr/xtmp/lz280/markstar_near14_20261006/launch_12827320/markstar"
+    },
+    {
+      "design": "4znc_flex_p14",
+      "job": "12827326_3",
+      "group": "compsci",
+      "after_job": "12827030_0",
+      "gpu_dependency": "NONE",
+      "prep": "/usr/xtmp/lz280/markstar_near14_20261006/launch_12827320/markstar"
+    }
+  ],
+  "dcc_status": "NOT_APPLIED_REMOTELY",
+  "dcc_combined_concurrency": 6,
+  "local_lane_limit": 8,
+  "existing_jobs_modified": [],
+  "applied_utc": "2026-10-06T22:15:05.117170+00:00"
+}

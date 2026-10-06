@@ -16,6 +16,21 @@ High-potential continuation tiers supplement the primary targets; the low-value
 intermediate backlog stays deferred. Separate Slurm allocations cannot
 guarantee uninterrupted ownership of a node between tasks.
 
+## Latest append-only additions
+
+The subsequent [addition registry](../near14_20261006/README.md) preserves this
+phase's selected smaller queue and appends nine designs. All nine new PACK*
+measurements use GPU; 2p4a uses conservative p12 instead of the withdrawn p18.
+Four new local MARK* jobs follow existing lane tails. Five DCC additions extend
+the combined launch list to nineteen future entries and the new-definition
+handoff to nine entries; remote submission has not been performed here.
+The updated TSV files are the active lists. The phase-specific counts below
+describe the earlier fourteen-entry plan and its four new definitions.
+
+The user also confirmed `2xxm_flex_p1` completed in 6338 seconds with 20 rows,
+19 fully Estimated. The external snapshot now records 30 completed designs.
+This supersedes the unconfirmed p1 status described in the earlier audit below.
+
 ## DCC: adjust the existing queue
 
 **The DCC changes have not been applied by this repository update.** Read the

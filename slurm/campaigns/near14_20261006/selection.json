@@ -1,0 +1,31 @@
+{
+  "instruction": "Preserve completed and running work and the selected smaller queue; append higher targets. User subsequently chose conservative 2p4a p12 instead of p18, without a near-14-day forecast, and GPU PACK* for all nine additions.",
+  "scope": "The ten single-tier systems discussed on October 6; 4z80 is running and unchanged, leaving nine targets.",
+  "target_hours": 288,
+  "markstar_limit_hours": 336,
+  "runtime_interpretation": "Exploratory tier choices, not validated forecasts. A constant per-tier multiplier and historical-to-current scaling are sensitivity assumptions. Timeout histories supply lower bounds only. Branchwidth informs PACK* complexity, not a MARK* runtime predictor.",
+  "packstar_pairing_required": true,
+  "cpu_waits_for_gpu": false,
+  "preserve_running": true,
+  "same_cpu_model_per_system": true,
+  "systems": {
+    "1b6c": {"target": "1b6c_flex_p4", "retained_lower": "1b6c_flex_p2", "destination": "compsci", "historical_anchor_hours": 46.098283333333335, "assumed_old_to_current_factor": 4, "assumed_growth_per_tier": 4.720516874146364, "steps": 2, "confidence": "low", "reason": "Use the only same-CPU adjacent historical growth pair; add two positions rather than extrapolating across different CPU models. Both scaling and persistence of this growth remain unmeasured."},
+    "1gwc": {"target": "1gwc_flex_p4", "completed_anchor": "1gwc_flex_p1", "destination": "DCC", "current_anchor_hours": 3.556388888888889, "confidence": "low", "reason": "Historical p3 exceeded 336 hours on 16 CPUs. p4 adds one position above that timeout tier. No exact near-14-day forecast can be obtained from the timeout lower bound."},
+    "2hnu": {"target": "2hnu_flex_p11", "retained_lower": "2hnu_flex_p5", "destination": "compsci", "historical_anchor_hours": 28.948294444444446, "assumed_old_to_current_factor": 4, "assumed_growth_per_tier": 1.7679658379072947, "steps": 6, "confidence": "low", "reason": "Six tiers use the observed same-CPU p2-to-p3 multiplier; the six-position extrapolation is uncertain. The scan stays at branchwidth 7 through p11 and rises at p12."},
+    "2p4a": {"target": "2p4a_flex_p12", "retained_lower": "2p4a_flex_p9", "destination": "DCC", "historical_anchor_hours": 4.561761111111111, "steps": 3, "confidence": "no near-14-day runtime forecast", "role": "conservative_exploration", "pack_platform": "gpu", "reason": "User requested a conservative increase. Retain p9 and add three positions to p12. Scan branchwidth rises from 4 to 5, compared with 9 at the withdrawn p18. Neither branchwidth nor the mixed-hardware timing history predicts MARK* runtime. The former p18 assumption of a fourfold core speedup and constant 1.8-fold tier growth was not validated; p18 was only preflighted and never submitted."},
+    "2xxm": {"target": "2xxm_flex_p7", "completed_anchor": "2xxm_flex_p1", "destination": "DCC", "current_anchor_hours": 1.7605555555555557, "assumed_growth_per_tier": 2.3, "steps": 6, "confidence": "very low", "reason": "p1 completed in 6338 seconds. Six further positions target a multi-day workload using exploratory growth; mixed historical CPU models preclude a reliable per-tier fit. p7 has scan branchwidth 8."},
+    "3bu8": {"target": "3bu8_flex_p12", "completed_anchor": "3bu8_flex_p9", "destination": "DCC", "current_anchor_hours": 1.5086111111111111, "assumed_growth_per_tier": 5.6422948122281715, "steps": 3, "confidence": "low", "reason": "Use the latest same-CPU p9-to-p10 historical multiplier, applied to the measured current p9. Do not interpret mixed-hardware p10-to-p11 flattening as a same-CPU trend."},
+    "3k3q": {"target": "3k3q_flex_p3", "completed_anchor": "3k3q_flex_p0", "destination": "compsci", "current_anchor_hours": 19.839130555555553, "assumed_growth_per_tier": 2.5, "steps": 3, "confidence": "very low", "reason": "Only p0 has historical timing. Three added positions are an exploratory choice at 2.5-fold growth per position; no empirical within-system tier slope exists."},
+    "4kt6": {"target": "4kt6_flex_p4", "completed_anchor": "4kt6_flex_p1", "destination": "DCC", "current_anchor_hours": 8.652777777777779, "assumed_growth_per_tier": 3.1674473089709405, "steps": 3, "confidence": "low", "reason": "Use the same-CPU historical p0-to-p1 multiplier with the current measured p1 time. Keep the new task on p1's actual DCC CPU model."},
+    "4znc": {"target": "4znc_flex_p14", "retained_lower": "4znc_flex_p6", "destination": "compsci", "historical_anchor_hours": 74.16284722222223, "assumed_old_to_current_factor": 10, "assumed_growth_per_tier": 1.55, "steps": 8, "confidence": "very low", "reason": "p6 used an older E5 CPU, so applying only a fourfold CPU-count correction understates hardware changes. Use a 10-fold hardware-plus-core sensitivity and about 1.55 growth from recent same-EPYC adjacent tiers; both assumptions are uncertain over eight tiers."}
+  },
+  "external_correction": {
+    "design": "2xxm_flex_p1",
+    "status": "COMPLETED",
+    "elapsed_seconds": 6338,
+    "completed_at": "2026-10-06T15:27:31-04:00",
+    "result_rows": 20,
+    "fully_estimated_rows": 19,
+    "source": "User correction; supersedes the earlier not-started reply"
+  }
+}

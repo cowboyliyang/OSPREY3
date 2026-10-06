@@ -39,7 +39,7 @@ design_id	action	reported_status	requested_cpus	limit_hours	combined_concurrency
 2xgy_flex_m2	DEFER_UNSTARTED	PENDING_OR_NOT_BUILT	64	336	6	NONE	Use same actual CPU model as existing current-round same-system anchor; verify model before launch
 2xgy_flex_p0	KEEP_PRIMARY	PENDING_OR_NOT_BUILT	64	336	6	NONE	Use same actual CPU model as existing current-round same-system anchor; verify model before launch
 2xxm_flex_p0	DEFER_UNSTARTED	PENDING_OR_NOT_BUILT	64	336	6	NONE	Use same actual CPU model as existing current-round same-system anchor; verify model before launch
-2xxm_flex_p1	KEEP_PREVIOUSLY_STARTED_STATUS_UNCONFIRMED	PREVIOUSLY_STARTED_STATUS_UNCONFIRMED	64	336	6	NONE	Use same actual CPU model as existing current-round same-system anchor; verify model before launch
+2xxm_flex_p1	KEEP_COMPLETED	COMPLETED_USER_REPORT	64	336	6	NONE	Use same actual CPU model as existing current-round same-system anchor; verify model before launch
 3bu8_flex_p7	DEFER_UNSTARTED	PENDING_OR_NOT_BUILT	64	336	6	NONE	Use same actual CPU model as existing current-round same-system anchor; verify model before launch
 3bu8_flex_p8	DEFER_UNSTARTED	PENDING_OR_NOT_BUILT	64	336	6	NONE	Use same actual CPU model as existing current-round same-system anchor; verify model before launch
 3bu8_flex_p9	KEEP_COMPLETED	COMPLETED	64	336	6	NONE	Use same actual CPU model as existing current-round same-system anchor; verify model before launch
@@ -103,3 +103,8 @@ design_id	action	reported_status	requested_cpus	limit_hours	combined_concurrency
 5em2_flex_p5	KEEP_REPORTED_RUNNING	REPORTED_RUNNING	64	336	6	NONE	Use same actual CPU model as existing current-round same-system anchor; verify model before launch
 5em2_flex_p6	KEEP_COMPLETED	COMPLETED	64	336	6	NONE	Use same actual CPU model as existing current-round same-system anchor; verify model before launch
 5it3_flex_p7	KEEP_COMPLETED	COMPLETED	64	336	6	NONE	Use same actual CPU model as existing current-round same-system anchor; verify model before launch
+1gwc_flex_p4	APPEND_EXPLORATORY_ADDITION	HANDOFF_NOT_SUBMITTED_REMOTELY	64	336	6	NONE	Verify and use the actual CPU model of the current-round same-system anchor; do not infer from partition
+2p4a_flex_p12	APPEND_EXPLORATORY_ADDITION	HANDOFF_NOT_SUBMITTED_REMOTELY	64	336	6	NONE	Verify and use the actual CPU model of the current-round same-system anchor; do not infer from partition
+2xxm_flex_p7	APPEND_EXPLORATORY_ADDITION	HANDOFF_NOT_SUBMITTED_REMOTELY	64	336	6	NONE	Verify and use the actual CPU model of the current-round same-system anchor; do not infer from partition
+3bu8_flex_p12	APPEND_EXPLORATORY_ADDITION	HANDOFF_NOT_SUBMITTED_REMOTELY	64	336	6	NONE	Verify and use the actual CPU model of the current-round same-system anchor; do not infer from partition
+4kt6_flex_p4	APPEND_EXPLORATORY_ADDITION	HANDOFF_NOT_SUBMITTED_REMOTELY	64	336	6	NONE	Verify and use the actual CPU model of the current-round same-system anchor; do not infer from partition

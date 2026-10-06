@@ -32,18 +32,28 @@
     "2rfd_flex_p1": 14592,
     "2rfe_flex_p0": 10974,
     "3eb6_flex_p4": 7731,
-    "3bu8_flex_p9": 5431
+    "3bu8_flex_p9": 5431,
+    "2xxm_flex_p1": 6338
   },
   "running_elapsed_seconds_approx": {
     "2rl0_flex_m1": 4500,
     "5em2_flex_p4": 2640,
     "5em2_flex_p5": 60
   },
-  "reported_completed_count": 29,
+  "reported_completed_count": 30,
   "reported_total_count": 82,
   "known_completed_job": {
     "4hem_flex_p1": "57713739_26"
   },
   "replacement_running_designs_known": true,
-  "additional_nine_submission_confirmed": true
+  "additional_nine_submission_confirmed": true,
+  "completion_correction": {
+    "design": "2xxm_flex_p1",
+    "status": "COMPLETED",
+    "elapsed_seconds": 6338,
+    "completed_at": "2026-10-06T15:27:31-04:00",
+    "result_rows": 20,
+    "fully_estimated_rows": 19,
+    "source": "User correction; supersedes the earlier not-started reply"
+  }
 }

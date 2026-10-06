@@ -22,9 +22,7 @@
   "coverage_new": {
     "3bua_flex_m4": "dcc"
   },
-  "coverage_unconfirmed": {
-    "2xxm_flex_p1": "Confirm previously started task; retain 2xxm_flex_p3 as conditional fallback until coverage is confirmed."
-  },
+  "coverage_unconfirmed": {},
   "primary_targets": {
     "5d68_flex_p3": "compsci",
     "2rl0_flex_p3": "compsci",
@@ -56,20 +54,21 @@
     "PACK* timings inform interpretation and later tier choice, never block these queued CPU tasks.",
     "Retain compsci/fennario/DCC total limits of 8/4/6; preserve all started work.",
     "Keep high-potential continuation tiers queued after CPU predecessors; do not restore the low-value intermediate backlog.",
-    "October 16 remains a planning cutoff for a full 14-day observation by October 30, not a GPU-dependent runtime assertion."
+    "October 16 remains a planning cutoff for a full 14-day observation by October 30, not a GPU-dependent runtime assertion.",
+    "October 6 final revision: preserve the selected smaller queue; append nine designs, use GPU PACK* for all nine, and use conservative 2p4a p12 rather than p18."
   ],
   "user_scope": "All unstarted work can be reprioritized; all started work and completed results remain protected.",
   "snapshot_utc": "2026-10-06T20:00:00.243688+00:00",
   "dcc_counts": {
     "DEFER_UNSTARTED": 57,
-    "KEEP_COMPLETED": 29,
+    "KEEP_COMPLETED": 30,
     "KEEP_COVERAGE": 5,
     "PROPOSE_NEW_PRIMARY": 3,
     "KEEP_REPORTED_RUNNING": 3,
     "KEEP_PRIMARY": 1,
-    "KEEP_PREVIOUSLY_STARTED_STATUS_UNCONFIRMED": 1,
     "KEEP_CONTINUATION_RESERVE": 4,
-    "PROPOSE_NEW_COVERAGE": 1
+    "PROPOSE_NEW_COVERAGE": 1,
+    "APPEND_EXPLORATORY_ADDITION": 5
   },
   "local_adjustment": {
     "timestamp": "2026-10-06T19:46:27.506600+00:00",
@@ -325,8 +324,68 @@
     "4wyu_flex_p0",
     "3ma2_flex_p0",
     "2p4a_flex_p9",
-    "2xgy_flex_m1"
+    "2xgy_flex_m1",
+    "1gwc_flex_p4",
+    "2p4a_flex_p12",
+    "2xxm_flex_p7",
+    "3bu8_flex_p12",
+    "4kt6_flex_p4"
   ],
   "dcc_long_candidates": 8,
-  "dcc_short_or_unknown_coverage_fallbacks": 6
+  "dcc_short_or_unknown_coverage_fallbacks": 6,
+  "near14_additions": {
+    "registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/near14_20261006/registry.json",
+    "mode": "APPEND_ONLY_SMALLER_FIRST",
+    "designs": [
+      "1b6c_flex_p4",
+      "1gwc_flex_p4",
+      "2hnu_flex_p11",
+      "2p4a_flex_p12",
+      "2xxm_flex_p7",
+      "3bu8_flex_p12",
+      "3k3q_flex_p3",
+      "4kt6_flex_p4",
+      "4znc_flex_p14"
+    ],
+    "all_packstar_on_gpu": true,
+    "packstar_job": "12827321",
+    "local_markstar_jobs": [
+      {
+        "design": "1b6c_flex_p4",
+        "job": "12827323_0",
+        "group": "compsci",
+        "after_job": "12827032_2",
+        "gpu_dependency": "NONE",
+        "prep": "/usr/xtmp/lz280/markstar_near14_20261006/launch_12827320/markstar"
+      },
+      {
+        "design": "2hnu_flex_p11",
+        "job": "12827324_1",
+        "group": "compsci",
+        "after_job": "12827031_1",
+        "gpu_dependency": "NONE",
+        "prep": "/usr/xtmp/lz280/markstar_near14_20261006/launch_12827320/markstar"
+      },
+      {
+        "design": "3k3q_flex_p3",
+        "job": "12827325_2",
+        "group": "compsci",
+        "after_job": "12826674_9",
+        "gpu_dependency": "NONE",
+        "prep": "/usr/xtmp/lz280/markstar_near14_20261006/launch_12827320/markstar"
+      },
+      {
+        "design": "4znc_flex_p14",
+        "job": "12827326_3",
+        "group": "compsci",
+        "after_job": "12827030_0",
+        "gpu_dependency": "NONE",
+        "prep": "/usr/xtmp/lz280/markstar_near14_20261006/launch_12827320/markstar"
+      }
+    ],
+    "dcc_status": "HANDOFF_ONLY_NOT_APPLIED_REMOTELY",
+    "two_xxm_p1_completed": true,
+    "conservative_target": "2p4a_flex_p12",
+    "withdrawn_target": "2p4a_flex_p18"
+  }
 }
