@@ -165,7 +165,7 @@ protocol = dict(designs=10, systems=10, existing_designs_modified=False, source_
                 scheduling='One exclusive node allocation; ten sequential workloads; six hours total',
                 global_limit_seconds=21600, per_design_max_seconds=3600,
                 future_case_reserve_seconds=1200, shutdown_reserve_seconds=300,
-                markstar_status='New local tiers require a normal PACK* run of at most 30 minutes before automatic MARK* submission')
+                markstar_status='MARK* may start after input preflight, independently of PACK* measurements')
 (PACKAGE/'protocol.json').write_text(json.dumps(protocol, indent=2)+'\n')
 (ROOT/'verification.json').write_text(json.dumps(dict(preflight=audits, protocol=protocol, designs_sha256=digest(PACKAGE/'designs.tsv')), indent=2)+'\n')
 checks = [digest(p)+'  '+str(p.relative_to(PACKAGE)) for p in sorted(PACKAGE.rglob('*')) if p.is_file()]

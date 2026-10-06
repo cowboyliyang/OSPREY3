@@ -21,6 +21,7 @@ def write(p,rs):
             w.writerow(row)
 rows=read(Path('/usr/xtmp/lz280/markstar_deadline_proposal_12826811/design_actions.tsv'))
 registry=json.loads((here/'registry.json').read_text())
+assert 'cpu_continuation' not in registry, 'Initial inventory builder is superseded by the CPU continuation policy'
 registry.update(packstar_status='SUBMITTED',markstar_status='TWO_NEW_LOCAL_JOBS_SUBMITTED_WITH_PACKSTAR_GATE',
                 local_lane_limits=dict(compsci=8,fennario=4),dcc_concurrency=6)
 (here/'registry.json').write_text(json.dumps(registry,indent=2)+'\n')

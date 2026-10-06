@@ -14,6 +14,7 @@ assert os.environ.get('SLURM_JOB_ID')
 here=Path(__file__).parent
 repo=here.parents[2]
 registry=json.loads((here/'registry.json').read_text())
+assert 'cpu_continuation' not in registry, 'Initial gated launcher is superseded; do not replay'
 prep=Path(registry['prep_root'])
 assert (prep/'READY').exists()
 out=prep.parent/('launch_'+os.environ['SLURM_JOB_ID']);out.mkdir(exist_ok=False)

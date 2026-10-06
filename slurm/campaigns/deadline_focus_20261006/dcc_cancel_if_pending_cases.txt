@@ -20,7 +20,6 @@
 3bu8_flex_p7
 3bu8_flex_p8
 3bua_flex_m1
-3bua_flex_m2
 3eb6_flex_p3
 3gxu_flex_p0
 3gxu_flex_p1
@@ -31,16 +30,13 @@
 3gxu_flex_p6
 3gxu_flex_p7
 3gxu_flex_p8
-3ma2_flex_p1
 3u7y_flex_p0
 3u7y_flex_p2
 4kt6_flex_p0
 4wem_flex_p6
 4wem_flex_p7
 4wem_flex_p8
-4wwi_flex_p2
 4wwi_flex_p3
-4wyu_flex_p1
 4z80_flex_m1
 4z80_flex_m2
 4znc_flex_p0

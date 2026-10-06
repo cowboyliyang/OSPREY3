@@ -1,3 +1,3 @@
-design	job	group	after_job	screening_job	gate
-4wem_flex_p12	12826957_0	fennario	12812439_2	12826950	PACK* normal completion <=1800 seconds; start by October 16
-3eb6_flex_p7	12826958_0	compsci	12812439_26	12826950	PACK* normal completion <=1800 seconds; start by October 16
+design	job	group	after_job	replaced_or_previous_job	role	gpu_dependency	prep
+4wem_flex_p12	12827029_0	fennario	12812439_2	12826957_0	PRIMARY_NO_GPU_GATE	NONE	/usr/xtmp/lz280/markstar_deadline_focus_20261006/cpu_continuation_12827027
+3eb6_flex_p7	12827030_0	compsci	12812439_26	12826958_0	PRIMARY_NO_GPU_GATE	NONE	/usr/xtmp/lz280/markstar_deadline_focus_20261006/cpu_continuation_12827027

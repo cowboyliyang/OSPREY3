@@ -1,5 +1,5 @@
 {
-  "status": "LOCAL_APPLIED_DCC_HANDOFF_NOT_YET_APPLIED",
+  "status": "CPU_CONTINUATION_LOCAL_APPLIED_DCC_HANDOFF_PENDING",
   "deadline": "2026-11-04",
   "data_freeze": "2026-10-30",
   "latest_start_for_full_14_days": "2026-10-16",
@@ -41,14 +41,7 @@
     "5dc0_flex_p10": "dcc",
     "2xgy_flex_p0": "dcc"
   },
-  "conditional_reserve_existing": {
-    "1a0r_flex_p0": "compsci",
-    "4wyq_flex_p3": "compsci",
-    "4wyu_flex_p1": "dcc",
-    "3bua_flex_m2": "dcc",
-    "3ma2_flex_p1": "dcc",
-    "4wwi_flex_p2": "dcc"
-  },
+  "conditional_reserve_existing": {},
   "rules": [
     "All completed and running designs remain protected, including low speedup results.",
     "Previously started but unconfirmed designs are protected until checked.",
@@ -56,13 +49,14 @@
     "Recheck live pending state before any implementation; skip any task that has started since this plan snapshot.",
     "For a system without a completed 64-CPU design, retain at least one lower-tier fallback until coverage is achieved.",
     "3bua m4 is a proposed lower-tier design, not a guaranteed completion; use an early short pilot and reduce further if necessary.",
-    "Measure new PACK* tiers and check sequence/status compatibility before spending a long MARK* slot.",
-    "Prefer PACK* under 20 minutes; beyond 30 minutes launch only with strong evidence for a large ratio.",
     "Use measured current MARK* / measured current PACK* for speedup, and elapsed / PACK* only as a labelled lower bound for timeouts.",
     "Pin all newly scheduled tiers of each system to a single actual CPU model; keep hardware details with existing heterogeneous results.",
     "New 3gxu and 2q1e tiers may move to DCC because their local cases have not started; preserve all existing running jobs.",
-    "One primary long target per system at a time; reserves launch only after coverage and GPU measurements support them.",
-    "After October 16 do not launch a new job that needs a full 14-day observation before the October 30 data freeze."
+    "User prioritizes continuous useful CPU work; launch preflighted MARK* independently of GPU timings.",
+    "PACK* timings inform interpretation and later tier choice, never block these queued CPU tasks.",
+    "Retain compsci/fennario/DCC total limits of 8/4/6; preserve all started work.",
+    "Keep high-potential continuation tiers queued after CPU predecessors; do not restore the low-value intermediate backlog.",
+    "October 16 remains a planning cutoff for a full 14-day observation by October 30, not a GPU-dependent runtime assertion."
   ],
   "user_scope": "All unstarted work can be reprioritized; all started work and completed results remain protected.",
   "snapshot_utc": "2026-10-06T20:00:00.243688+00:00",
@@ -74,7 +68,7 @@
     "KEEP_REPORTED_RUNNING": 3,
     "KEEP_PRIMARY": 1,
     "KEEP_PREVIOUSLY_STARTED_STATUS_UNCONFIRMED": 1,
-    "DEFER_CONDITIONAL_RESERVE": 4,
+    "KEEP_CONTINUATION_RESERVE": 4,
     "PROPOSE_NEW_COVERAGE": 1
   },
   "local_adjustment": {
@@ -175,5 +169,164 @@
     "new_tiers_status": "NOT_YET_PREPARED",
     "remote_status": "HANDOFF_REQUIRED_NO_REMOTE_MUTATION"
   },
-  "local_submission_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/deadline_focus_20261006/registry.json"
+  "local_submission_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/deadline_focus_20261006/registry.json",
+  "gpu_precondition": false,
+  "cpu_continuation": {
+    "applied_utc": "2026-10-06T20:10:46.281452+00:00",
+    "audit": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/cpu_continuation_12827027",
+    "gpu_dependency": null,
+    "local_submitted": [
+      {
+        "design": "4wem_flex_p12",
+        "job": "12827029_0",
+        "group": "fennario",
+        "after_job": "12812439_2",
+        "replaced_or_previous_job": "12826957_0",
+        "role": "PRIMARY_NO_GPU_GATE",
+        "gpu_dependency": "NONE",
+        "prep": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/cpu_continuation_12827027"
+      },
+      {
+        "design": "3eb6_flex_p7",
+        "job": "12827030_0",
+        "group": "compsci",
+        "after_job": "12812439_26",
+        "replaced_or_previous_job": "12826958_0",
+        "role": "PRIMARY_NO_GPU_GATE",
+        "gpu_dependency": "NONE",
+        "prep": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/cpu_continuation_12827027"
+      },
+      {
+        "design": "1a0r_flex_p0",
+        "job": "12827031_1",
+        "group": "compsci",
+        "after_job": "12812439_52",
+        "replaced_or_previous_job": "12826674_6",
+        "role": "CONTINUATION_RESERVE",
+        "gpu_dependency": "NONE",
+        "prep": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/cpu_continuation_12827027"
+      },
+      {
+        "design": "4wyq_flex_p3",
+        "job": "12827032_2",
+        "group": "compsci",
+        "after_job": "12812439_41",
+        "replaced_or_previous_job": "12826674_4",
+        "role": "CONTINUATION_RESERVE",
+        "gpu_dependency": "NONE",
+        "prep": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/cpu_continuation_12827027"
+      },
+      {
+        "design": "2rl0_flex_p4",
+        "job": "12827033_3",
+        "group": "compsci",
+        "after_job": "12826674_1",
+        "replaced_or_previous_job": "12826674_2",
+        "role": "CONTINUATION_RESERVE",
+        "gpu_dependency": "NONE",
+        "prep": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/cpu_continuation_12827027"
+      },
+      {
+        "design": "3cal_flex_p5",
+        "job": "12827034_4",
+        "group": "compsci",
+        "after_job": "12826674_7",
+        "replaced_or_previous_job": "12826674_8",
+        "role": "CONTINUATION_RESERVE",
+        "gpu_dependency": "NONE",
+        "prep": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/cpu_continuation_12827027"
+      },
+      {
+        "design": "4u3s_flex_p2",
+        "job": "12827035_1",
+        "group": "fennario",
+        "after_job": "12826673_0",
+        "replaced_or_previous_job": "12826673_2",
+        "role": "CONTINUATION_RESERVE",
+        "gpu_dependency": "NONE",
+        "prep": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/cpu_continuation_12827027"
+      }
+    ],
+    "retired_gpu_gated_jobs": [
+      "12826957_0",
+      "12826958_0"
+    ],
+    "added_local_reserves": 5,
+    "added_dcc_reserves": [
+      "3bua_flex_m2",
+      "3ma2_flex_p1",
+      "4wwi_flex_p2",
+      "4wyu_flex_p1"
+    ],
+    "dcc_retained_existing_pending": 10,
+    "dcc_cancel_if_pending": 57,
+    "dcc_new": 4,
+    "protected_running_snapshot": [
+      "12812439_0",
+      "12812439_1",
+      "12812439_11",
+      "12812439_12",
+      "12812439_13",
+      "12812439_2",
+      "12812439_3",
+      "12812439_4",
+      "12812439_5",
+      "12812439_7",
+      "12812439_8",
+      "12812439_9",
+      "12814879",
+      "12825151",
+      "12825152",
+      "12825505",
+      "12826556_192",
+      "12826556_194",
+      "12826556_196",
+      "12826556_198",
+      "12826556_200",
+      "12826556_202",
+      "12826556_204",
+      "12826556_206",
+      "12826556_208",
+      "12826556_212",
+      "12826556_214",
+      "12826556_216",
+      "12826556_218",
+      "12826556_220",
+      "12826556_222",
+      "12826556_224",
+      "12826556_226",
+      "12826556_228",
+      "12826556_230",
+      "12826556_232",
+      "12826557_101",
+      "12826557_103",
+      "12826557_105",
+      "12826557_107",
+      "12826557_113",
+      "12826557_115",
+      "12826557_119",
+      "12826557_121",
+      "12827027"
+    ],
+    "scheduler_limitation": "Dependencies prepare successors; Slurm cannot guarantee uninterrupted ownership across separate allocations."
+  },
+  "dcc_launch_strategy": "LONG_FIRST_KEEP_SIX_CPU_JOBS_NO_GPU_WAIT",
+  "dcc_launch_priority": [
+    "3gxu_flex_p12",
+    "2q1e_flex_p6",
+    "5dc0_flex_p10",
+    "2xgy_flex_p0",
+    "4wyu_flex_p1",
+    "3bua_flex_m2",
+    "4wwi_flex_p2",
+    "3ma2_flex_p1",
+    "3bua_flex_m4",
+    "4wwi_flex_p1",
+    "4wyu_flex_p0",
+    "3ma2_flex_p0",
+    "2p4a_flex_p9",
+    "2xgy_flex_m1"
+  ],
+  "dcc_long_candidates": 8,
+  "dcc_short_or_unknown_coverage_fallbacks": 6
 }

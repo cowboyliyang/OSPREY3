@@ -1,0 +1,34 @@
+{
+  "verification_job": "12827063",
+  "local_future_designs": 18,
+  "by_cluster": {
+    "compsci": 13,
+    "fennario": 5
+  },
+  "lane_caps": {
+    "fennario": 4,
+    "compsci": 8
+  },
+  "all_active_future_jobs_request_64_cpus": true,
+  "frozen_runner_has_no_gpu_gate": true,
+  "dcc_gpu_gates_removed": true,
+  "dcc_existing_pending_keep": 10,
+  "dcc_cancel_candidates": 57,
+  "dcc_new": 4,
+  "dcc_long_candidates_first": 8,
+  "dcc_fallbacks_after_long_queue": 6,
+  "current_running_roots": [
+    "12812439_0",
+    "12812439_1",
+    "12812439_2",
+    "12812439_3",
+    "12812439_4",
+    "12812439_5",
+    "12812439_7",
+    "12812439_8",
+    "12812439_9",
+    "12812439_11",
+    "12812439_12",
+    "12812439_13"
+  ]
+}
