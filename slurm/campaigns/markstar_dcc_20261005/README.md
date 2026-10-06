@@ -1,5 +1,11 @@
 # MARK* DCC assignment, updated 2026-10-06
 
+**Pending launch policy superseded:** use
+[`../deadline_focus_20261006/README.md`](../deadline_focus_20261006/README.md).
+The user now authorizes pruning all unstarted tasks. Preserve all started
+tasks and existing array indices. The lists below retain historical assignment
+provenance and are no longer instructions to launch the entire backlog.
+
 Assign 92 design workloads to DCC and retain 47 locally. The original split
 was 82/57; the first October 6 update transferred nine unstarted local designs
 to DCC, and the second adds the pending `4wwi_flex_p1` handoff.

@@ -1,0 +1,98 @@
+{
+  "timestamp": "2026-10-06T19:46:27.506600+00:00",
+  "audit": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/apply_12826891",
+  "user_scope": "Only started work is protected; unstarted work on all clusters is reprioritized.",
+  "running_before": 12,
+  "pending_before": 50,
+  "retired_pending": 38,
+  "kept_pending": [
+    {
+      "job": "12812439_52",
+      "design": "2hnu_flex_p5",
+      "action": "KEEP_PENDING",
+      "before": "PENDING",
+      "after": "PENDING"
+    },
+    {
+      "job": "12812439_41",
+      "design": "1b6c_flex_p2",
+      "action": "KEEP_PENDING",
+      "before": "PENDING",
+      "after": "PENDING"
+    },
+    {
+      "job": "12812439_26",
+      "design": "4znc_flex_p6",
+      "action": "KEEP_PENDING",
+      "before": "PENDING",
+      "after": "PENDING"
+    },
+    {
+      "job": "12826674_0",
+      "design": "5d68_flex_p3",
+      "action": "KEEP_PENDING",
+      "before": "PENDING",
+      "after": "PENDING"
+    },
+    {
+      "job": "12826674_1",
+      "design": "2rl0_flex_p3",
+      "action": "KEEP_PENDING",
+      "before": "PENDING",
+      "after": "PENDING"
+    },
+    {
+      "job": "12826674_3",
+      "design": "5a6y_flex_p2",
+      "action": "KEEP_PENDING",
+      "before": "PENDING",
+      "after": "PENDING"
+    },
+    {
+      "job": "12826674_7",
+      "design": "3cal_flex_p4",
+      "action": "KEEP_PENDING",
+      "before": "PENDING",
+      "after": "PENDING"
+    },
+    {
+      "job": "12826674_9",
+      "design": "4pxf_flex_p6",
+      "action": "KEEP_PENDING",
+      "before": "PENDING",
+      "after": "PENDING"
+    },
+    {
+      "job": "12826673_0",
+      "design": "4u3s_flex_p1",
+      "action": "KEEP_PENDING",
+      "before": "PENDING",
+      "after": "PENDING"
+    },
+    {
+      "job": "12826673_3",
+      "design": "5dc4_flex_p6",
+      "action": "KEEP_PENDING",
+      "before": "PENDING",
+      "after": "PENDING"
+    },
+    {
+      "job": "12826673_4",
+      "design": "5it3_flex_p10",
+      "action": "KEEP_PENDING",
+      "before": "PENDING",
+      "after": "PENDING"
+    }
+  ],
+  "held_fallback": [
+    {
+      "job": "12812439_43",
+      "design": "2xxm_flex_p3",
+      "action": "HOLD_COVERAGE_FALLBACK",
+      "before": "PENDING",
+      "after": "PENDING"
+    }
+  ],
+  "new_tiers_status": "NOT_YET_PREPARED",
+  "remote_status": "HANDOFF_REQUIRED_NO_REMOTE_MUTATION"
+}

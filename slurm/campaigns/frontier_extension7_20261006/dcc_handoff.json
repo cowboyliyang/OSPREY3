@@ -1,6 +1,6 @@
 {
   "date": "2026-10-06",
-  "status": "AWAITING_DCC_SUBMISSION",
+  "status": "SUBMISSION_CONFIRMED_BY_USER_SUBSEQUENT_PENDING_REPLAN",
   "user_instruction": "Push the manifest for remote submission as before",
   "designs": [
     "4wwi_flex_p1",
@@ -23,11 +23,12 @@
   "held_local_copy": {
     "design": "4wwi_flex_p1",
     "job": "12812439_24",
-    "status": "PENDING_HELD"
+    "status": "CANCELLED_PENDING_DUPLICATE_AFTER_ACCEPTANCE"
   },
   "previously_transferred_nine": "Already externally submitted; do not repeat",
   "retire_local_copy_only_after_external_acceptance": true,
   "cpu_model_rule": "Keep all newly launched tiers of each system on one actual CPU model",
   "frozen_input_package": "/usr/xtmp/lz280/frontier_extension7_20261006/markstar_prep_12826665/package",
-  "launch_audit": "/usr/xtmp/lz280/frontier_extension7_20261006/markstar_launch_12826672"
+  "launch_audit": "/usr/xtmp/lz280/frontier_extension7_20261006/markstar_launch_12826672",
+  "superseded_by": "../deadline_focus_20261006/README.md"
 }

@@ -1,0 +1,179 @@
+{
+  "status": "LOCAL_APPLIED_DCC_HANDOFF_NOT_YET_APPLIED",
+  "deadline": "2026-11-04",
+  "data_freeze": "2026-10-30",
+  "latest_start_for_full_14_days": "2026-10-16",
+  "coverage": "At least one completed current-round 64-CPU MARK* design per system, elapsed strictly under 336 hours; approaching 14 days is a preference, not a reason to sacrifice coverage.",
+  "slots": {
+    "compsci": 8,
+    "fennario": 4,
+    "dcc": 6
+  },
+  "coverage_pending": {
+    "1b6c_flex_p2": "compsci",
+    "2hnu_flex_p5": "compsci",
+    "2p4a_flex_p9": "dcc",
+    "2xgy_flex_m1": "dcc",
+    "3ma2_flex_p0": "dcc",
+    "4wwi_flex_p1": "dcc",
+    "4wyu_flex_p0": "dcc",
+    "4znc_flex_p6": "compsci"
+  },
+  "coverage_new": {
+    "3bua_flex_m4": "dcc"
+  },
+  "coverage_unconfirmed": {
+    "2xxm_flex_p1": "Confirm previously started task; retain 2xxm_flex_p3 as conditional fallback until coverage is confirmed."
+  },
+  "primary_targets": {
+    "5d68_flex_p3": "compsci",
+    "2rl0_flex_p3": "compsci",
+    "4pxf_flex_p6": "compsci",
+    "5a6y_flex_p2": "compsci",
+    "3cal_flex_p4": "compsci",
+    "3eb6_flex_p7": "compsci",
+    "5it3_flex_p10": "fennario",
+    "4u3s_flex_p1": "fennario",
+    "4wem_flex_p12": "fennario",
+    "5dc4_flex_p6": "fennario",
+    "3gxu_flex_p12": "dcc",
+    "2q1e_flex_p6": "dcc",
+    "5dc0_flex_p10": "dcc",
+    "2xgy_flex_p0": "dcc"
+  },
+  "conditional_reserve_existing": {
+    "1a0r_flex_p0": "compsci",
+    "4wyq_flex_p3": "compsci",
+    "4wyu_flex_p1": "dcc",
+    "3bua_flex_m2": "dcc",
+    "3ma2_flex_p1": "dcc",
+    "4wwi_flex_p2": "dcc"
+  },
+  "rules": [
+    "All completed and running designs remain protected, including low speedup results.",
+    "Previously started but unconfirmed designs are protected until checked.",
+    "Defer means remove from automatic launch order; retain configurations, results and rollback manifests.",
+    "Recheck live pending state before any implementation; skip any task that has started since this plan snapshot.",
+    "For a system without a completed 64-CPU design, retain at least one lower-tier fallback until coverage is achieved.",
+    "3bua m4 is a proposed lower-tier design, not a guaranteed completion; use an early short pilot and reduce further if necessary.",
+    "Measure new PACK* tiers and check sequence/status compatibility before spending a long MARK* slot.",
+    "Prefer PACK* under 20 minutes; beyond 30 minutes launch only with strong evidence for a large ratio.",
+    "Use measured current MARK* / measured current PACK* for speedup, and elapsed / PACK* only as a labelled lower bound for timeouts.",
+    "Pin all newly scheduled tiers of each system to a single actual CPU model; keep hardware details with existing heterogeneous results.",
+    "New 3gxu and 2q1e tiers may move to DCC because their local cases have not started; preserve all existing running jobs.",
+    "One primary long target per system at a time; reserves launch only after coverage and GPU measurements support them.",
+    "After October 16 do not launch a new job that needs a full 14-day observation before the October 30 data freeze."
+  ],
+  "user_scope": "All unstarted work can be reprioritized; all started work and completed results remain protected.",
+  "snapshot_utc": "2026-10-06T19:57:06.208971+00:00",
+  "dcc_counts": {
+    "DEFER_UNSTARTED": 57,
+    "KEEP_COMPLETED": 29,
+    "KEEP_COVERAGE": 5,
+    "PROPOSE_NEW_PRIMARY": 3,
+    "KEEP_REPORTED_RUNNING": 3,
+    "KEEP_PRIMARY": 1,
+    "KEEP_PREVIOUSLY_STARTED_STATUS_UNCONFIRMED": 1,
+    "DEFER_CONDITIONAL_RESERVE": 4,
+    "PROPOSE_NEW_COVERAGE": 1
+  },
+  "local_adjustment": {
+    "timestamp": "2026-10-06T19:46:27.506600+00:00",
+    "audit": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/apply_12826891",
+    "user_scope": "Only started work is protected; unstarted work on all clusters is reprioritized.",
+    "running_before": 12,
+    "pending_before": 50,
+    "retired_pending": 38,
+    "kept_pending": [
+      {
+        "job": "12812439_52",
+        "design": "2hnu_flex_p5",
+        "action": "KEEP_PENDING",
+        "before": "PENDING",
+        "after": "PENDING"
+      },
+      {
+        "job": "12812439_41",
+        "design": "1b6c_flex_p2",
+        "action": "KEEP_PENDING",
+        "before": "PENDING",
+        "after": "PENDING"
+      },
+      {
+        "job": "12812439_26",
+        "design": "4znc_flex_p6",
+        "action": "KEEP_PENDING",
+        "before": "PENDING",
+        "after": "PENDING"
+      },
+      {
+        "job": "12826674_0",
+        "design": "5d68_flex_p3",
+        "action": "KEEP_PENDING",
+        "before": "PENDING",
+        "after": "PENDING"
+      },
+      {
+        "job": "12826674_1",
+        "design": "2rl0_flex_p3",
+        "action": "KEEP_PENDING",
+        "before": "PENDING",
+        "after": "PENDING"
+      },
+      {
+        "job": "12826674_3",
+        "design": "5a6y_flex_p2",
+        "action": "KEEP_PENDING",
+        "before": "PENDING",
+        "after": "PENDING"
+      },
+      {
+        "job": "12826674_7",
+        "design": "3cal_flex_p4",
+        "action": "KEEP_PENDING",
+        "before": "PENDING",
+        "after": "PENDING"
+      },
+      {
+        "job": "12826674_9",
+        "design": "4pxf_flex_p6",
+        "action": "KEEP_PENDING",
+        "before": "PENDING",
+        "after": "PENDING"
+      },
+      {
+        "job": "12826673_0",
+        "design": "4u3s_flex_p1",
+        "action": "KEEP_PENDING",
+        "before": "PENDING",
+        "after": "PENDING"
+      },
+      {
+        "job": "12826673_3",
+        "design": "5dc4_flex_p6",
+        "action": "KEEP_PENDING",
+        "before": "PENDING",
+        "after": "PENDING"
+      },
+      {
+        "job": "12826673_4",
+        "design": "5it3_flex_p10",
+        "action": "KEEP_PENDING",
+        "before": "PENDING",
+        "after": "PENDING"
+      }
+    ],
+    "held_fallback": [
+      {
+        "job": "12812439_43",
+        "design": "2xxm_flex_p3",
+        "action": "HOLD_COVERAGE_FALLBACK",
+        "before": "PENDING",
+        "after": "PENDING"
+      }
+    ],
+    "new_tiers_status": "NOT_YET_PREPARED",
+    "remote_status": "HANDOFF_REQUIRED_NO_REMOTE_MUTATION"
+  },
+  "local_submission_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/deadline_focus_20261006/registry.json"
+}

@@ -1,0 +1,11 @@
+design_id	system	flex_delta	anchor_design	destination	kind
+3gxu_flex_p12	3gxu	12	3gxu_flex_p10	DCC	primary
+2q1e_flex_p6	2q1e	6	2q1e_flex_p4	DCC	primary
+5dc0_flex_p10	5dc0	10	5dc0_flex_p7	DCC	primary
+4wem_flex_p12	4wem	12	4wem_flex_p10	fennario	primary
+3eb6_flex_p7	3eb6	7	3eb6_flex_p6	compsci	primary
+3bua_flex_m4	3bua	-4	3bua_flex_m2	DCC	coverage
+5d68_flex_p3	5d68	3	5d68_flex_p2	compsci	retained_extension
+4u3s_flex_p1	4u3s	1	4u3s_flex_p0	fennario	retained_extension
+2rl0_flex_p3	2rl0	3	2rl0_flex_p2	compsci	retained_extension
+5dc4_flex_p6	5dc4	6	5dc4_flex_p4	fennario	retained_extension

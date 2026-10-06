@@ -1,5 +1,13 @@
 # Seven new frontier designs and MARK* launch
 
+**Current execution policy:**
+[`../deadline_focus_20261006/README.md`](../deadline_focus_20261006/README.md)
+supersedes pending work in this campaign. Selected unstarted MARK* tasks were
+cancelled, and pending PACK* job 12826506 was replaced by grouped job 12826949.
+The user confirmed the DCC nine-case submission and subsequently authorized
+pruning unstarted remote tasks. Preserve running work; do not resubmit these
+historical full lists. The sections below document the earlier launch.
+
 ## Current submission status
 
 Local MARK* is submitted: **12826673** contains five fennario designs (two

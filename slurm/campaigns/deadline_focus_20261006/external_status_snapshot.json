@@ -1,0 +1,49 @@
+{
+  "source": "User-reported status of external MARKSTAR array 57713739 on 2026-10-06",
+  "array": 57713739,
+  "cpus_per_task": 64,
+  "concurrency": 6,
+  "completed_seconds": {
+    "2rfe_flex_p1": 37823,
+    "4kt6_flex_p1": 31150,
+    "2rfd_flex_p4": 48734,
+    "5em2_flex_p6": 24319,
+    "2rfd_flex_p3": 22151,
+    "4wyq_flex_p0": 18326,
+    "4hem_flex_p2": 15164,
+    "2q1e_flex_p3": 11804,
+    "4wem_flex_p9": 19945,
+    "3gxu_flex_p9": 9269,
+    "3u7y_flex_p3": 8569,
+    "2rf9_flex_p9": 34687,
+    "2rl0_flex_p0": 24605,
+    "2rf9_flex_p8": 17997,
+    "5it3_flex_p7": 8234,
+    "5dc4_flex_p0": 4180,
+    "2q2a_flex_p2": 20420,
+    "5dc0_flex_p4": 15768,
+    "1gwc_flex_p1": 12803,
+    "2hnv_flex_p3": 7955,
+    "2rf9_flex_p7": 6510,
+    "2q2a_flex_p1": 19598,
+    "2rfd_flex_p2": 15805,
+    "4hem_flex_p1": 8144,
+    "2hnv_flex_p4": 17659,
+    "2rfd_flex_p1": 14592,
+    "2rfe_flex_p0": 10974,
+    "3eb6_flex_p4": 7731,
+    "3bu8_flex_p9": 5431
+  },
+  "running_elapsed_seconds_approx": {
+    "2rl0_flex_m1": 4500,
+    "5em2_flex_p4": 2640,
+    "5em2_flex_p5": 60
+  },
+  "reported_completed_count": 29,
+  "reported_total_count": 82,
+  "known_completed_job": {
+    "4hem_flex_p1": "57713739_26"
+  },
+  "replacement_running_designs_known": true,
+  "additional_nine_submission_confirmed": true
+}
