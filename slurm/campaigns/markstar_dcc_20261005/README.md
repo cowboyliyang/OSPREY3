@@ -34,10 +34,12 @@ array and additions at six; two independent arrays capped at six each would
 exceed that limit. Waiting for the original array to finish before starting
 the additions is also valid.
 
-The nine local tasks are held for handoff so they do not start duplicate
-work. They have not been cancelled. After DCC acceptance is confirmed, retire
-the held local copies. Keep newly transferred tiers of each system on one CPU
-model and record actual CPU topology and binding.
+The user confirmed DCC submission of all nine additions on October 6, with
+no newly completed designs. The nine held local duplicate tasks were then
+cancelled after verifying that each was still pending and held. Running
+workloads were preserved. External job IDs have not been supplied. Keep
+newly transferred tiers of each system on one CPU model and record actual
+CPU topology and binding.
 
 The active local array `12812439` reads its original frozen manifest outside
 this repository. Do not replace that manifest or renumber its task indices.

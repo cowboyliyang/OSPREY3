@@ -1,0 +1,74 @@
+{
+  "prep_job": "12826503",
+  "prep_root": "/usr/xtmp/lz280/frontier_extension7_20261006/prep_12826503",
+  "package": "/usr/xtmp/lz280/frontier_extension7_20261006/prep_12826503/package",
+  "design_count": 7,
+  "designs_sha256": "c60577f7df9dfd14687b77bb8a7745f93b7934f16534bebeba3ac463abfc1210",
+  "verification": [
+    {
+      "design_id": "5d68_flex_p3",
+      "positions": 15,
+      "sequences": 20,
+      "anchor_sequences_identical": true,
+      "mark_preflight": "PASS",
+      "pack_preflight": "PASS"
+    },
+    {
+      "design_id": "4u3s_flex_p1",
+      "positions": 14,
+      "sequences": 39,
+      "anchor_sequences_identical": true,
+      "mark_preflight": "PASS",
+      "pack_preflight": "PASS"
+    },
+    {
+      "design_id": "2rl0_flex_p3",
+      "positions": 16,
+      "sequences": 20,
+      "anchor_sequences_identical": true,
+      "mark_preflight": "PASS",
+      "pack_preflight": "PASS"
+    },
+    {
+      "design_id": "5dc4_flex_p5",
+      "positions": 16,
+      "sequences": 39,
+      "anchor_sequences_identical": true,
+      "mark_preflight": "PASS",
+      "pack_preflight": "PASS"
+    },
+    {
+      "design_id": "4u3s_flex_p2",
+      "positions": 15,
+      "sequences": 39,
+      "anchor_sequences_identical": true,
+      "mark_preflight": "PASS",
+      "pack_preflight": "PASS"
+    },
+    {
+      "design_id": "2rl0_flex_p4",
+      "positions": 17,
+      "sequences": 20,
+      "anchor_sequences_identical": true,
+      "mark_preflight": "PASS",
+      "pack_preflight": "PASS"
+    },
+    {
+      "design_id": "5dc4_flex_p6",
+      "positions": 17,
+      "sequences": 39,
+      "anchor_sequences_identical": true,
+      "mark_preflight": "PASS",
+      "pack_preflight": "PASS"
+    }
+  ],
+  "packstar_status": "SUBMITTED",
+  "markstar_status": "PLAN_ONLY",
+  "packstar_job": "12826506",
+  "packstar_limit_hours": 6,
+  "packstar_grouped": true,
+  "packstar_cpus": 128,
+  "packstar_gpus": 4,
+  "packstar_output": "/usr/xtmp/lz280/frontier_extension7_20261006/run_12826506",
+  "markstar_plan": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/frontier_extension7_20261006/markstar_plan.json"
+}

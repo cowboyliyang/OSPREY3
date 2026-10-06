@@ -1,0 +1,178 @@
+{
+  "snapshot_epoch": 1791311541.7623944,
+  "status": "PLAN_ONLY",
+  "new_tiers": 7,
+  "previous_noncompletion": 17,
+  "total": 24,
+  "slots": {
+    "compsci": 8,
+    "fennario": 4,
+    "DCC": 6
+  },
+  "node_slots": [
+    {
+      "node": "compsci-cluster-fitz-35",
+      "group": "compsci",
+      "slots_including_own_running": 0,
+      "other_cpu_allocation": 128
+    },
+    {
+      "node": "compsci-cluster-fitz-36",
+      "group": "compsci",
+      "slots_including_own_running": 1,
+      "other_cpu_allocation": 62
+    },
+    {
+      "node": "compsci-cluster-fitz-37",
+      "group": "compsci",
+      "slots_including_own_running": 1,
+      "other_cpu_allocation": 48
+    },
+    {
+      "node": "compsci-cluster-fitz-38",
+      "group": "compsci",
+      "slots_including_own_running": 1,
+      "other_cpu_allocation": 64
+    },
+    {
+      "node": "compsci-cluster-fitz-39",
+      "group": "compsci",
+      "slots_including_own_running": 1,
+      "other_cpu_allocation": 16
+    },
+    {
+      "node": "compsci-cluster-fitz-40",
+      "group": "compsci",
+      "slots_including_own_running": 0,
+      "other_cpu_allocation": 66
+    },
+    {
+      "node": "compsci-cluster-fitz-41",
+      "group": "compsci",
+      "slots_including_own_running": 1,
+      "other_cpu_allocation": 32
+    },
+    {
+      "node": "compsci-cluster-fitz-42",
+      "group": "compsci",
+      "slots_including_own_running": 1,
+      "other_cpu_allocation": 48
+    },
+    {
+      "node": "compsci-cluster-fitz-43",
+      "group": "compsci",
+      "slots_including_own_running": 1,
+      "other_cpu_allocation": 34
+    },
+    {
+      "node": "compsci-cluster-fitz-44",
+      "group": "compsci",
+      "slots_including_own_running": 1,
+      "other_cpu_allocation": 22
+    },
+    {
+      "node": "fennario-01",
+      "group": "fennario",
+      "slots_including_own_running": 0,
+      "other_cpu_allocation": 48
+    },
+    {
+      "node": "fennario-02",
+      "group": "fennario",
+      "slots_including_own_running": 1,
+      "other_cpu_allocation": 0
+    },
+    {
+      "node": "fennario-03",
+      "group": "fennario",
+      "slots_including_own_running": 0,
+      "other_cpu_allocation": 48
+    },
+    {
+      "node": "fennario-04",
+      "group": "fennario",
+      "slots_including_own_running": 1,
+      "other_cpu_allocation": 0
+    },
+    {
+      "node": "fennario-05",
+      "group": "fennario",
+      "slots_including_own_running": 1,
+      "other_cpu_allocation": 0
+    },
+    {
+      "node": "fennario-06",
+      "group": "fennario",
+      "slots_including_own_running": 1,
+      "other_cpu_allocation": 0
+    }
+  ],
+  "proposed_counts": {
+    "compsci": 11,
+    "fennario": 5,
+    "DCC": 8
+  },
+  "added_budget_hours_per_slot": {
+    "compsci": 462.0,
+    "fennario": 420.0,
+    "DCC": 448.0
+  },
+  "interpretation": "Budget arithmetic using 14-day caps, not runtime forecasts or calendar finish estimates.",
+  "strict_existing_assignment_counts": {
+    "compsci": 13,
+    "fennario": 5,
+    "DCC": 6
+  },
+  "proposed_existing_work_transfer": {
+    "design": "4wwi_flex_p1",
+    "job": "12812439_24",
+    "from_group": "compsci",
+    "to_group": "DCC",
+    "current_status": "PENDING_UNCHANGED",
+    "applied": false,
+    "reason": "Keep all 4wwi tiers on one DCC CPU model; lower tier has not started."
+  },
+  "constraints": [
+    "Do not move any started design.",
+    "Use the same actual CPU model for all newly launched tiers of a system.",
+    "DCC concurrency is six total across original, transferred, and new workloads.",
+    "DCC must provide a partition allowing 14-day tasks and enough slots of one CPU model per system.",
+    "12825151/12825152 are original 48-CPU filtered runs and do not replace the frontier timeout reruns.",
+    "Wait for PACK* full workload measurements before launching the seven new MARK* designs.",
+    "Keep existing short work progressing; initially use at most 2/4/3 slots for added long tasks on fennario/compsci/DCC.",
+    "Raise long-task concurrency only as original backlog clears; no independent six-worker DCC array."
+  ],
+  "external_snapshot": {
+    "completed": 24,
+    "running": 6,
+    "accepted_new_transfers": 9,
+    "source": "User report 2026-10-06, no new completions",
+    "individual_cpu_models": "unknown"
+  },
+  "retired_duplicate_jobs": [
+    "12812439_14",
+    "12812439_15",
+    "12812439_18",
+    "12812439_19",
+    "12812439_23",
+    "12812439_27",
+    "12812439_33",
+    "12812439_37",
+    "12812439_44"
+  ],
+  "running_jobs_preserved": [
+    "12812439_0",
+    "12812439_1",
+    "12812439_11",
+    "12812439_12",
+    "12812439_13",
+    "12812439_2",
+    "12812439_3",
+    "12812439_4",
+    "12812439_5",
+    "12812439_7",
+    "12812439_8",
+    "12812439_9"
+  ],
+  "audit_root": "/usr/xtmp/lz280/frontier_extension7_20261006/markstar_plan_12826543"
+}
