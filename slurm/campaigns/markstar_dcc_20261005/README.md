@@ -1,21 +1,51 @@
-# MARK* DCC assignment, 2026-10-05
+# MARK* DCC assignment, updated 2026-10-06
 
-Assign the 82 shorter completed design workloads to DCC and retain the other
-57 locally. This partitions the 139 normally completed MARK* workloads in
-the current runtime cohort. It does not include timeout or failed workloads.
+Assign 91 design workloads to DCC and retain 48 locally. The original split
+was 82/57; the October 6 update transfers nine unstarted local designs to DCC.
+This partitions the same 139 normally completed historical MARK* workloads.
+It does not include timeout or failed workloads.
 
 ## Files
 
-- `dcc_cases.txt`: 82 design IDs in ascending historical runtime order.
+- `dcc_cases.txt`: the original 82 design IDs, followed by nine additions.
 - `dcc_designs.tsv`: exact residue selections, expected sequence counts,
-  prepared PDB paths and checksums, historical resources and timings, and
-  four balanced groups in `dcc_lane`.
-- `local_cases.txt` and `local_designs.tsv`: the complementary 57 designs.
-- `summary.json`: historical runtime totals and scheduling estimate.
+  prepared PDB paths and checksums, and historical resources and timings.
+  Original rows and their order are preserved. `dcc_lane` retains the legacy
+  four-lane grouping; additions use `NA`. It is not the current worker limit.
+- `local_cases.txt` and `local_designs.tsv`: the complementary 48 designs.
+- `dcc_additions_20261006_cases.txt` and `dcc_additions_20261006_designs.tsv`:
+  only the nine new designs, for submission without repeating the original 82.
+- `rebalance_20261006.json`: transferred design IDs, local task IDs, and the
+  handoff status recorded when this update was prepared.
+- `summary.json`: updated counts, historical workload totals, and concurrency.
+
+## October 6 handoff
+
+The additions are `3ma2_flex_p0`, `4wyu_flex_p0`, `5dc0_flex_p7`,
+`2q2a_flex_p3`, `2rfd_flex_p7`, `2rfe_flex_p2`, `5dc0_flex_p6`,
+`2rfd_flex_p6`, and `5dc0_flex_p5`. All were pending locally; no running or
+completed workload is transferred. There are no DCC-to-local transfers.
+
+The user-reported snapshot for DCC array `57713739` has 24 completed, six
+running, and 52 unstarted designs. The additions bring unstarted DCC work to
+61 designs. Submit only the additions, preserving the running array's input
+mapping and completed results. Keep the total concurrency across the original
+array and additions at six; two independent arrays capped at six each would
+exceed that limit. Waiting for the original array to finish before starting
+the additions is also valid.
+
+The nine local tasks are held for handoff so they do not start duplicate
+work. They have not been cancelled. After DCC acceptance is confirmed, retire
+the held local copies. Keep newly transferred tiers of each system on one CPU
+model and record actual CPU topology and binding.
+
+The active local array `12812439` reads its original frozen manifest outside
+this repository. Do not replace that manifest or renumber its task indices.
+This repository update does not submit DCC jobs or restart existing tasks.
 
 ## Requested DCC run
 
-Run MARK* with 64 CPU threads per task and at most four simultaneous tasks.
+Run MARK* with 64 CPU threads per task and at most six simultaneous tasks.
 Configure both the scheduler allocation and the program's CPU setting to 64.
 The `markstar_cpus` column records the historical allocation of 16; it is not
 the requested CPU count for this rerun. Memory and heap columns likewise
@@ -34,13 +64,14 @@ paths are provenance and must not be assumed to exist on DCC. Verify prepared
 PDB files against `pdb_sha256`. This manifest is not a standalone executable
 bundle. No DCC jobs have been submitted by creating this assignment.
 
-## Scheduling estimate
+## Scheduling basis
 
-The selected designs consumed 677.4913 task hours at 16 CPUs. Scheduling the
-longer jobs first within the selected set gives four groups of approximately
-169.4 hours each: about 7 days 1 hour 23 minutes with four continuously
-available workers at historical performance. The longest selected design
-took 24.61 hours. No fourfold speedup is assumed for 64 CPUs.
+The original 82-design assignment represented 677.4913 historical task hours
+at 16 CPUs and was sized for four workers at historical performance. That
+seven-day estimate is superseded by six concurrent 64-CPU tasks and the
+October 6 handoff. Historical resource columns remain unchanged as provenance.
+Do not infer physical core counts or fourfold speedup from the CPU allocation.
 
-The remaining 57 local designs consumed 5847.8700 task hours. These estimates
-exclude queueing and reruns; CPU and machine changes require measurement.
+The updated assignment uses observed rerun timings to relieve the local queue.
+Runtime estimates depend on hardware, current progress, and queue availability;
+they are not measured benchmarks for the transferred designs.

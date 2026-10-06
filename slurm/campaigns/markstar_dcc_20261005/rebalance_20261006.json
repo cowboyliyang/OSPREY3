@@ -1,0 +1,76 @@
+{
+  "date": "2026-10-06",
+  "local_array": 12812439,
+  "external_array": 57713739,
+  "external_reported_snapshot": {
+    "completed": 24,
+    "running": 6,
+    "pending": 52
+  },
+  "external_pending_after_additions": 61,
+  "cpus_per_task": 64,
+  "external_total_concurrency": 6,
+  "inbound_count": 0,
+  "additions": [
+    {
+      "design": "3ma2_flex_p0",
+      "local_job": "12812439_14",
+      "local_status": "PENDING_HELD",
+      "external_status": "AWAITING_SUBMISSION"
+    },
+    {
+      "design": "4wyu_flex_p0",
+      "local_job": "12812439_15",
+      "local_status": "PENDING_HELD",
+      "external_status": "AWAITING_SUBMISSION"
+    },
+    {
+      "design": "5dc0_flex_p7",
+      "local_job": "12812439_18",
+      "local_status": "PENDING_HELD",
+      "external_status": "AWAITING_SUBMISSION"
+    },
+    {
+      "design": "2q2a_flex_p3",
+      "local_job": "12812439_19",
+      "local_status": "PENDING_HELD",
+      "external_status": "AWAITING_SUBMISSION"
+    },
+    {
+      "design": "2rfd_flex_p7",
+      "local_job": "12812439_23",
+      "local_status": "PENDING_HELD",
+      "external_status": "AWAITING_SUBMISSION"
+    },
+    {
+      "design": "2rfe_flex_p2",
+      "local_job": "12812439_27",
+      "local_status": "PENDING_HELD",
+      "external_status": "AWAITING_SUBMISSION"
+    },
+    {
+      "design": "5dc0_flex_p6",
+      "local_job": "12812439_33",
+      "local_status": "PENDING_HELD",
+      "external_status": "AWAITING_SUBMISSION"
+    },
+    {
+      "design": "2rfd_flex_p6",
+      "local_job": "12812439_37",
+      "local_status": "PENDING_HELD",
+      "external_status": "AWAITING_SUBMISSION"
+    },
+    {
+      "design": "5dc0_flex_p5",
+      "local_job": "12812439_44",
+      "local_status": "PENDING_HELD",
+      "external_status": "AWAITING_SUBMISSION"
+    }
+  ],
+  "scheduling_analysis": "/usr/xtmp/lz280/markstar_bidirectional_12826322/summary.json",
+  "instructions": [
+    "Submit only the additions; keep combined external concurrency at six.",
+    "Preserve original array input mappings and all running/completed jobs.",
+    "Retire local held copies only after external acceptance is confirmed."
+  ]
+}
