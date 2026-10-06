@@ -1,4 +1,4 @@
-"""Freeze six focus tiers and four retained extensions, with both preflights."""
+"""Initially freeze requested focus tiers with both benchmark preflights."""
 import csv
 import hashlib
 import io
@@ -12,6 +12,8 @@ import subprocess
 
 assert os.environ.get('SLURM_JOB_ID'), 'Submit preparation through Slurm'
 HERE = Path(__file__).parent
+if (HERE/'registry.json').exists():
+    assert 'cpu_continuation' not in json.loads((HERE/'registry.json').read_text()), 'Active campaign exists; use the audited pairing update instead of initial preparation'
 REPO = HERE.parents[2]
 ROOT = Path('/usr/xtmp/lz280/markstar_deadline_focus_20261006') / ('prep_' + os.environ['SLURM_JOB_ID'])
 ROOT.mkdir(parents=True, exist_ok=False)
@@ -36,7 +38,7 @@ def digest(path):
 requested = read_tsv(HERE/'requested_designs.tsv')
 compile((HERE/'run_group.py').read_text(), str(HERE/'run_group.py'), 'exec')
 subprocess.run(['bash', '-n', str(HERE/'run_group.slurm')], check=True)
-assert len(requested) == 10 and len({r['design_id'] for r in requested}) == 10
+assert requested and len({r['design_id'] for r in requested}) == len(requested)
 prior_rows = {r['design_id']: r for r in read_tsv(BASE_INPUT/'designs.tsv')}
 assert not set(prior_rows) & {r['design_id'] for r in requested}
 paper = json.loads(Path('/home/users/lz280/BranchMARK*_paper/recomb_draft/runtime_records/data.json').read_text())['frontier']
@@ -44,7 +46,7 @@ mark = {r['design_id']: r for r in paper['runs'] if r['method']=='MARK*'}
 structures = {r['system']: BASE_INPUT/prior_rows[r['anchor_design']]['pdb_relative'] for r in requested}
 estimate = dict(input_pdb_files=len(structures), input_pdb_bytes=sum(p.stat().st_size for p in structures.values()),
                 preparation_expected_files_under=150, preparation_expected_bytes_under=50*2**20,
-                production_expected='Ten workloads; ordinary logs/caches expected in tens of GiB, with inherited DP table budgets. No dataset or build copy.',
+                production_expected=f'{len(requested)} workloads; ordinary logs/caches expected in tens of GiB, with inherited DP table budgets. No dataset or build copy.',
                 inherited_per_design_mapped_table_budget_gib=512, storage_root=str(ROOT.parent))
 print('STORAGE_ESTIMATE', json.dumps(estimate), flush=True)
 (ROOT/'storage_estimate.json').write_text(json.dumps(estimate, indent=2)+'\n')
@@ -159,10 +161,10 @@ for row in designs:
                        anchor_sequences_identical=True, mark_preflight='PASS', pack_preflight='PASS'))
     print('PREFLIGHT_OK', json.dumps(audits[-1]), flush=True)
 
-protocol = dict(designs=10, systems=10, existing_designs_modified=False, source_build=str(candidate),
+protocol = dict(designs=len(designs), systems=len(structures), existing_designs_modified=False, source_build=str(candidate),
                 inherited_packstar_job=12814879, cpus=128, gpus=4, gpu_model='RTX PRO 6000', heap_gib=850,
                 host_gib=800, gpu_gib=85, seed=42, rb=1, arm='pair-only', epsilon=0.683,
-                scheduling='One exclusive node allocation; ten sequential workloads; six hours total',
+                scheduling=f'One exclusive node allocation; {len(designs)} sequential workloads; six hours total',
                 global_limit_seconds=21600, per_design_max_seconds=3600,
                 future_case_reserve_seconds=1200, shutdown_reserve_seconds=300,
                 markstar_status='MARK* may start after input preflight, independently of PACK* measurements')
@@ -174,8 +176,8 @@ checks = [digest(p)+'  '+str(p.relative_to(PACKAGE)) for p in sorted(PACKAGE.rgl
 write_tsv(HERE/'new_designs.tsv', [r for r in designs if r['kind'] != 'retained_extension'])
 shutil.copy2(PACKAGE/'designs.tsv', HERE/'pack_designs.tsv')
 registry = dict(prep_job=os.environ['SLURM_JOB_ID'], prep_root=str(ROOT), package=str(PACKAGE),
-                design_count=10, new_design_count=6, designs_sha256=digest(PACKAGE/'designs.tsv'), verification=audits,
+                design_count=len(designs), new_design_count=sum(r['kind'] != 'retained_extension' for r in designs), designs_sha256=digest(PACKAGE/'designs.tsv'), verification=audits,
                 packstar_status='PREFLIGHT_PASSED_AWAITING_SUBMISSION', markstar_status='PLAN_ONLY')
 (HERE/'registry.json').write_text(json.dumps(registry, indent=2)+'\n')
-(ROOT/'READY').write_text('Ten designs: both benchmark preflights passed\n')
+(ROOT/'READY').write_text(f'{len(designs)} designs: both benchmark preflights passed\n')
 print('READY', ROOT, flush=True)

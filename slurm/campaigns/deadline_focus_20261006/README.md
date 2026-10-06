@@ -142,23 +142,31 @@ in `cpu_continuation_submissions.tsv` and `local_lane_dependencies.tsv`.
 
 ## One grouped PACK* screening job
 
-Preparation `12826915` passed all ten MARK* and all ten PACK* position and
-sequence preflights. The four retained previous additions are byte-equivalent
-in their residue, sequence-count, and structure definitions. Six new definitions
-appear in `new_designs.tsv`; all ten screening entries are in `pack_designs.tsv`.
+The active GPU job is **12827169**, with **12 designs in one allocation** on
+four RTX PRO 6000 GPUs, 128 CPU threads, and a **six-hour total limit**. It
+retains the allocation between designs, allows at most one hour per candidate,
+and reserves 20 minutes for every later candidate. The optimized build and
+numerical protocol match the running GPU101 job `12814879`.
 
-Job **12826949** replaces the still-pending seven-design job `12826506` with a
-single ten-design allocation on four RTX PRO 6000 GPUs, 128 CPU threads, and a
-**six-hour total limit**. It retains the allocation between designs, allows at
-most one hour per candidate, and reserves 20 minutes for every later candidate.
-The already-running PACK* job `12814879` was preserved. The three intermediate
-screening entries `4u3s_p2`, `2rl0_p4`, and `5dc4_p5` were removed from this
-unstarted batch. The optimized build and numerical protocol are unchanged.
+Management job `12827168` added `2rl0_flex_p4` and `4u3s_flex_p2` to pair the
+restored CPU continuation tasks. Their residue lists, structure checksums and
+sequence counts match the active CPU commands. Fresh PACK* input preflights
+matched all 20 and 39 sequences, respectively, to the existing MARK* preflights.
+Both are two tiers above GPU101's highest same-system designs (`2rl0_p2` and
+`4u3s_p0`). They follow the original ten entries without changing their order
+or definitions. All 12 entries are in `pack_designs.tsv`; the six originally
+new definitions remain in `new_designs.tsv`.
 
-Screening job `12826950` writes measured times and a 30-minute screening flag
+Only never-started jobs `12826949` and its screening job `12826950` were
+replaced. Original preparation `12826915` and all earlier frozen packages were
+preserved. CPU tasks and their GPU-independent dependencies were not changed.
+See `pack_pair_completion.json` for the replacement and input verification audit.
+The unused intermediate `5dc4_p5` remains outside this batch.
+
+Screening job `12827170` writes measured times and a 30-minute screening flag
 after the GPU group ends. This flag is advisory for subsequent analysis and
 does not control any active CPU job. Current output is
-`/usr/xtmp/lz280/markstar_deadline_focus_20261006/pack_12826949/screening.json`.
+`/usr/xtmp/lz280/markstar_deadline_focus_20261006/pack_12827169/screening.json`.
 Do not infer speedup from submission or preflight success. A normally
 finished workload with incomplete binding estimates is distinguished from
 fully estimated sequences; only matched sequence outcomes support a reported

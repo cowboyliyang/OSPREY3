@@ -1,0 +1,23 @@
+{
+  "applied_utc": "2026-10-06T20:47:24.893839+00:00",
+  "audit": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/pack_pairs_12827168",
+  "added_designs": [
+    "2rl0_flex_p4",
+    "4u3s_flex_p2"
+  ],
+  "original_prep": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/prep_12826915",
+  "retired_pending_jobs": [
+    "12826949",
+    "12826950"
+  ],
+  "pack_job": "12827169",
+  "screen_job": "12827170",
+  "designs": 12,
+  "gpus": 4,
+  "cpus": 128,
+  "limit_hours": 6,
+  "first_ten_definitions_and_order_preserved": true,
+  "paired_cpu_inputs_and_sequences_verified": true,
+  "cpu_jobs_unchanged": true,
+  "status": "SUBMITTED"
+}

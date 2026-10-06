@@ -9,3 +9,5 @@ design_id	system	flex_delta	anchor_design	destination	kind
 4u3s_flex_p1	4u3s	1	4u3s_flex_p0	fennario	retained_extension
 2rl0_flex_p3	2rl0	3	2rl0_flex_p2	compsci	retained_extension
 5dc4_flex_p6	5dc4	6	5dc4_flex_p4	fennario	retained_extension
+2rl0_flex_p4	2rl0	4	2rl0_flex_p2	compsci	retained_extension
+4u3s_flex_p2	4u3s	2	4u3s_flex_p0	fennario	retained_extension

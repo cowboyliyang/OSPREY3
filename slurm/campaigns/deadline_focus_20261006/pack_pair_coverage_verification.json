@@ -1,0 +1,16 @@
+{
+  "verification_job": "12827177",
+  "pack_job": "12827169",
+  "pack_designs": 12,
+  "local_future_designs": 18,
+  "all_local_future_designs_have_pack_measurement_scheduled": true,
+  "missing_pair_designs": [],
+  "original_ten_preserved": true,
+  "added_sequence_counts": {
+    "2rl0_flex_p4": 20,
+    "4u3s_flex_p2": 39
+  },
+  "resource_request_verified": true,
+  "frozen_checksums_pass": true,
+  "syntax_checks_pass": true
+}

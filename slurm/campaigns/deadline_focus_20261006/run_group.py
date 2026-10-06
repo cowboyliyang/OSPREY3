@@ -23,7 +23,7 @@ for name in ['portable_run.py', 'verification.json']:
 shutil.copy2(package/'designs.tsv', root/'designs.tsv')
 (root/'protocol.json').write_text(json.dumps(protocol, indent=2)+'\n')
 rows = list(csv.DictReader((root/'designs.tsv').open(), delimiter='\t'))
-assert len(rows)==10 and len({r['design_id'] for r in rows})==10
+assert len(rows)==protocol['designs'] and len({r['design_id'] for r in rows})==len(rows)
 selected = {int(i) for i in os.environ['FOCUS_PACK_INDICES'].split(',')}
 assert selected and selected <= {int(r['task_id']) for r in rows}
 rows = [r for r in rows if int(r['task_id']) in selected]

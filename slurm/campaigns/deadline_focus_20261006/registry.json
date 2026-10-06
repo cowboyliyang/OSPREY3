@@ -1,10 +1,10 @@
 {
-  "prep_job": "12826915",
-  "prep_root": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/prep_12826915",
-  "package": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/prep_12826915/package",
-  "design_count": 10,
+  "prep_job": "12827168",
+  "prep_root": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/pack_pairs_12827168",
+  "package": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/pack_pairs_12827168/package",
+  "design_count": 12,
   "new_design_count": 6,
-  "designs_sha256": "05379588387f612221f3efd21108b5834f8b595c624f022f3a497920f497f4cd",
+  "designs_sha256": "33c77ecfb7d9cde35d315911eb1a231373f3009e0e157948f7762b0b8209424d",
   "verification": [
     {
       "design_id": "3gxu_flex_p12",
@@ -85,16 +85,34 @@
       "anchor_sequences_identical": true,
       "mark_preflight": "PASS",
       "pack_preflight": "PASS"
+    },
+    {
+      "design_id": "2rl0_flex_p4",
+      "positions": 17,
+      "sequences": 20,
+      "anchor_sequences_identical": true,
+      "mark_preflight": "PASS",
+      "pack_preflight": "PASS",
+      "paired_cpu_command_matches": true
+    },
+    {
+      "design_id": "4u3s_flex_p2",
+      "positions": 15,
+      "sequences": 39,
+      "anchor_sequences_identical": true,
+      "mark_preflight": "PASS",
+      "pack_preflight": "PASS",
+      "paired_cpu_command_matches": true
     }
   ],
   "packstar_status": "SUBMITTED",
   "markstar_status": "CPU_ONLY_NO_GPU_GATE",
   "status": "LOCAL_ADJUSTED_REMOTE_HANDOFF_READY",
-  "packstar_job": "12826949",
-  "packstar_replaced_pending_job": "12826506",
-  "packstar_selected_indices": "0,1,2,3,4,5,6,7,8,9",
-  "packstar_output": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/pack_12826949",
-  "packstar_screening_job": "12826950",
+  "packstar_job": "12827169",
+  "packstar_replaced_pending_job": "12826949",
+  "packstar_selected_indices": "0,1,2,3,4,5,6,7,8,9,10,11",
+  "packstar_output": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/pack_12827169",
+  "packstar_screening_job": "12827170",
   "markstar_prep": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/cpu_continuation_12827027",
   "new_local_jobs": [
     {
@@ -263,5 +281,28 @@
       "12827027"
     ],
     "scheduler_limitation": "Dependencies prepare successors; Slurm cannot guarantee uninterrupted ownership across separate allocations."
+  },
+  "pack_pair_completion": {
+    "applied_utc": "2026-10-06T20:47:24.893839+00:00",
+    "audit": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/pack_pairs_12827168",
+    "added_designs": [
+      "2rl0_flex_p4",
+      "4u3s_flex_p2"
+    ],
+    "original_prep": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/prep_12826915",
+    "retired_pending_jobs": [
+      "12826949",
+      "12826950"
+    ],
+    "pack_job": "12827169",
+    "screen_job": "12827170",
+    "designs": 12,
+    "gpus": 4,
+    "cpus": 128,
+    "limit_hours": 6,
+    "first_ten_definitions_and_order_preserved": true,
+    "paired_cpu_inputs_and_sequences_verified": true,
+    "cpu_jobs_unchanged": true,
+    "status": "SUBMITTED"
   }
 }
