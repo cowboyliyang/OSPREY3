@@ -55,7 +55,8 @@
     "Retain compsci/fennario/DCC total limits of 8/4/6; preserve all started work.",
     "Keep high-potential continuation tiers queued after CPU predecessors; do not restore the low-value intermediate backlog.",
     "October 16 remains a planning cutoff for a full 14-day observation by October 30, not a GPU-dependent runtime assertion.",
-    "October 6 final revision: preserve the selected smaller queue; append nine designs, use GPU PACK* for all nine, and use conservative 2p4a p12 rather than p18."
+    "October 6 final revision: preserve the selected smaller queue; append nine designs, use GPU PACK* for all nine, and use conservative 2p4a p12 rather than p18.",
+    "User chose 4z80 p0 as the second tier; retain running p1 and stop further 4z80 expansion. Prefer two observed tiers per system before the final long-run round."
   ],
   "user_scope": "All unstarted work can be reprioritized; all started work and completed results remain protected.",
   "snapshot_utc": "2026-10-06T20:00:00.243688+00:00",
@@ -387,5 +388,20 @@
     "two_xxm_p1_completed": true,
     "conservative_target": "2p4a_flex_p12",
     "withdrawn_target": "2p4a_flex_p18"
+  },
+  "two_tier_coverage_goal": {
+    "prefer_two_observed_tiers_per_system_before_final_round": true,
+    "queued_is_not_completed": true,
+    "minimum_one_completed_under_14days": true,
+    "planned_systems_with_at_least_two_tiers": 38,
+    "four_z80": {
+      "keep": [
+        "4z80_flex_p0",
+        "4z80_flex_p1"
+      ],
+      "higher_exploration": false,
+      "final_round_candidate": false,
+      "registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/two_tier_coverage_20261006/registry.json"
+    }
   }
 }

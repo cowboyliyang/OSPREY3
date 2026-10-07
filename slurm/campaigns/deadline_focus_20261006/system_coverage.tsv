@@ -29,7 +29,7 @@ system	coverage_state	completed	running	pending_or_new	fallback_until_completed	
 4wwi	NEEDS_COVERAGE_CASE			4wwi_flex_p1	4wwi_flex_p1	NA
 4wyq	COMPLETED	4wyq_flex_p0			4wyq_flex_p0	NA
 4wyu	NEEDS_COVERAGE_CASE			4wyu_flex_p0	4wyu_flex_p0	NA
-4z80	RUNNING		4z80_flex_p1		4z80_flex_m2	NA
+4z80	RUNNING		4z80_flex_p1	4z80_flex_p0	4z80_flex_p0	NA
 4znc	NEEDS_COVERAGE_CASE			4znc_flex_p6;4znc_flex_p14	4znc_flex_p0	4znc_flex_p14
 5a6y	RUNNING		5a6y_flex_p1		5a6y_flex_p0	5a6y_flex_p2
 5d68	RUNNING		5d68_flex_p2		5d68_flex_p0	5d68_flex_p3

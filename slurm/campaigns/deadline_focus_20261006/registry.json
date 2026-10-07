@@ -305,5 +305,6 @@
     "cpu_jobs_unchanged": true,
     "status": "SUBMITTED"
   },
-  "near14_additions_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/near14_20261006/registry.json"
+  "near14_additions_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/near14_20261006/registry.json",
+  "two_tier_coverage_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/two_tier_coverage_20261006/registry.json"
 }

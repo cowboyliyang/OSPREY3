@@ -18,6 +18,14 @@ guarantee uninterrupted ownership of a node between tasks.
 
 ## Latest append-only additions
 
+The [second-tier coverage update](../two_tier_coverage_20261006/README.md)
+restores `4z80_flex_p0` as job `12827711_0`, with 64 CPU threads and a 72-hour
+limit on the same CPU model as running p1. It precedes the never-started
+`4wyq_p3` continuation in an existing serial lane. The user chose p0 and p1
+only for 4z80, with no higher exploration or final-round target. All 38
+systems now have at least two completed, running, or planned tiers; two
+completed observations per system remain a goal rather than an achieved result.
+
 The subsequent [addition registry](../near14_20261006/README.md) preserves this
 phase's selected smaller queue and appends nine designs. All nine new PACK*
 measurements use GPU; 2p4a uses conservative p12 instead of the withdrawn p18.

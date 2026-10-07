@@ -1,0 +1,30 @@
+{
+  "prep_job": "12827710",
+  "prep": "/usr/xtmp/lz280/markstar_two_tier_20261006/prep_12827710",
+  "design": "4z80_flex_p0",
+  "job": "12827711_0",
+  "after_job": "12812439_41",
+  "before_job": "12827032_2",
+  "cpus": 64,
+  "memory_gib": 192,
+  "limit_hours": 72,
+  "cpu_model": "AMD EPYC 9554",
+  "packstar_existing_output": "/usr/xtmp/lz280/packstar_gpu101_20261005/run_12814879/results/4z80_flex_p0_full_pair-only_s42_J12814879_T143",
+  "packstar_seconds": 1412.23,
+  "packstar_rows": 39,
+  "packstar_fully_estimated": 33,
+  "new_packstar_jobs": [],
+  "preflight": "PASS",
+  "state": "SUBMITTED",
+  "dcc_mutations": [],
+  "user_decision": "Only p0 and the existing running p1; no higher exploration or final-round target for 4z80",
+  "applied_utc": "2026-10-07T00:13:40.959892+00:00",
+  "all_38_systems_have_two_active_or_planned_tiers": true,
+  "original_running_task_unchanged": true,
+  "changed_existing_dependency": {
+    "job": "12827032_2",
+    "old_parent": "12812439_41",
+    "new_parent": "12827711_0"
+  },
+  "command_sha256": "1861c303bb09abbdc325e53cff938f4a15cd11f7cd1046be7b46d0a5c998c1cb"
+}
