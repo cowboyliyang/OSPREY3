@@ -98,7 +98,7 @@
     }
   ],
   "packstar_status": "SUBMITTED",
-  "markstar_status": "FOUR_LOCAL_SUBMITTED_FIVE_DCC_HANDOFF_ONLY",
+  "markstar_status": "TWO_LOCAL_PENDING_TWO_DCC_HANDOFF_AFTER_USER_PRUNING",
   "mode": "APPEND_ONLY_KEEP_SMALLER_DESIGNS_FIRST",
   "earlier_unsubmitted_preps": [
     "12827301",
@@ -201,7 +201,43 @@
       "after_job": "12827031_1",
       "gpu_dependency": "NONE",
       "prep": "/usr/xtmp/lz280/markstar_near14_20261006/launch_12827320/markstar"
+    }
+  ],
+  "dcc_status": "NOT_APPLIED_REMOTELY",
+  "dcc_combined_concurrency": 6,
+  "local_lane_limit": 8,
+  "existing_jobs_modified": [],
+  "applied_utc": "2026-10-06T22:15:05.117170+00:00",
+  "gpu_memory_retry_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/gpu_memory_retry_20261006/registry.json",
+  "previous_failed_packstar_job": "12827321",
+  "packstar_memory_gib": 1000,
+  "packstar_retry_audit_job": "12827801",
+  "user_pruning_20261007": {
+    "applied_utc": "2026-10-07T14:18:20.308250+00:00",
+    "requested_action": "Remove these six designs from the current campaign list",
+    "designs": [
+      "1gwc_flex_p4",
+      "2xxm_flex_p3",
+      "2xxm_flex_p7",
+      "3k3q_flex_p3",
+      "4kt6_flex_p4",
+      "4znc_flex_p14"
+    ],
+    "local_cancelled_jobs": {
+      "3k3q_flex_p3": "12827325_2",
+      "4znc_flex_p14": "12827326_3",
+      "2xxm_flex_p3": "12812439_43"
     },
+    "dcc_withdrawn_definitions": [
+      "1gwc_flex_p4",
+      "2xxm_flex_p7",
+      "4kt6_flex_p4"
+    ],
+    "dcc_remote_state": "UNVERIFIED_NO_REMOTE_CANCELLATION_CLAIMED",
+    "audit": "/usr/xtmp/lz280/markstar_remove_six_12832018",
+    "management_job": "12832018"
+  },
+  "removed_local_markstar_jobs": [
     {
       "design": "3k3q_flex_p3",
       "job": "12827325_2",
@@ -219,13 +255,11 @@
       "prep": "/usr/xtmp/lz280/markstar_near14_20261006/launch_12827320/markstar"
     }
   ],
-  "dcc_status": "NOT_APPLIED_REMOTELY",
-  "dcc_combined_concurrency": 6,
-  "local_lane_limit": 8,
-  "existing_jobs_modified": [],
-  "applied_utc": "2026-10-06T22:15:05.117170+00:00",
-  "gpu_memory_retry_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/gpu_memory_retry_20261006/registry.json",
-  "previous_failed_packstar_job": "12827321",
-  "packstar_memory_gib": 1000,
-  "packstar_retry_audit_job": "12827801"
+  "active_markstar_designs": [
+    "1b6c_flex_p4",
+    "2hnu_flex_p11",
+    "2p4a_flex_p12",
+    "3bu8_flex_p12"
+  ],
+  "active_markstar_design_count": 4
 }

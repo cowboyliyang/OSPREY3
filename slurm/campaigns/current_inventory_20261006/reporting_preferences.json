@@ -1,0 +1,66 @@
+{
+  "updated_on": "2026-10-07",
+  "scope": "Approved unified plan; omitted and conditional tiers are absent from the local queue. Unsubmitted additions remain explicitly labelled.",
+  "columns": [
+    "系统（计划档数）",
+    "档位",
+    "本轮 MARK*",
+    "PACK* 分钟",
+    "历史 MARK*",
+    "建议"
+  ],
+  "completed_result_italics": "Only the current-round MARK* cell, never the whole row or other columns.",
+  "retain_label": "保留",
+  "conditional_label": "条件保留",
+  "preserve_all_completed": true,
+  "preserve_all_running": true,
+  "omit_from_plan": [
+    "2rl0_flex_p4",
+    "3cal_flex_p5",
+    "4u3s_flex_p1"
+  ],
+  "conditional_designs": [
+    "3eb6_flex_p7",
+    "4wem_flex_p12",
+    "5dc4_flex_p6"
+  ],
+  "plan_additions": [
+    {
+      "design": "1gwc_flex_p2",
+      "definition_exists": true,
+      "source": "Prior coverage recommendation retained in the requested table"
+    },
+    {
+      "design": "2xxm_flex_p2",
+      "definition_exists": true,
+      "source": "Prior coverage recommendation retained in the requested table"
+    },
+    {
+      "design": "3k3q_flex_m1",
+      "definition_exists": true,
+      "source": "Prior coverage recommendation; no completed smaller-tier result found; MARK and PACK input preflights passed in job 12832106"
+    },
+    {
+      "design": "4znc_flex_p5",
+      "definition_exists": true,
+      "source": "Prior coverage recommendation retained in the requested table"
+    },
+    {
+      "design": "5d68_flex_p4",
+      "definition_exists": true,
+      "source": "User explicitly added this tier to the plan; MARK and PACK input preflights passed in job 12832106"
+    },
+    {
+      "design": "5dc0_flex_p9",
+      "definition_exists": true,
+      "destination": "dcc",
+      "source": "User explicitly requested DCC p9 on October 7"
+    }
+  ],
+  "focus_system": "5dc0",
+  "focus_additions": "5dc0 p9 added to DCC handoff; retain p4 and p10; no remote submission receipt yet.",
+  "long_run_target_ratio": 672,
+  "PACK_cutoff_minutes_for_new_long_runs": 30,
+  "already_running_exception": "Keep every already-running task, including 4z80_flex_p1.",
+  "conditional_scheduling": "Table annotation only; never-started submissions cancelled, no automatic resubmission."
+}

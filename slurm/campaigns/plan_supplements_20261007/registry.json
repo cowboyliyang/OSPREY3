@@ -1,0 +1,69 @@
+{
+  "prep_job": "12832106",
+  "prep_root": "/usr/xtmp/lz280/markstar_plan_supplements_20261007/prep_12832106",
+  "package": "/usr/xtmp/lz280/markstar_plan_supplements_20261007/prep_12832106/package",
+  "designs": 3,
+  "verification": [
+    {
+      "design_id": "5dc0_flex_p9",
+      "positions": 15,
+      "sequences": 39,
+      "anchor_sequences_identical": true,
+      "mark_preflight": "PASS",
+      "pack_preflight": "PASS"
+    },
+    {
+      "design_id": "5d68_flex_p4",
+      "positions": 16,
+      "sequences": 20,
+      "anchor_sequences_identical": true,
+      "mark_preflight": "PASS",
+      "pack_preflight": "PASS"
+    },
+    {
+      "design_id": "3k3q_flex_m1",
+      "positions": 16,
+      "sequences": 39,
+      "anchor_sequences_identical": true,
+      "mark_preflight": "PASS",
+      "pack_preflight": "PASS"
+    }
+  ],
+  "packstar_status": "SUBMITTED",
+  "markstar_status": "PLAN_ONLY",
+  "pack_job": "12832109",
+  "pack_output": "/usr/xtmp/lz280/markstar_plan_supplements_20261007/pack_12832109",
+  "apply_job": "12832108",
+  "apply_audit": "/usr/xtmp/lz280/markstar_plan_supplements_20261007/apply_12832108",
+  "conditional_actions": [
+    {
+      "design": "3eb6_flex_p7",
+      "job": "12827030_0",
+      "state_before": "PENDING",
+      "action": "CANCELLED_PENDING",
+      "prior_dependency": "afterany:12812439_13(unfulfilled)"
+    },
+    {
+      "design": "4wem_flex_p12",
+      "job": "12827029_0",
+      "state_before": "PENDING",
+      "action": "CANCELLED_PENDING",
+      "prior_dependency": "afterany:12812439_2(unfulfilled)"
+    },
+    {
+      "design": "5dc4_flex_p6",
+      "job": "12826673_3",
+      "state_before": "PENDING",
+      "action": "CANCELLED_PENDING",
+      "prior_dependency": "afterany:12812439_3(unfulfilled)"
+    }
+  ],
+  "dcc_addition": {
+    "design": "5dc0_flex_p9",
+    "status": "HANDOFF_READY_NO_REMOTE_RECEIPT",
+    "requested_cpus": 64,
+    "limit_hours": 336,
+    "combined_concurrency": 6,
+    "cpu_model": "Intel Xeon Platinum 8462Y+"
+  }
+}

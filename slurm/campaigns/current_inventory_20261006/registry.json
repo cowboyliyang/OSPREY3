@@ -1,18 +1,18 @@
 {
-  "snapshot": "2026-10-06T22:13:32.739064-04:00",
+  "snapshot": "2026-10-07T13:01:32.764545-04:00",
   "systems": 38,
-  "designs_in_current_inventory": 93,
+  "designs_in_current_inventory": 85,
   "states": {
-    "完成": 41,
-    "排队": 22,
-    "DCC新增计划，无提交回执": 9,
+    "完成": 45,
+    "排队": 10,
     "运行": 12,
+    "DCC新增计划，无提交回执": 7,
     "DCC原提交，进度待核": 8,
-    "备用暂停": 1
+    "条件保留，暂不排队": 3
   },
-  "completed_systems": 25,
+  "completed_systems": 29,
   "systems_with_two_completed_tiers": 11,
-  "additional_completed_tiers_needed_for_two_per_system": 40,
+  "additional_completed_tiers_needed_for_two_per_system": 36,
   "goal": "Two completed current-round tiers per system by October 16; final 14-day round starts October 16.",
   "status_scope": "Main 64-CPU MARK* campaign. Completed means normal run completion with result rows, not all rows Estimated.",
   "speedup_scope": "Raw whole-run wall ratios; joint_verified records jointly Estimated rows only and is not a numerical agreement test.",
@@ -22,7 +22,7 @@
       "job": "12825151",
       "name": "markstar_1a0r_jerry",
       "state": "RUNNING",
-      "elapsed": "22:35:20",
+      "elapsed": "1-13:23:20",
       "reason": "jerry1",
       "partition": "grisman",
       "dependency": "(null)"
@@ -31,14 +31,26 @@
       "job": "12825152",
       "name": "markstar_3bua_jerry",
       "state": "RUNNING",
-      "elapsed": "22:35:20",
+      "elapsed": "1-13:23:20",
       "reason": "jerry2",
       "partition": "grisman",
       "dependency": "(null)"
     }
   ],
-  "output": "/usr/xtmp/lz280/markstar_current_inventory_12828052",
+  "output": "/usr/xtmp/lz280/markstar_current_inventory_12832118",
   "source_snapshot": "/usr/xtmp/lz280/current_markstar_tiers_12827815",
   "coverage_rebalance_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/coverage_lane_rebalance_20261006/registry.json",
-  "all_definition_count": 178
+  "all_definition_count": 172,
+  "excluded_designs": [
+    "1gwc_flex_p4",
+    "2rl0_flex_p4",
+    "2xxm_flex_p3",
+    "2xxm_flex_p7",
+    "3cal_flex_p5",
+    "3k3q_flex_p3",
+    "4kt6_flex_p4",
+    "4u3s_flex_p1",
+    "4znc_flex_p14"
+  ],
+  "exclusions_manifest": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/current_inventory_20261006/excluded_designs.json"
 }

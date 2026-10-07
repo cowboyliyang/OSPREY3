@@ -1,5 +1,14 @@
 # October 6 additions
 
+October 7 update: the user withdrew `1gwc_flex_p4`, `2xxm_flex_p7`,
+`3k3q_flex_p3`, `4kt6_flex_p4`, and `4znc_flex_p14`. Management job
+`12832018` cancelled the two local pending addition tasks and removed the
+three DCC definitions from the current handoff. The current additions contain
+two local pending designs and two DCC definitions. Original nine-design PACK*
+inputs, completed measurements, timeout artifacts, and frozen source indices
+are preserved. Counts and launch descriptions below describe the original
+October 6 submission; the active MARK* rows are shown in the table.
+
 Preserve the selected smaller designs and append higher tiers. All nine new
 PACK* workloads use four RTX PRO 6000 GPUs in one six-hour allocation after
 the existing twelve-design batch, job 12827169. Each design has at most one
@@ -11,18 +20,13 @@ path; CPU CCD and sampling are retained as in GPU101.
 | System | Retained smaller MARK* case | Addition | MARK* destination |
 | --- | --- | --- | --- |
 | 1b6c | p2, queued | p4 | compsci |
-| 1gwc | p1, completed | p4 | DCC handoff |
 | 2hnu | p5, queued | p11 | compsci |
 | 2p4a | p9, retained | **p12** | DCC handoff |
-| 2xxm | p1, completed | p7 | DCC handoff |
 | 3bu8 | p9, completed | p12 | DCC handoff |
-| 3k3q | p0, completed | p3 | compsci |
-| 4kt6 | p1, completed | p4 | DCC handoff |
-| 4znc | p6, queued | p14 | compsci |
 
 All names use the `_flex_` separator. The already-running `4z80_p1` remains
-unchanged. Existing local `2xxm_p3` remains a held fallback; confirming p1
-completion does not silently release or cancel that job.
+unchanged. The former held `2xxm_p3` fallback was explicitly removed and
+cancelled by the user on October 7.
 
 The user requested a conservative 2p4a extension. Historical p9 MARK* took
 4.561761 hours; this does not establish a 64-CPU tier-growth law. The new p12

@@ -43,13 +43,16 @@ def clock_text(seconds):
     seconds = round(seconds)
     return f'{seconds//3600:02d}:{seconds%3600//60:02d}:{seconds%60:02d}'
 
-definitions = {r['design']: r for r in tsv(campaigns / 'deadline_focus_20261006/design_actions.tsv')}
+exclusions_path = campaign / 'excluded_designs.json'
+excluded = set(json.loads(exclusions_path.read_text())['designs']) if exclusions_path.exists() else set()
+definitions = {r['design']: r for r in tsv(campaigns / 'deadline_focus_20261006/design_actions.tsv') if r['design'] not in excluded}
 rows = tsv(old / 'all_tiers.tsv')
 columns = list(rows[0])
 held = {key: '' for key in columns}
 held.update(design='2xxm_flex_p3', system='2xxm', tier='3', state='备用暂停', job='12812439_43',
             destination='compsci', historical_MARK='38.22h', PACK_minutes_hardware='本轮测量待核')
 rows.append(held)
+rows = [r for r in rows if r['design'] not in excluded]
 queue_raw = subprocess.check_output(['squeue', '-h', '-r', '-u', 'lz280', '-o', '%i|%j|%T|%M|%R|%P|%E'], text=True)
 (out / 'queue.txt').write_text(queue_raw)
 queue = {}
@@ -58,6 +61,17 @@ for line in queue_raw.splitlines():
     if len(fields) == 7:
         queue[fields[0]] = dict(zip(['job', 'name', 'state', 'elapsed', 'reason', 'partition', 'dependency'], fields))
 dcc_priority = {r['design_id']: r for r in tsv(campaigns / 'deadline_focus_20261006/dcc_launch_priority.tsv')}
+known = {r['design'] for r in rows}
+for definition in tsv(campaigns / 'deadline_focus_20261006/dcc_new_designs.tsv'):
+    name = definition['design_id']
+    if name not in known and name in dcc_priority and name not in excluded:
+        row = {key: '' for key in columns}
+        row.update(design=name, system=definition['system'], tier=definition['flex_delta'],
+                   state='DCC新增计划，无提交回执', destination='dcc', historical_MARK='无')
+        rows.append(row)
+        known.add(name)
+conditional_path = campaign/'conditional_deferred.json'
+conditional = json.loads(conditional_path.read_text())['designs'] if conditional_path.exists() else {}
 dcc_complete = {r['design_id']: r for r in tsv(Path('/usr/xtmp/lz280/markstar_dcc64_completed38_20261006/design_summary.tsv'))}
 local_root = Path('/usr/xtmp/lz280/markstar_local57_cpu64_20261005/A12812439')
 for row in rows:
@@ -123,10 +137,19 @@ for row in rows:
         row['MARK_elapsed_hms'] = clock_text(duration_seconds(live['elapsed']))
         row['dependency'] = live['dependency']
         row['destination'] = 'compsci' if live['partition'] == 'compsci' else 'fennario'
+    if name in conditional and row['state'] not in ('完成','运行') and row['job'] not in queue:
+        row.update(state='条件保留，暂不排队', job='', dependency='', MARK_elapsed_hms='',
+                   provenance='User deferred this tier; prior pending task cancelled; '+conditional[name]['audit'])
 
 # Existing speed ratios are raw whole-run ratios; the matched Estimated count is separate.
 by_name = {r['design']: r for r in rows}
-for group in ['markstar_near14_20261006/pack_12827800', 'markstar_deadline_focus_20261006/pack_12827802']:
+pack_groups = ['packstar_gpu101_20261005/run_12814879', 'markstar_near14_20261006/pack_12827800', 'markstar_deadline_focus_20261006/pack_12827802']
+supplement_path = campaigns/'plan_supplements_20261007/registry.json'
+if supplement_path.exists():
+    supplement = json.loads(supplement_path.read_text())
+    if supplement.get('pack_output'):
+        pack_groups.append(supplement['pack_output'])
+for group in pack_groups:
     status_path = Path('/usr/xtmp/lz280') / group / 'status.tsv'
     if not status_path.exists():
         continue
@@ -187,6 +210,8 @@ for name, definition in sorted(definitions.items()):
                                 historical_PACK_minutes=definition['old_pack_minutes']))
 write_tsv(out / 'all_definitions.tsv', definition_rows)
 summary['all_definition_count'] = len(definition_rows)
+summary['excluded_designs'] = sorted(excluded)
+summary['exclusions_manifest'] = str(exclusions_path)
 (out / 'summary.json').write_text(json.dumps(summary, indent=2, ensure_ascii=False)+'\n')
 
 lines = [f'# 当前 MARK* design 汇总\n\n快照：{snapshot}。\n',

@@ -1,0 +1,22 @@
+{
+  "updated": "2026-10-07T12:49:06.602560-04:00",
+  "designs": {
+    "3eb6_flex_p7": {
+      "previous_job": "12827030_0",
+      "state": "条件保留，暂不排队",
+      "audit": "/usr/xtmp/lz280/markstar_plan_supplements_20261007/apply_12832108"
+    },
+    "4wem_flex_p12": {
+      "previous_job": "12827029_0",
+      "state": "条件保留，暂不排队",
+      "audit": "/usr/xtmp/lz280/markstar_plan_supplements_20261007/apply_12832108"
+    },
+    "5dc4_flex_p6": {
+      "previous_job": "12826673_3",
+      "state": "条件保留，暂不排队",
+      "audit": "/usr/xtmp/lz280/markstar_plan_supplements_20261007/apply_12832108"
+    }
+  },
+  "automatic_resubmission": false,
+  "preserve_started": true
+}

@@ -2,8 +2,6 @@
 2q1e_flex_p6
 5dc0_flex_p10
 3bua_flex_m4
-1gwc_flex_p4
 2p4a_flex_p12
-2xxm_flex_p7
 3bu8_flex_p12
-4kt6_flex_p4
+5dc0_flex_p9

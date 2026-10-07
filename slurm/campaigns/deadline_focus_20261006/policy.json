@@ -29,11 +29,7 @@
     "4pxf_flex_p6": "compsci",
     "5a6y_flex_p2": "compsci",
     "3cal_flex_p4": "compsci",
-    "3eb6_flex_p7": "compsci",
     "5it3_flex_p10": "fennario",
-    "4u3s_flex_p1": "fennario",
-    "4wem_flex_p12": "fennario",
-    "5dc4_flex_p6": "fennario",
     "3gxu_flex_p12": "dcc",
     "2q1e_flex_p6": "dcc",
     "5dc0_flex_p10": "dcc",
@@ -331,27 +327,19 @@
     "3ma2_flex_p0",
     "2p4a_flex_p9",
     "2xgy_flex_m1",
-    "1gwc_flex_p4",
     "2p4a_flex_p12",
-    "2xxm_flex_p7",
-    "3bu8_flex_p12",
-    "4kt6_flex_p4"
+    "3bu8_flex_p12"
   ],
   "dcc_long_candidates": 8,
   "dcc_short_or_unknown_coverage_fallbacks": 6,
   "near14_additions": {
     "registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/near14_20261006/registry.json",
-    "mode": "APPEND_ONLY_SMALLER_FIRST",
+    "mode": "USER_PRUNED_CURRENT_MARKSTAR_PLAN",
     "designs": [
       "1b6c_flex_p4",
-      "1gwc_flex_p4",
       "2hnu_flex_p11",
       "2p4a_flex_p12",
-      "2xxm_flex_p7",
-      "3bu8_flex_p12",
-      "3k3q_flex_p3",
-      "4kt6_flex_p4",
-      "4znc_flex_p14"
+      "3bu8_flex_p12"
     ],
     "all_packstar_on_gpu": true,
     "packstar_job": "12827321",
@@ -369,22 +357,6 @@
         "job": "12827324_1",
         "group": "compsci",
         "after_job": "12827031_1",
-        "gpu_dependency": "NONE",
-        "prep": "/usr/xtmp/lz280/markstar_near14_20261006/launch_12827320/markstar"
-      },
-      {
-        "design": "3k3q_flex_p3",
-        "job": "12827325_2",
-        "group": "compsci",
-        "after_job": "12826674_9",
-        "gpu_dependency": "NONE",
-        "prep": "/usr/xtmp/lz280/markstar_near14_20261006/launch_12827320/markstar"
-      },
-      {
-        "design": "4znc_flex_p14",
-        "job": "12827326_3",
-        "group": "compsci",
-        "after_job": "12827030_0",
         "gpu_dependency": "NONE",
         "prep": "/usr/xtmp/lz280/markstar_near14_20261006/launch_12827320/markstar"
       }
@@ -411,5 +383,51 @@
     "observed_tiers_due": "2026-10-16",
     "final_round_start_date": "2026-10-16"
   },
-  "coverage_lane_rebalance_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/coverage_lane_rebalance_20261006/registry.json"
+  "coverage_lane_rebalance_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/coverage_lane_rebalance_20261006/registry.json",
+  "user_pruning_20261007": {
+    "applied_utc": "2026-10-07T14:18:20.308250+00:00",
+    "requested_action": "Remove these six designs from the current campaign list",
+    "designs": [
+      "1gwc_flex_p4",
+      "2xxm_flex_p3",
+      "2xxm_flex_p7",
+      "3k3q_flex_p3",
+      "4kt6_flex_p4",
+      "4znc_flex_p14"
+    ],
+    "local_cancelled_jobs": {
+      "3k3q_flex_p3": "12827325_2",
+      "4znc_flex_p14": "12827326_3",
+      "2xxm_flex_p3": "12812439_43"
+    },
+    "dcc_withdrawn_definitions": [
+      "1gwc_flex_p4",
+      "2xxm_flex_p7",
+      "4kt6_flex_p4"
+    ],
+    "dcc_remote_state": "UNVERIFIED_NO_REMOTE_CANCELLATION_CLAIMED",
+    "audit": "/usr/xtmp/lz280/markstar_remove_six_12832018",
+    "management_job": "12832018"
+  },
+  "conditional_plan_only": {
+    "3eb6_flex_p7": {
+      "previous_job": "12827030_0",
+      "state": "条件保留，暂不排队",
+      "audit": "/usr/xtmp/lz280/markstar_plan_supplements_20261007/apply_12832108"
+    },
+    "4wem_flex_p12": {
+      "previous_job": "12827029_0",
+      "state": "条件保留，暂不排队",
+      "audit": "/usr/xtmp/lz280/markstar_plan_supplements_20261007/apply_12832108"
+    },
+    "5dc4_flex_p6": {
+      "previous_job": "12826673_3",
+      "state": "条件保留，暂不排队",
+      "audit": "/usr/xtmp/lz280/markstar_plan_supplements_20261007/apply_12832108"
+    }
+  },
+  "supplemental_targets": {
+    "5dc0_flex_p9": "dcc"
+  },
+  "queue_alignment_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/queue_alignment_20261007/registry.json"
 }

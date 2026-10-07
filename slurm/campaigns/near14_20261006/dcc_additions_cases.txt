@@ -1,5 +1,2 @@
-1gwc_flex_p4
 2p4a_flex_p12
-2xxm_flex_p7
 3bu8_flex_p12
-4kt6_flex_p4

@@ -18,11 +18,44 @@ guarantee uninterrupted ownership of a node between tasks.
 
 ## Latest append-only additions
 
+October 7 local queue alignment: job `12832118` cancelled the never-started
+`2rl0_p4`, `3cal_p5`, and `4u3s_p1` tasks omitted from the approved table.
+`4u3s_p2` now depends on running `4u3s_p0`, bypassing the cancelled p1;
+the local concurrency limits and running jobs are preserved. The versioned
+[unified table](../current_inventory_20261006/CURRENT_PLAN.md) is the current
+review snapshot. DCC plans and unsubmitted additions remain distinct from
+actual queued jobs. Earlier scheduling lists below are provenance, not
+instructions to restore cancelled tasks.
+
+October 7 subsequent update: job `12832108` added `5dc0_flex_p9` to the DCC
+handoff after MARK* and PACK* input preflights passed. It requests 64 CPU
+threads, 192 GiB memory, the inherited 96 GiB heap, and at most 14 days;
+match the p4 anchor's Intel Xeon Platinum 8462Y+ model and retain the combined
+six-worker DCC limit. The current handoff has seven new definitions and
+17 launch-priority entries. There is no remote submission receipt for p9.
+The same update cancelled the never-started local submissions for
+`3eb6_p7`, `4wem_p12`, and `5dc4_p6`; these remain table-only conditional
+plans and must not be automatically submitted. PACK* job `12832109` will
+measure the three missing current-plan cases on four PRO 6000 GPUs.
+Details and exact definitions are in
+[`../plan_supplements_20261007/registry.json`](../plan_supplements_20261007/registry.json).
+Earlier counts and descriptions below are historical snapshots.
+
+October 7 update: management job `12832018` removed `3k3q_flex_p3`,
+`4znc_flex_p14`, and held `2xxm_flex_p3` from the current plan and cancelled
+their never-started local tasks. `1gwc_flex_p4`, `4kt6_flex_p4`, and
+`2xxm_flex_p7` were withdrawn from the DCC handoff; remote queue state is
+unverified. The current DCC priority list has 16 entries and the new-definition
+handoff has six. The [current inventory exclusion list](../current_inventory_20261006/excluded_designs.json)
+prevents these six from returning during refresh. Original submission counts
+and manifests below describe earlier snapshots. Existing results and frozen
+source-package task indices are retained.
+
 The [coverage lane rebalance](../coverage_lane_rebalance_20261006/README.md)
 was applied by job `12828045`. The active coverage lane is now
 `2hnu_p5 → 1b6c_p2 → 4znc_p6 → 1a0r_p0 → 2hnu_p11`.
 The other two affected lanes are `4z80_p1 → 4z80_p0 → 4wyq_p3 → 1b6c_p4`
-and `3eb6_p6 → 3eb6_p7 → 4znc_p14`. Five never-started dependencies changed;
+and `3eb6_p6 → 3eb6_p7` after the October 7 pruning. Five never-started dependencies changed;
 the eight/four local caps and same-system CPU models are retained.
 The user clarified the target: two completed tiers per system by October 16,
 followed by a final 14-day round starting October 16. Those are scheduling

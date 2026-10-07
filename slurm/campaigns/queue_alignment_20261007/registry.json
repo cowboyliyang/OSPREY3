@@ -1,0 +1,172 @@
+{
+  "applied": "2026-10-07T13:01:32.211161-04:00",
+  "management_job": "12832118",
+  "audit": "/usr/xtmp/lz280/markstar_queue_alignment_20261007/12832118",
+  "cancelled": [
+    {
+      "design": "2rl0_flex_p4",
+      "job": "12827033_3",
+      "action": "CANCELLED_NEVER_STARTED"
+    },
+    {
+      "design": "3cal_flex_p5",
+      "job": "12827034_4",
+      "action": "CANCELLED_NEVER_STARTED"
+    },
+    {
+      "design": "4u3s_flex_p1",
+      "job": "12826673_0",
+      "action": "CANCELLED_NEVER_STARTED"
+    }
+  ],
+  "dependency_change": {
+    "job": "12827035_1",
+    "old_parent": "12826673_0",
+    "new_parent": "12812439_1"
+  },
+  "protected_running": 15,
+  "active_local_main": [
+    {
+      "job": "12827711_0",
+      "design": "4z80_flex_p0",
+      "state": "PENDING",
+      "dependency": "afterany:12812439_7(unfulfilled)"
+    },
+    {
+      "job": "12827324_1",
+      "design": "2hnu_flex_p11",
+      "state": "PENDING",
+      "dependency": "afterany:12827031_1(unfulfilled)"
+    },
+    {
+      "job": "12827323_0",
+      "design": "1b6c_flex_p4",
+      "state": "PENDING",
+      "dependency": "afterany:12827032_2(unfulfilled)"
+    },
+    {
+      "job": "12827032_2",
+      "design": "4wyq_flex_p3",
+      "state": "PENDING",
+      "dependency": "afterany:12827711_0(unfulfilled)"
+    },
+    {
+      "job": "12827031_1",
+      "design": "1a0r_flex_p0",
+      "state": "PENDING",
+      "dependency": "afterany:12812439_26(unfulfilled)"
+    },
+    {
+      "job": "12826674_3",
+      "design": "5a6y_flex_p2",
+      "state": "PENDING",
+      "dependency": "afterany:12812439_5(unfulfilled)"
+    },
+    {
+      "job": "12826674_1",
+      "design": "2rl0_flex_p3",
+      "state": "PENDING",
+      "dependency": "afterany:12812439_4(unfulfilled)"
+    },
+    {
+      "job": "12812439_26",
+      "design": "4znc_flex_p6",
+      "state": "PENDING",
+      "dependency": "afterany:12812439_41(unfulfilled)"
+    },
+    {
+      "job": "12812439_13",
+      "design": "3eb6_flex_p6",
+      "state": "RUNNING",
+      "dependency": "(null)"
+    },
+    {
+      "job": "12812439_41",
+      "design": "1b6c_flex_p2",
+      "state": "RUNNING",
+      "dependency": "(null)"
+    },
+    {
+      "job": "12826674_9",
+      "design": "4pxf_flex_p6",
+      "state": "RUNNING",
+      "dependency": "(null)"
+    },
+    {
+      "job": "12826674_7",
+      "design": "3cal_flex_p4",
+      "state": "RUNNING",
+      "dependency": "(null)"
+    },
+    {
+      "job": "12826674_0",
+      "design": "5d68_flex_p3",
+      "state": "RUNNING",
+      "dependency": "(null)"
+    },
+    {
+      "job": "12812439_4",
+      "design": "2rl0_flex_p2",
+      "state": "RUNNING",
+      "dependency": "(null)"
+    },
+    {
+      "job": "12812439_5",
+      "design": "5a6y_flex_p1",
+      "state": "RUNNING",
+      "dependency": "(null)"
+    },
+    {
+      "job": "12812439_7",
+      "design": "4z80_flex_p1",
+      "state": "RUNNING",
+      "dependency": "(null)"
+    },
+    {
+      "job": "12827035_1",
+      "design": "4u3s_flex_p2",
+      "state": "PENDING",
+      "dependency": "afterany:12812439_1(unfulfilled)"
+    },
+    {
+      "job": "12826673_4",
+      "design": "5it3_flex_p10",
+      "state": "PENDING",
+      "dependency": "afterany:12812439_0(unfulfilled)"
+    },
+    {
+      "job": "12812439_0",
+      "design": "5it3_flex_p9",
+      "state": "RUNNING",
+      "dependency": "(null)"
+    },
+    {
+      "job": "12812439_1",
+      "design": "4u3s_flex_p0",
+      "state": "RUNNING",
+      "dependency": "(null)"
+    },
+    {
+      "job": "12812439_2",
+      "design": "4wem_flex_p10",
+      "state": "RUNNING",
+      "dependency": "(null)"
+    },
+    {
+      "job": "12812439_3",
+      "design": "5dc4_flex_p4",
+      "state": "RUNNING",
+      "dependency": "(null)"
+    }
+  ],
+  "local_queue_outside_plan": [],
+  "not_submitted": [
+    "1gwc_flex_p2",
+    "2xxm_flex_p2",
+    "3k3q_flex_m1",
+    "4znc_flex_p5",
+    "5d68_flex_p4"
+  ],
+  "dcc_status": "HANDOFF_ONLY_NO_REMOTE_ACCESS_OR_CURRENT_JOB_MAPPING",
+  "scope": "All actual local main-campaign jobs are retained plan entries; future unsubmitted plan entries remain labelled."
+}
