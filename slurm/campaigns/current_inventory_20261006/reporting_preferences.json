@@ -62,5 +62,10 @@
   "long_run_target_ratio": 672,
   "PACK_cutoff_minutes_for_new_long_runs": 30,
   "already_running_exception": "Keep every already-running task, including 4z80_flex_p1.",
-  "conditional_scheduling": "Table annotation only; never-started submissions cancelled, no automatic resubmission."
+  "conditional_scheduling": "Table annotation only; never-started submissions cancelled, no automatic resubmission.",
+  "concurrency_limits": {
+    "compsci": 9,
+    "fennario": 5,
+    "dcc": 6
+  }
 }

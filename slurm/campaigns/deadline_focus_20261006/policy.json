@@ -5,8 +5,8 @@
   "latest_start_for_full_14_days": "2026-10-16",
   "coverage": "At least one completed current-round 64-CPU MARK* design per system, elapsed strictly under 336 hours; approaching 14 days is a preference, not a reason to sacrifice coverage.",
   "slots": {
-    "compsci": 8,
-    "fennario": 4,
+    "compsci": 9,
+    "fennario": 5,
     "dcc": 6
   },
   "coverage_pending": {
@@ -48,7 +48,7 @@
     "New 3gxu and 2q1e tiers may move to DCC because their local cases have not started; preserve all existing running jobs.",
     "User prioritizes continuous useful CPU work; launch preflighted MARK* independently of GPU timings.",
     "PACK* timings inform interpretation and later tier choice, never block these queued CPU tasks.",
-    "Retain compsci/fennario/DCC total limits of 8/4/6; preserve all started work.",
+    "Retain compsci/fennario/DCC total limits of 9/5/6; preserve all started work.",
     "Keep high-potential continuation tiers queued after CPU predecessors; do not restore the low-value intermediate backlog.",
     "October 16 remains a planning cutoff for a full 14-day observation by October 30, not a GPU-dependent runtime assertion.",
     "October 6 final revision: preserve the selected smaller queue; append nine designs, use GPU PACK* for all nine, and use conservative 2p4a p12 rather than p18.",
@@ -429,5 +429,6 @@
   "supplemental_targets": {
     "5dc0_flex_p9": "dcc"
   },
-  "queue_alignment_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/queue_alignment_20261007/registry.json"
+  "queue_alignment_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/queue_alignment_20261007/registry.json",
+  "local_concurrency_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/local_concurrency14_20261007/registry.json"
 }

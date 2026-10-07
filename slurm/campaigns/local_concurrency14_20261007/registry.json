@@ -1,0 +1,54 @@
+{
+  "account": "grisman",
+  "old_limits": {
+    "compsci": 8,
+    "fennario": 4,
+    "dcc": 6
+  },
+  "new_limits": {
+    "compsci": 9,
+    "fennario": 5,
+    "dcc": 6
+  },
+  "changes": [
+    {
+      "design": "1a0r_flex_p0",
+      "job": "12827031_1",
+      "partition": "compsci",
+      "old_parent": "12812439_26",
+      "new_parent": null
+    },
+    {
+      "design": "5it3_flex_p10",
+      "job": "12826673_4",
+      "partition": "grisman",
+      "old_parent": "12812439_0",
+      "new_parent": null
+    }
+  ],
+  "basis": "Use one additional local slot on each CPU model; retain existing coverage ordering and all running work.",
+  "keep_cpu_threads_per_task": 64,
+  "keep_memory_gib_per_task": 192,
+  "preserve_all_running": true,
+  "preserve_all_conditional_deferrals": true,
+  "status": "APPLIED",
+  "management_job": "12832174",
+  "audit": "/usr/xtmp/lz280/markstar_local_concurrency14_20261007/12832174",
+  "applied": "2026-10-07T13:24:08.856095-04:00",
+  "protected_running_tasks": 12,
+  "lane_roots_before": {
+    "compsci": 8,
+    "grisman": 4
+  },
+  "lane_roots_after": {
+    "compsci": 9,
+    "grisman": 5
+  },
+  "scheduler_states": {
+    "12827031_1": "PENDING",
+    "12826673_4": "PENDING"
+  },
+  "benchmark_jobs_submitted": [],
+  "dcc_changed": false,
+  "conditional_jobs_restarted": []
+}

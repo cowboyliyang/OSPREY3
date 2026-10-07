@@ -64,6 +64,13 @@ outside it. Five planned additions are still explicitly `待提交`; this
 alignment did not submit them or apply any remote DCC scheduler changes.
 See the [queue alignment audit](../queue_alignment_20261007/registry.json).
 
+Job `12832174` raised the local concurrency limits from 8 + 4 to
+9 compsci + 5 fennario tasks. `1a0r_p0` and `5it3_p10` were released from
+their predecessor dependencies and both started, giving 14 running and eight
+pending main 64-CPU tasks in that snapshot. No tiers were added, and the
+conditional deferrals remain in effect. See the
+[concurrency adjustment](../local_concurrency14_20261007/README.md).
+
 Generate this view through Slurm with `--account=grisman` using
 `/home/users/lz280/notes/render_markstar_plan_table_20261007.slurm`.
 The script writes `unified_report.html`, `unified_plan.tsv`, and
