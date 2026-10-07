@@ -70,6 +70,22 @@ for definition in tsv(campaigns / 'deadline_focus_20261006/dcc_new_designs.tsv')
                    state='DCC新增计划，无提交回执', destination='dcc', historical_MARK='无')
         rows.append(row)
         known.add(name)
+queued_registry = campaigns/'queued_five_20261007/registry.json'
+queued_records = {}
+if queued_registry.exists():
+    queued_records = {r['design']:r for r in json.loads(queued_registry.read_text()).get('jobs', [])}
+    by_design = {r['design']:r for r in rows}
+    for name, submission in queued_records.items():
+        assert name not in excluded
+        if name not in by_design:
+            suffix = name.split('_flex_')[1]
+            row = {key:'' for key in columns}
+            row.update(design=name, system=name.split('_flex_')[0],
+                       tier=str(int(suffix[1:])*(-1 if suffix.startswith('m') else 1)))
+            rows.append(row)
+            by_design[name] = row
+        by_design[name].update(job=submission['job'], destination=submission['group'],
+                               state='排队' if submission['job'] in queue else '本地提交，状态待核')
 conditional_path = campaign/'conditional_deferred.json'
 conditional = json.loads(conditional_path.read_text())['designs'] if conditional_path.exists() else {}
 dcc_complete = {r['design_id']: r for r in tsv(Path('/usr/xtmp/lz280/markstar_dcc64_completed38_20261006/design_summary.tsv'))}
@@ -93,7 +109,7 @@ for row in rows:
                    provenance='DCC completed38 export; remote live state unavailable')
         if row['PACK_seconds']:
             row['raw_wall_ratio'] = round(seconds/float(row['PACK_seconds']), 4)
-    root = local_root / name
+    root = Path(queued_records[name]['output']) if name in queued_records else local_root / name
     manifest_path = root / 'run_manifest.json'
     if manifest_path.exists():
         manifest = json.loads(manifest_path.read_text())

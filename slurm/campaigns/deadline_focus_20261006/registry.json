@@ -380,5 +380,6 @@
     ]
   },
   "queue_alignment_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/queue_alignment_20261007/registry.json",
-  "local_concurrency_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/local_concurrency14_20261007/registry.json"
+  "local_concurrency_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/local_concurrency14_20261007/registry.json",
+  "queued_five_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/queued_five_20261007/registry.json"
 }

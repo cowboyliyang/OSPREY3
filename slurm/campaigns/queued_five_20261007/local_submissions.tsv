@@ -1,0 +1,6 @@
+design	job	array_job	group	after_job	after_design	prep	output	cpus	memory_gib	limit_hours
+1gwc_flex_p2	12832727_0	12832727	fennario	12812439_2	4wem_flex_p10	/usr/xtmp/lz280/markstar_queued_five_20261007/prep_12832726	/usr/xtmp/lz280/markstar_queued_five_20261007/markstar_A12832727/1gwc_flex_p2	64	192	336
+2xxm_flex_p2	12832728_1	12832728	fennario	12812439_3	5dc4_flex_p4	/usr/xtmp/lz280/markstar_queued_five_20261007/prep_12832726	/usr/xtmp/lz280/markstar_queued_five_20261007/markstar_A12832728/2xxm_flex_p2	64	192	336
+3k3q_flex_m1	12832729_2	12832729	compsci	12812439_13	3eb6_flex_p6	/usr/xtmp/lz280/markstar_queued_five_20261007/prep_12832726	/usr/xtmp/lz280/markstar_queued_five_20261007/markstar_A12832729/3k3q_flex_m1	64	192	336
+4znc_flex_p5	12832730_3	12832730	compsci	12812439_41	1b6c_flex_p2	/usr/xtmp/lz280/markstar_queued_five_20261007/prep_12832726	/usr/xtmp/lz280/markstar_queued_five_20261007/markstar_A12832730/4znc_flex_p5	64	192	336
+5d68_flex_p4	12832731_4	12832731	compsci	12826674_0	5d68_flex_p3	/usr/xtmp/lz280/markstar_queued_five_20261007/prep_12832726	/usr/xtmp/lz280/markstar_queued_five_20261007/markstar_A12832731/5d68_flex_p4	64	192	336

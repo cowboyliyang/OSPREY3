@@ -60,7 +60,7 @@ Job `12832118` subsequently cancelled the three never-started omitted tasks
 `2rl0_p4`, `3cal_p5`, and `4u3s_p1`. The retained `4u3s_p2` now follows
 running `4u3s_p0` directly, preserving its serial lane. All actual local
 64-CPU campaign tasks were checked against the unified table; none remains
-outside it. Five planned additions are still explicitly `待提交`; this
+outside it. At that snapshot, five planned additions were explicitly `待提交`; this
 alignment did not submit them or apply any remote DCC scheduler changes.
 See the [queue alignment audit](../queue_alignment_20261007/registry.json).
 
@@ -71,8 +71,19 @@ pending main 64-CPU tasks in that snapshot. No tiers were added, and the
 conditional deferrals remain in effect. See the
 [concurrency adjustment](../local_concurrency14_20261007/README.md).
 
+Job `12832726` subsequently submitted all five retained additions:
+`1gwc_p2` and `2xxm_p2` on fennario; `3k3q_m1`, `4znc_p5`, and `5d68_p4`
+on compsci. The refreshed table has 14 local tasks running and 13 pending,
+with no remaining local `待提交` rows. It also includes the completed PACK*
+measurements for `5dc0_p9`, `5d68_p4`, and `3k3q_m1`. See the
+[five-task submission audit](../queued_five_20261007/README.md).
+
+The `MARK*位置` column identifies the recorded destination, with DCC in bold.
+Completed DCC results, prior submissions awaiting verification, and plans
+without submission receipts remain distinct in the MARK* status column.
+
 Generate this view through Slurm with `--account=grisman` using
-`/home/users/lz280/notes/render_markstar_plan_table_20261007.slurm`.
+[`report.slurm`](report.slurm), which also exports the versioned plan snapshot.
 The script writes `unified_report.html`, `unified_plan.tsv`, and
 `5dc0_packstar_records.tsv` under its scratch snapshot directory.
 The stable [unified table link](latest_report/unified_report.html) and

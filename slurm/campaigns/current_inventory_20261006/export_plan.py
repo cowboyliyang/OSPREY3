@@ -12,7 +12,7 @@ supplement=json.loads((here.parent/'plan_supplements_20261007/registry.json').re
 preferences=json.loads((here/'reporting_preferences.json').read_text())
 with (report/'unified_plan.tsv').open(newline='') as handle:
     rows=list(csv.DictReader(handle,delimiter='\t'))
-fields=['system','planned_tier_count','design','state','job','destination','MARK_display','current_MARK_CPU',
+fields=['system','planned_tier_count','design','state','job','destination','location_display','MARK_display','current_MARK_CPU',
         'PACK_display','new_PACK_job','history_display','recommendation','dependency']
 with (here/'current_plan.tsv').open('w',newline='') as handle:
     writer=csv.DictWriter(handle,fieldnames=fields,delimiter='\t',lineterminator='\n',extrasaction='ignore')
@@ -22,6 +22,7 @@ text='# MARK* 统一计划表\n\n'
 text+=f'快照：{summary["snapshot"]}。共 {summary["systems"]} 个系统、{summary["planned_tiers"]} 档，其中 {summary["completed_results_retained"]} 档已有本轮 MARK* 结果。\n\n'
 text+='计划档数包含条件保留档。只有本轮 MARK* 已出结果的单元格使用斜体。G 表示四张 PRO 6000 GPU，C 表示 CPU 批次。★ 为历史完成档中最接近14天的一档。完成表示有完整结果表，不保证每条序列均达到 Estimated。\n\n'
 text+='“暂不排队”的三个条件保留档已撤销未启动提交；“待提交”仍是计划项。“DCC计划”尚无远端提交回执，“DCC待核”表示曾提交、当前进度未核实。\n\n'
+text+='“MARK*位置”列中的 **DCC** 表示结果来源或计划运行地；实际完成、待核和计划状态分别看“本轮 MARK*”列。“未定”表示新增档尚未指定运行位置。\n\n'
 limits=preferences.get('concurrency_limits')
 if limits:
     text+=f'本地并发上限：compsci {limits["compsci"]} + fennario {limits["fennario"]} = {limits["compsci"]+limits["fennario"]}，每任务 64 CPU、192 GiB 内存；实际运行数以本表快照为准。DCC 计划上限仍为 {limits["dcc"]}，远端状态未核实。详见[并发调整记录](../local_concurrency14_20261007/registry.json)。\n\n'

@@ -1,0 +1,293 @@
+{
+  "status": "SUBMITTED",
+  "management_job": "12832726",
+  "prep": "/usr/xtmp/lz280/markstar_queued_five_20261007/prep_12832726",
+  "package": "/usr/xtmp/lz280/markstar_queued_five_20261007/prep_12832726/package",
+  "verification": [
+    {
+      "design": "1gwc_flex_p2",
+      "preflight": "PASS",
+      "sequence_set_matches_PACK": true,
+      "expected_sequences": 20,
+      "positions": 15,
+      "pack_seconds": 880.69,
+      "pack_estimated": 19,
+      "pack_output": "/usr/xtmp/lz280/packstar_gpu101_20261005/run_12814879/results/1gwc_flex_p2_full_pair-only_s42_J12814879_T151",
+      "heap_gib": 160
+    },
+    {
+      "design": "2xxm_flex_p2",
+      "preflight": "PASS",
+      "sequence_set_matches_PACK": true,
+      "expected_sequences": 20,
+      "positions": 14,
+      "pack_seconds": 699.59,
+      "pack_estimated": 19,
+      "pack_output": "/usr/xtmp/lz280/packstar_gpu101_20261005/run_12814879/results/2xxm_flex_p2_full_pair-only_s42_J12814879_T109",
+      "heap_gib": 64
+    },
+    {
+      "design": "3k3q_flex_m1",
+      "preflight": "PASS",
+      "sequence_set_matches_PACK": true,
+      "expected_sequences": 39,
+      "positions": 16,
+      "pack_seconds": 1136.56,
+      "pack_estimated": 37,
+      "pack_output": "/usr/xtmp/lz280/markstar_plan_supplements_20261007/pack_12832109/results/3k3q_flex_m1_full_pair-only_s42_J12832109_T2",
+      "heap_gib": 160
+    },
+    {
+      "design": "4znc_flex_p5",
+      "preflight": "PASS",
+      "sequence_set_matches_PACK": true,
+      "expected_sequences": 20,
+      "positions": 13,
+      "pack_seconds": 594.96,
+      "pack_estimated": 18,
+      "pack_output": "/usr/xtmp/lz280/packstar_gpu101_20261005/run_12814879/results/4znc_flex_p5_full_pair-only_s42_J12814879_T35",
+      "heap_gib": 160
+    },
+    {
+      "design": "5d68_flex_p4",
+      "preflight": "PASS",
+      "sequence_set_matches_PACK": true,
+      "expected_sequences": 20,
+      "positions": 16,
+      "pack_seconds": 917.72,
+      "pack_estimated": 20,
+      "pack_output": "/usr/xtmp/lz280/markstar_plan_supplements_20261007/pack_12832109/results/5d68_flex_p4_full_pair-only_s42_J12832109_T1",
+      "heap_gib": 64
+    }
+  ],
+  "requests": [
+    {
+      "design": "1gwc_flex_p2",
+      "group": "fennario",
+      "after_job": "12812439_2",
+      "after_design": "4wem_flex_p10"
+    },
+    {
+      "design": "2xxm_flex_p2",
+      "group": "fennario",
+      "after_job": "12812439_3",
+      "after_design": "5dc4_flex_p4"
+    },
+    {
+      "design": "3k3q_flex_m1",
+      "group": "compsci",
+      "after_job": "12812439_13",
+      "after_design": "3eb6_flex_p6"
+    },
+    {
+      "design": "4znc_flex_p5",
+      "group": "compsci",
+      "after_job": "12812439_41",
+      "after_design": "1b6c_flex_p2",
+      "before_job": "12812439_26",
+      "before_design": "4znc_flex_p6"
+    },
+    {
+      "design": "5d68_flex_p4",
+      "group": "compsci",
+      "after_job": "12826674_0",
+      "after_design": "5d68_flex_p3"
+    }
+  ],
+  "jobs": [
+    {
+      "design": "1gwc_flex_p2",
+      "job": "12832727_0",
+      "array_job": "12832727",
+      "group": "fennario",
+      "after_job": "12812439_2",
+      "after_design": "4wem_flex_p10",
+      "prep": "/usr/xtmp/lz280/markstar_queued_five_20261007/prep_12832726",
+      "output": "/usr/xtmp/lz280/markstar_queued_five_20261007/markstar_A12832727/1gwc_flex_p2",
+      "cpus": 64,
+      "memory_gib": 192,
+      "limit_hours": 336,
+      "state_after_submission": "PENDING"
+    },
+    {
+      "design": "2xxm_flex_p2",
+      "job": "12832728_1",
+      "array_job": "12832728",
+      "group": "fennario",
+      "after_job": "12812439_3",
+      "after_design": "5dc4_flex_p4",
+      "prep": "/usr/xtmp/lz280/markstar_queued_five_20261007/prep_12832726",
+      "output": "/usr/xtmp/lz280/markstar_queued_five_20261007/markstar_A12832728/2xxm_flex_p2",
+      "cpus": 64,
+      "memory_gib": 192,
+      "limit_hours": 336,
+      "state_after_submission": "PENDING"
+    },
+    {
+      "design": "3k3q_flex_m1",
+      "job": "12832729_2",
+      "array_job": "12832729",
+      "group": "compsci",
+      "after_job": "12812439_13",
+      "after_design": "3eb6_flex_p6",
+      "prep": "/usr/xtmp/lz280/markstar_queued_five_20261007/prep_12832726",
+      "output": "/usr/xtmp/lz280/markstar_queued_five_20261007/markstar_A12832729/3k3q_flex_m1",
+      "cpus": 64,
+      "memory_gib": 192,
+      "limit_hours": 336,
+      "state_after_submission": "PENDING"
+    },
+    {
+      "design": "4znc_flex_p5",
+      "job": "12832730_3",
+      "array_job": "12832730",
+      "group": "compsci",
+      "after_job": "12812439_41",
+      "after_design": "1b6c_flex_p2",
+      "prep": "/usr/xtmp/lz280/markstar_queued_five_20261007/prep_12832726",
+      "output": "/usr/xtmp/lz280/markstar_queued_five_20261007/markstar_A12832730/4znc_flex_p5",
+      "cpus": 64,
+      "memory_gib": 192,
+      "limit_hours": 336,
+      "state_after_submission": "PENDING"
+    },
+    {
+      "design": "5d68_flex_p4",
+      "job": "12832731_4",
+      "array_job": "12832731",
+      "group": "compsci",
+      "after_job": "12826674_0",
+      "after_design": "5d68_flex_p3",
+      "prep": "/usr/xtmp/lz280/markstar_queued_five_20261007/prep_12832726",
+      "output": "/usr/xtmp/lz280/markstar_queued_five_20261007/markstar_A12832731/5d68_flex_p4",
+      "cpus": 64,
+      "memory_gib": 192,
+      "limit_hours": 336,
+      "state_after_submission": "PENDING"
+    }
+  ],
+  "lane_roots_before": {
+    "compsci": 9,
+    "grisman": 5
+  },
+  "planned_lane_roots": {
+    "compsci": 9,
+    "grisman": 5
+  },
+  "effective_requests": [
+    {
+      "design": "1gwc_flex_p2",
+      "group": "fennario",
+      "after_job": "12812439_2",
+      "after_design": "4wem_flex_p10"
+    },
+    {
+      "design": "2xxm_flex_p2",
+      "group": "fennario",
+      "after_job": "12812439_3",
+      "after_design": "5dc4_flex_p4"
+    },
+    {
+      "design": "3k3q_flex_m1",
+      "group": "compsci",
+      "after_job": "12812439_13",
+      "after_design": "3eb6_flex_p6"
+    },
+    {
+      "design": "4znc_flex_p5",
+      "group": "compsci",
+      "after_job": "12812439_41",
+      "after_design": "1b6c_flex_p2",
+      "before_job": "12812439_26",
+      "before_design": "4znc_flex_p6"
+    },
+    {
+      "design": "5d68_flex_p4",
+      "group": "compsci",
+      "after_job": "12826674_0",
+      "after_design": "5d68_flex_p3"
+    }
+  ],
+  "audit": "/usr/xtmp/lz280/markstar_queued_five_20261007/prep_12832726/submission",
+  "child_change": {
+    "job": "12812439_26",
+    "old_parent": "12812439_41",
+    "design": "4znc_flex_p5",
+    "before": {
+      "JobId": "12826118",
+      "ArrayJobId": "12812439",
+      "ArrayTaskId": "26",
+      "JobName": "markstar_local57_cpu64",
+      "UserId": "lz280(1546389)",
+      "GroupId": "oitusers(1000000)",
+      "MCS_label": "N/A",
+      "Priority": "10297",
+      "Nice": "0",
+      "Account": "grisman",
+      "QOS": "normal",
+      "JobState": "PENDING",
+      "Reason": "Dependency",
+      "Dependency": "afterany:12812439_41(unfulfilled)",
+      "Requeue": "1",
+      "Restarts": "0",
+      "BatchFlag": "1",
+      "Reboot": "0",
+      "ExitCode": "0:0",
+      "RunTime": "00:00:00",
+      "TimeLimit": "14-00:00:00",
+      "TimeMin": "N/A",
+      "SubmitTime": "2026-10-05T12:21:05",
+      "EligibleTime": "Unknown",
+      "AccrueTime": "Unknown",
+      "StartTime": "Unknown",
+      "EndTime": "Unknown",
+      "Deadline": "N/A",
+      "SuspendTime": "None",
+      "SecsPreSuspend": "0",
+      "LastSchedEval": "2026-10-06T15:53:23",
+      "Scheduler": "Main",
+      "Partition": "compsci",
+      "ReqNodeList": "(null)",
+      "ExcNodeList": "linux[31-40]",
+      "NumNodes": "1-1",
+      "NumCPUs": "64",
+      "NumTasks": "1",
+      "ReqTRES": "cpu=64,mem=192G,node=1,billing=64",
+      "AllocTRES": "(null)",
+      "CoreSpec": "*",
+      "MinCPUsNode": "64",
+      "MinMemoryNode": "192G",
+      "MinTmpDiskNode": "0",
+      "Features": "(null)",
+      "DelayBoot": "00:00:00",
+      "OverSubscribe": "NO",
+      "Exclusive": "NO",
+      "Contiguous": "0",
+      "Licenses": "(null)",
+      "LicensesAlloc": "(null)",
+      "Network": "(null)",
+      "Command": "/home/users/lz280/notes/markstar_local57_cpu64_20261005.slurm",
+      "SubmitLine": "sbatch",
+      "WorkDir": "/home/users/lz280",
+      "StdErr": "/usr/xtmp/lz280/slurm_logs/markstar_local57_cpu64_12812439_26.err",
+      "StdIn": "/dev/null",
+      "StdOut": "/usr/xtmp/lz280/slurm_logs/markstar_local57_cpu64_12812439_26.out",
+      "TresPerTask": "cpu=64"
+    },
+    "held_by_management": true,
+    "new_parent": "12832730_3"
+  },
+  "lane_roots_after_submission": {
+    "compsci": 9,
+    "grisman": 5
+  },
+  "lane_roots_after": {
+    "compsci": 9,
+    "grisman": 5
+  },
+  "applied": "2026-10-07T16:10:32.092720-04:00",
+  "protected_running_tasks": 14,
+  "conditional_jobs_restarted": [],
+  "dcc_changes": [],
+  "new_packstar_jobs": []
+}

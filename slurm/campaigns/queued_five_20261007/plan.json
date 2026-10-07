@@ -1,0 +1,18 @@
+{
+  "account": "grisman",
+  "local_limits": {"compsci": 9, "fennario": 5},
+  "cpus_per_task": 64,
+  "memory_gib": 192,
+  "limit_hours": 336,
+  "requests": [
+    {"design": "1gwc_flex_p2", "group": "fennario", "after_job": "12812439_2", "after_design": "4wem_flex_p10"},
+    {"design": "2xxm_flex_p2", "group": "fennario", "after_job": "12812439_3", "after_design": "5dc4_flex_p4"},
+    {"design": "3k3q_flex_m1", "group": "compsci", "after_job": "12812439_13", "after_design": "3eb6_flex_p6"},
+    {"design": "4znc_flex_p5", "group": "compsci", "after_job": "12812439_41", "after_design": "1b6c_flex_p2", "before_job": "12812439_26", "before_design": "4znc_flex_p6"},
+    {"design": "5d68_flex_p4", "group": "compsci", "after_job": "12826674_0", "after_design": "5d68_flex_p3"}
+  ],
+  "preserve_all_running": true,
+  "conditional_tiers_remain_deferred": true,
+  "dcc_changes": false,
+  "new_packstar_jobs": false
+}

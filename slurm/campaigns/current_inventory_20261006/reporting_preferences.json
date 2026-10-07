@@ -1,15 +1,17 @@
 {
   "updated_on": "2026-10-07",
-  "scope": "Approved unified plan; omitted and conditional tiers are absent from the local queue. Unsubmitted additions remain explicitly labelled.",
+  "scope": "Approved unified plan; all five local additions are submitted. Conditional tiers remain table-only; DCC receipt gaps remain explicit.",
   "columns": [
     "系统（计划档数）",
     "档位",
+    "MARK*位置",
     "本轮 MARK*",
     "PACK* 分钟",
     "历史 MARK*",
     "建议"
   ],
   "completed_result_italics": "Only the current-round MARK* cell, never the whole row or other columns.",
+  "location_label": "Show the recorded MARK destination separately and bold DCC; keep DCC completed, unverified submissions, and plans distinct. Unassigned additions remain 未定.",
   "retain_label": "保留",
   "conditional_label": "条件保留",
   "preserve_all_completed": true,
@@ -28,27 +30,37 @@
     {
       "design": "1gwc_flex_p2",
       "definition_exists": true,
-      "source": "Prior coverage recommendation retained in the requested table"
+      "source": "Prior coverage recommendation retained in the requested table",
+      "destination": "fennario",
+      "submission_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/queued_five_20261007/registry.json"
     },
     {
       "design": "2xxm_flex_p2",
       "definition_exists": true,
-      "source": "Prior coverage recommendation retained in the requested table"
+      "source": "Prior coverage recommendation retained in the requested table",
+      "destination": "fennario",
+      "submission_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/queued_five_20261007/registry.json"
     },
     {
       "design": "3k3q_flex_m1",
       "definition_exists": true,
-      "source": "Prior coverage recommendation; no completed smaller-tier result found; MARK and PACK input preflights passed in job 12832106"
+      "source": "Prior coverage recommendation; no completed smaller-tier result found; MARK and PACK input preflights passed in job 12832106",
+      "destination": "compsci",
+      "submission_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/queued_five_20261007/registry.json"
     },
     {
       "design": "4znc_flex_p5",
       "definition_exists": true,
-      "source": "Prior coverage recommendation retained in the requested table"
+      "source": "Prior coverage recommendation retained in the requested table",
+      "destination": "compsci",
+      "submission_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/queued_five_20261007/registry.json"
     },
     {
       "design": "5d68_flex_p4",
       "definition_exists": true,
-      "source": "User explicitly added this tier to the plan; MARK and PACK input preflights passed in job 12832106"
+      "source": "User explicitly added this tier to the plan; MARK and PACK input preflights passed in job 12832106",
+      "destination": "compsci",
+      "submission_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/queued_five_20261007/registry.json"
     },
     {
       "design": "5dc0_flex_p9",
@@ -67,5 +79,6 @@
     "compsci": 9,
     "fennario": 5,
     "dcc": 6
-  }
+  },
+  "submitted_additions_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/queued_five_20261007/registry.json"
 }
