@@ -10,10 +10,11 @@ Management job `12827710` submitted MARK* job `12827711_0` on compsci with
 runner checks for AMD EPYC 9554, matching the current p1 anchor. This is a
 coverage run; the time limit is not a completion forecast.
 
-The serial lane is now p1 (`12812439_7`) → 1b6c_p2 (`12812439_41`) →
-4z80_p0 (`12827711_0`) → 4wyq_p3 (`12827032_2`) → 1b6c_p4 (`12827323_0`).
-Only the never-started 4wyq dependency changed. Running work was preserved,
-and the existing eight-compsci/four-fennario concurrency caps remain in place.
+The later [coverage lane rebalance](../coverage_lane_rebalance_20261006/README.md)
+sets the active lane to p1 (`12812439_7`) → p0 (`12827711_0`) →
+4wyq_p3 (`12827032_2`) → 1b6c_p4 (`12827323_0`). The never-started p0 now
+waits directly for the same-system p1. 1b6c_p2 and 4znc_p6 moved into the
+2hnu_p5 lane. The existing eight-compsci/four-fennario caps remain in place.
 
 No additional PACK* job is needed. GPU101 already produced all 39 p0 rows in
 1412.23 seconds on four RTX PRO 6000 GPUs; 33 rows have all three components

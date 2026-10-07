@@ -1,0 +1,44 @@
+{
+  "snapshot": "2026-10-06T22:13:32.739064-04:00",
+  "systems": 38,
+  "designs_in_current_inventory": 93,
+  "states": {
+    "完成": 41,
+    "排队": 22,
+    "DCC新增计划，无提交回执": 9,
+    "运行": 12,
+    "DCC原提交，进度待核": 8,
+    "备用暂停": 1
+  },
+  "completed_systems": 25,
+  "systems_with_two_completed_tiers": 11,
+  "additional_completed_tiers_needed_for_two_per_system": 40,
+  "goal": "Two completed current-round tiers per system by October 16; final 14-day round starts October 16.",
+  "status_scope": "Main 64-CPU MARK* campaign. Completed means normal run completion with result rows, not all rows Estimated.",
+  "speedup_scope": "Raw whole-run wall ratios; joint_verified records jointly Estimated rows only and is not a numerical agreement test.",
+  "dcc_scope": "38 returned completions verified from transfer. Original remote submissions and new handoff definitions are distinct; current remote progress is unavailable.",
+  "legacy_48cpu_comparisons": [
+    {
+      "job": "12825151",
+      "name": "markstar_1a0r_jerry",
+      "state": "RUNNING",
+      "elapsed": "22:35:20",
+      "reason": "jerry1",
+      "partition": "grisman",
+      "dependency": "(null)"
+    },
+    {
+      "job": "12825152",
+      "name": "markstar_3bua_jerry",
+      "state": "RUNNING",
+      "elapsed": "22:35:20",
+      "reason": "jerry2",
+      "partition": "grisman",
+      "dependency": "(null)"
+    }
+  ],
+  "output": "/usr/xtmp/lz280/markstar_current_inventory_12828052",
+  "source_snapshot": "/usr/xtmp/lz280/current_markstar_tiers_12827815",
+  "coverage_rebalance_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/coverage_lane_rebalance_20261006/registry.json",
+  "all_definition_count": 178
+}

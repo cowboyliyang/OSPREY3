@@ -129,11 +129,13 @@
       "design": "3eb6_flex_p7",
       "job": "12827030_0",
       "group": "compsci",
-      "after_job": "12812439_26",
+      "after_job": "12812439_13",
       "replaced_or_previous_job": "12826958_0",
       "role": "PRIMARY_NO_GPU_GATE",
       "gpu_dependency": "NONE",
-      "prep": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/cpu_continuation_12827027"
+      "prep": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/cpu_continuation_12827027",
+      "original_after_job": "12812439_26",
+      "dependency_updated_utc": "2026-10-07T02:08:26.202871+00:00"
     }
   ],
   "launch_audit": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/launch_12826948",
@@ -162,31 +164,36 @@
         "design": "3eb6_flex_p7",
         "job": "12827030_0",
         "group": "compsci",
-        "after_job": "12812439_26",
+        "after_job": "12812439_13",
         "replaced_or_previous_job": "12826958_0",
         "role": "PRIMARY_NO_GPU_GATE",
         "gpu_dependency": "NONE",
-        "prep": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/cpu_continuation_12827027"
+        "prep": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/cpu_continuation_12827027",
+        "original_after_job": "12812439_26",
+        "dependency_updated_utc": "2026-10-07T02:08:26.202871+00:00"
       },
       {
         "design": "1a0r_flex_p0",
         "job": "12827031_1",
         "group": "compsci",
-        "after_job": "12812439_52",
+        "after_job": "12812439_26",
         "replaced_or_previous_job": "12826674_6",
         "role": "CONTINUATION_RESERVE",
         "gpu_dependency": "NONE",
-        "prep": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/cpu_continuation_12827027"
+        "prep": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/cpu_continuation_12827027",
+        "original_after_job": "12812439_52",
+        "dependency_updated_utc": "2026-10-07T02:08:26.202871+00:00"
       },
       {
         "design": "4wyq_flex_p3",
         "job": "12827032_2",
         "group": "compsci",
-        "after_job": "12812439_41",
+        "after_job": "12827711_0",
         "replaced_or_previous_job": "12826674_4",
         "role": "CONTINUATION_RESERVE",
         "gpu_dependency": "NONE",
-        "prep": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/cpu_continuation_12827027"
+        "prep": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/cpu_continuation_12827027",
+        "original_after_job": "12812439_41"
       },
       {
         "design": "2rl0_flex_p4",
@@ -311,5 +318,6 @@
   "previous_failed_packstar_job": "12827169",
   "packstar_after_job": "12827800",
   "packstar_memory_gib": 1000,
-  "packstar_retry_audit_job": "12827804"
+  "packstar_retry_audit_job": "12827804",
+  "coverage_lane_rebalance_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/coverage_lane_rebalance_20261006/registry.json"
 }

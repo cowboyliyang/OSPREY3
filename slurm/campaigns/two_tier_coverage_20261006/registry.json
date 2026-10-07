@@ -3,7 +3,7 @@
   "prep": "/usr/xtmp/lz280/markstar_two_tier_20261006/prep_12827710",
   "design": "4z80_flex_p0",
   "job": "12827711_0",
-  "after_job": "12812439_41",
+  "after_job": "12812439_7",
   "before_job": "12827032_2",
   "cpus": 64,
   "memory_gib": 192,
@@ -26,5 +26,8 @@
     "old_parent": "12812439_41",
     "new_parent": "12827711_0"
   },
-  "command_sha256": "1861c303bb09abbdc325e53cff938f4a15cd11f7cd1046be7b46d0a5c998c1cb"
+  "command_sha256": "1861c303bb09abbdc325e53cff938f4a15cd11f7cd1046be7b46d0a5c998c1cb",
+  "original_after_job": "12812439_41",
+  "dependency_updated_utc": "2026-10-07T02:08:26.202871+00:00",
+  "coverage_lane_rebalance_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/coverage_lane_rebalance_20261006/registry.json"
 }

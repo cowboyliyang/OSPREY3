@@ -1,0 +1,21 @@
+{
+  "account": "grisman",
+  "reason": "Prioritize coverage before October 16 by moving 1b6c p2 and 4znc p6 behind the already-running 2hnu p5 in one serial lane.",
+  "local_concurrency": {"compsci": 8, "fennario": 4},
+  "changes": [
+    {"design": "1a0r_flex_p0", "job": "12827031_1", "old_parent": "12812439_52", "new_parent": "12812439_26"},
+    {"design": "1b6c_flex_p2", "job": "12812439_41", "old_parent": "12812439_7", "new_parent": "12812439_52"},
+    {"design": "4znc_flex_p6", "job": "12812439_26", "old_parent": "12812439_13", "new_parent": "12812439_41"},
+    {"design": "4z80_flex_p0", "job": "12827711_0", "old_parent": "12812439_41", "new_parent": "12812439_7"},
+    {"design": "3eb6_flex_p7", "job": "12827030_0", "old_parent": "12812439_26", "new_parent": "12812439_13"}
+  ],
+  "new_lanes": [
+    ["2hnu_flex_p5", "1b6c_flex_p2", "4znc_flex_p6", "1a0r_flex_p0", "2hnu_flex_p11"],
+    ["4z80_flex_p1", "4z80_flex_p0", "4wyq_flex_p3", "1b6c_flex_p4"],
+    ["3eb6_flex_p6", "3eb6_flex_p7", "4znc_flex_p14"]
+  ],
+  "running_jobs_preserved": true,
+  "hardware_changes": [],
+  "dcc_changes": [],
+  "gpu_changes": []
+}

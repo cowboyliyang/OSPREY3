@@ -18,6 +18,19 @@ guarantee uninterrupted ownership of a node between tasks.
 
 ## Latest append-only additions
 
+The [coverage lane rebalance](../coverage_lane_rebalance_20261006/README.md)
+was applied by job `12828045`. The active coverage lane is now
+`2hnu_p5 → 1b6c_p2 → 4znc_p6 → 1a0r_p0 → 2hnu_p11`.
+The other two affected lanes are `4z80_p1 → 4z80_p0 → 4wyq_p3 → 1b6c_p4`
+and `3eb6_p6 → 3eb6_p7 → 4znc_p14`. Five never-started dependencies changed;
+the eight/four local caps and same-system CPU models are retained.
+The user clarified the target: two completed tiers per system by October 16,
+followed by a final 14-day round starting October 16. Those are scheduling
+goals, not achieved coverage or guaranteed availability.
+See the [current inventory](../current_inventory_20261006/README.md) for the
+latest completed, running and planned tiers. Earlier snapshots below retain
+their original counts and should not be treated as live scheduler state.
+
 GPU retry update: job `12827169` failed before full measurements because
 `--mem=0` retained a small inherited memory environment value. Replacement
 `12827798` then exposed a missing `FOCUS_PACK_INDICES` export. The active
