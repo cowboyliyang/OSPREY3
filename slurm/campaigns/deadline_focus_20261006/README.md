@@ -18,6 +18,16 @@ guarantee uninterrupted ownership of a node between tasks.
 
 ## Latest append-only additions
 
+GPU retry update: job `12827169` failed before full measurements because
+`--mem=0` retained a small inherited memory environment value. Replacement
+`12827798` then exposed a missing `FOCUS_PACK_INDICES` export. The active
+twelve-design retry is `12827802`, after the running nine-design retry
+`12827800`, with audit `12827804`. It explicitly requests 1000 GiB, four
+RTX PRO 6000 GPUs, 128 CPUs, and six hours. The selected indices are exported
+explicitly; the source batch script also defaults to all twelve indices.
+Original packages and failed outputs remain unchanged. See
+`../gpu_memory_retry_20261006/registry.json`; MARK* dependencies are unchanged.
+
 The [second-tier coverage update](../two_tier_coverage_20261006/README.md)
 restores `4z80_flex_p0` as job `12827711_0`, with 64 CPU threads and a 72-hour
 limit on the same CPU model as running p1. It precedes the never-started

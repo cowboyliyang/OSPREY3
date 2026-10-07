@@ -108,10 +108,10 @@
   "packstar_status": "SUBMITTED",
   "markstar_status": "CPU_ONLY_NO_GPU_GATE",
   "status": "LOCAL_ADJUSTED_REMOTE_HANDOFF_READY",
-  "packstar_job": "12827169",
+  "packstar_job": "12827802",
   "packstar_replaced_pending_job": "12826949",
   "packstar_selected_indices": "0,1,2,3,4,5,6,7,8,9,10,11",
-  "packstar_output": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/pack_12827169",
+  "packstar_output": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/pack_12827802",
   "packstar_screening_job": "12827170",
   "markstar_prep": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/cpu_continuation_12827027",
   "new_local_jobs": [
@@ -306,5 +306,10 @@
     "status": "SUBMITTED"
   },
   "near14_additions_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/near14_20261006/registry.json",
-  "two_tier_coverage_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/two_tier_coverage_20261006/registry.json"
+  "two_tier_coverage_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/two_tier_coverage_20261006/registry.json",
+  "gpu_memory_retry_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/gpu_memory_retry_20261006/registry.json",
+  "previous_failed_packstar_job": "12827169",
+  "packstar_after_job": "12827800",
+  "packstar_memory_gib": 1000,
+  "packstar_retry_audit_job": "12827804"
 }

@@ -178,9 +178,9 @@
       ]
     }
   ],
-  "packstar_job": "12827321",
-  "packstar_output": "/usr/xtmp/lz280/markstar_near14_20261006/pack_12827321",
-  "packstar_after_job": "12827169",
+  "packstar_job": "12827800",
+  "packstar_output": "/usr/xtmp/lz280/markstar_near14_20261006/pack_12827800",
+  "packstar_after_job": "12827798",
   "packstar_cpus": 128,
   "packstar_gpus": 4,
   "packstar_limit_hours": 6,
@@ -223,5 +223,9 @@
   "dcc_combined_concurrency": 6,
   "local_lane_limit": 8,
   "existing_jobs_modified": [],
-  "applied_utc": "2026-10-06T22:15:05.117170+00:00"
+  "applied_utc": "2026-10-06T22:15:05.117170+00:00",
+  "gpu_memory_retry_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/gpu_memory_retry_20261006/registry.json",
+  "previous_failed_packstar_job": "12827321",
+  "packstar_memory_gib": 1000,
+  "packstar_retry_audit_job": "12827801"
 }

@@ -1,0 +1,32 @@
+{
+  "reason": "Explicit 1000 GiB request prevents inherited small SLURM_MEM_PER_NODE with mem=0",
+  "account": "grisman",
+  "cpus": 128,
+  "gpus": 4,
+  "memory_gib": 1000,
+  "limit_hours_per_group": 6,
+  "markstar_changes": [],
+  "groups": [
+    {
+      "campaign": "deadline_focus_20261006",
+      "old_job": "12827169",
+      "job": "12827802",
+      "failed_retry_job": "12827798",
+      "failed_retry_reason": "Missing FOCUS_PACK_INDICES; supplied explicitly on resubmission",
+      "prep": "/usr/xtmp/lz280/packstar_gpu_memory_retry_20261006/prep_12827797/deadline_focus_20261006",
+      "output": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/pack_12827802",
+      "after_job": "12827800",
+      "audit_job": "12827804"
+    },
+    {
+      "campaign": "near14_20261006",
+      "old_job": "12827321",
+      "job": "12827800",
+      "prep": "/usr/xtmp/lz280/packstar_gpu_memory_retry_20261006/prep_12827797/near14_20261006",
+      "output": "/usr/xtmp/lz280/markstar_near14_20261006/pack_12827800",
+      "after_job": "12827798",
+      "audit_job": "12827801"
+    }
+  ],
+  "state": "SUBMITTED"
+}

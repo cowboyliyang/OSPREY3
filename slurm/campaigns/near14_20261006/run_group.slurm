@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=128
 #SBATCH --gres=gpu:rtx_pro_6000:4
 #SBATCH --exclusive
-#SBATCH --mem=0
+#SBATCH --mem=1000G
 #SBATCH --time=06:00:00
 #SBATCH --output=/usr/xtmp/lz280/slurm_logs/packstar_near14_gpu_%j.out
 #SBATCH --error=/usr/xtmp/lz280/slurm_logs/packstar_near14_gpu_%j.err

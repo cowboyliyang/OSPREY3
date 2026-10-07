@@ -69,3 +69,12 @@ The active external snapshot records 30 completed designs after this correction.
 Prepared inputs and run outputs stay under
 `/usr/xtmp/lz280/markstar_near14_20261006`. Earlier p18 preparations are preserved
 for provenance and are not active launch inputs.
+# GPU memory retry
+
+The original PACK* job `12827321` failed its preflight memory guard before
+producing any full measurements. Active retry `12827800` explicitly requests
+1000 GiB with the existing four RTX PRO 6000 GPUs, 128 CPUs, and six-hour
+limit; its audit is `12827801`. The first design entered full GPU computation.
+The twelve-design group follows as `12827802`. Frozen inputs and previous
+outputs are preserved, and MARK* tasks retain their independent dependencies.
+See `../gpu_memory_retry_20261006/registry.json` for the retry history.
