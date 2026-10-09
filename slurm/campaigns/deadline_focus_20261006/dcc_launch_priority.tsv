@@ -7,10 +7,6 @@ priority	design_id	role	prior_submission	gpu_dependency	runtime_evidence
 6	3bua_flex_m2	LONG_CONTINUATION	ALREADY_SUBMITTED_CHECK_LIVE_STATE	NONE	Historical 16-CPU run did not finish within 14 days; 64-CPU runtime unknown
 7	4wwi_flex_p2	LONG_CONTINUATION	ALREADY_SUBMITTED_CHECK_LIVE_STATE	NONE	Historical 16-CPU run did not finish within 14 days; 64-CPU runtime unknown
 8	3ma2_flex_p1	LONG_CONTINUATION	ALREADY_SUBMITTED_CHECK_LIVE_STATE	NONE	Historical 16-CPU run did not finish within 14 days; 64-CPU runtime unknown
-9	3bua_flex_m4	COVERAGE_FALLBACK	NEW_DEFINITION	NONE	Lower tier with no guaranteed completion; retain until system has a sub-14-day result
-10	4wwi_flex_p1	COVERAGE_FALLBACK	ALREADY_SUBMITTED_CHECK_LIVE_STATE	NONE	Historical completed MARK* case; retain until system coverage is confirmed
-11	4wyu_flex_p0	COVERAGE_FALLBACK	ALREADY_SUBMITTED_CHECK_LIVE_STATE	NONE	Historical completed MARK* case; retain until system coverage is confirmed
-12	3ma2_flex_p0	COVERAGE_FALLBACK	ALREADY_SUBMITTED_CHECK_LIVE_STATE	NONE	Historical completed MARK* case; retain until system coverage is confirmed
 13	2p4a_flex_p9	COVERAGE_FALLBACK	ALREADY_SUBMITTED_CHECK_LIVE_STATE	NONE	Historical completed MARK* case; retain until system coverage is confirmed
 14	2xgy_flex_m1	COVERAGE_FALLBACK	ALREADY_SUBMITTED_CHECK_LIVE_STATE	NONE	Historical short MARK* case; retain until system coverage is confirmed
 15	2p4a_flex_p12	CONSERVATIVE_ADDITION	NEW_DEFINITION_NOT_SUBMITTED_REMOTELY	NONE	Unmeasured; preserve all prior smaller cases; no guaranteed near-14-day runtime

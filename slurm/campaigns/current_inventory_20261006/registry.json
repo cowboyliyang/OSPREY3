@@ -1,18 +1,17 @@
 {
-  "snapshot": "2026-10-07T16:10:32.613969-04:00",
+  "snapshot": "2026-10-09T10:03:03.639317-04:00",
   "systems": 38,
   "designs_in_current_inventory": 89,
   "states": {
-    "完成": 45,
-    "运行": 14,
-    "排队": 13,
-    "DCC新增计划，无提交回执": 6,
-    "DCC原提交，进度待核": 8,
-    "条件保留，暂不排队": 3
+    "完成": 58,
+    "运行": 15,
+    "DCC新增计划，无提交回执": 5,
+    "DCC原提交，进度待核": 5,
+    "备用暂停": 6
   },
-  "completed_systems": 29,
-  "systems_with_two_completed_tiers": 11,
-  "additional_completed_tiers_needed_for_two_per_system": 36,
+  "completed_systems": 33,
+  "systems_with_two_completed_tiers": 18,
+  "additional_completed_tiers_needed_for_two_per_system": 25,
   "goal": "Two completed current-round tiers per system by October 16; final 14-day round starts October 16.",
   "status_scope": "Main 64-CPU MARK* campaign. Completed means normal run completion with result rows, not all rows Estimated.",
   "speedup_scope": "Raw whole-run wall ratios; joint_verified records jointly Estimated rows only and is not a numerical agreement test.",
@@ -22,7 +21,7 @@
       "job": "12825151",
       "name": "markstar_1a0r_jerry",
       "state": "RUNNING",
-      "elapsed": "1-16:32:20",
+      "elapsed": "3-10:24:50",
       "reason": "jerry1",
       "partition": "grisman",
       "dependency": "(null)"
@@ -31,16 +30,16 @@
       "job": "12825152",
       "name": "markstar_3bua_jerry",
       "state": "RUNNING",
-      "elapsed": "1-16:32:20",
+      "elapsed": "3-10:24:50",
       "reason": "jerry2",
       "partition": "grisman",
       "dependency": "(null)"
     }
   ],
-  "output": "/usr/xtmp/lz280/markstar_current_inventory_12832726",
+  "output": "/usr/xtmp/lz280/markstar_current_inventory_12865027",
   "source_snapshot": "/usr/xtmp/lz280/current_markstar_tiers_12827815",
   "coverage_rebalance_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/coverage_lane_rebalance_20261006/registry.json",
-  "all_definition_count": 172,
+  "all_definition_count": 171,
   "excluded_designs": [
     "1gwc_flex_p4",
     "2rl0_flex_p4",
@@ -50,15 +49,8 @@
     "3k3q_flex_p3",
     "4kt6_flex_p4",
     "4u3s_flex_p1",
-    "4znc_flex_p14"
+    "4znc_flex_p14",
+    "5dc0_flex_p9"
   ],
-  "exclusions_manifest": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/current_inventory_20261006/excluded_designs.json",
-  "withdrawal_20261008": {
-    "design": "5dc0_flex_p9",
-    "date": "2026-10-08",
-    "action": "WITHDRAW_AND_REQUEST_REMOTE_CANCELLATION",
-    "remote_state": "UNKNOWN",
-    "remote_scheduler_accessed": false,
-    "note": "Remove from launch lists; cancel this case on DCC if submitted. Preserve PACK results, p4 and p10."
-  }
+  "exclusions_manifest": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/current_inventory_20261006/excluded_designs.json"
 }

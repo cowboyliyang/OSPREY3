@@ -1,0 +1,61 @@
+{
+  "limits": {
+    "compsci": 10,
+    "grisman": 5
+  },
+  "jobs": [
+    {
+      "job": "12832731_4",
+      "pool": "compsci",
+      "adopt_hold": false
+    },
+    {
+      "job": "12827323_0",
+      "pool": "compsci",
+      "adopt_hold": false
+    },
+    {
+      "job": "12827032_2",
+      "pool": "compsci",
+      "adopt_hold": false
+    },
+    {
+      "job": "12826674_3",
+      "pool": "compsci",
+      "adopt_hold": true
+    },
+    {
+      "job": "12853420_0",
+      "pool": "grisman",
+      "adopt_hold": false
+    },
+    {
+      "job": "12853421_3",
+      "pool": "grisman",
+      "adopt_hold": true
+    },
+    {
+      "job": "12865028_0",
+      "pool": "compsci",
+      "adopt_hold": true
+    },
+    {
+      "job": "12865028_1",
+      "pool": "compsci",
+      "adopt_hold": true
+    },
+    {
+      "job": "12865028_2",
+      "pool": "compsci",
+      "adopt_hold": true
+    },
+    {
+      "job": "12865028_3",
+      "pool": "compsci",
+      "adopt_hold": true
+    }
+  ],
+  "poll_seconds": 30,
+  "replaced_controller": "12854859",
+  "migration_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/dcc_coverage_to_compsci_20261009/registry.json"
+}

@@ -88,6 +88,12 @@ if queued_registry.exists():
                                state='排队' if submission['job'] in queue else '本地提交，状态待核')
 conditional_path = campaign/'conditional_deferred.json'
 conditional = json.loads(conditional_path.read_text())['designs'] if conditional_path.exists() else {}
+migration_path = campaign / 'local_job_overrides.json'
+migrations = json.loads(migration_path.read_text()) if migration_path.exists() else {}
+for row in rows:
+    if row['design'] in migrations:
+        move = migrations[row['design']]
+        row.update(job=move['job'], destination=move['destination'])
 dcc_complete = {r['design_id']: r for r in tsv(Path('/usr/xtmp/lz280/markstar_dcc64_completed38_20261006/design_summary.tsv'))}
 local_root = Path('/usr/xtmp/lz280/markstar_local57_cpu64_20261005/A12812439')
 for row in rows:
@@ -110,6 +116,16 @@ for row in rows:
         if row['PACK_seconds']:
             row['raw_wall_ratio'] = round(seconds/float(row['PACK_seconds']), 4)
     root = Path(queued_records[name]['output']) if name in queued_records else local_root / name
+    if name in migrations:
+        root = Path(migrations[name]['output'])
+    elif not (root / 'run_manifest.json').exists() and row['job']:
+        array = row['job'].split('_')[0]
+        for campaign_root in ('frontier_extension7_20261006', 'markstar_deadline_focus_20261006',
+                              'markstar_near14_20261006', 'markstar_two_tier_20261006'):
+            candidate = Path('/usr/xtmp/lz280') / campaign_root / ('markstar_A' + array) / name
+            if (candidate / 'run_manifest.json').exists():
+                root = candidate
+                break
     manifest_path = root / 'run_manifest.json'
     if manifest_path.exists():
         manifest = json.loads(manifest_path.read_text())

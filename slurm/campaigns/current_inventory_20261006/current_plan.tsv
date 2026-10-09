@@ -1,12 +1,12 @@
 system	planned_tier_count	design	state	job	destination	location_display	MARK_display	current_MARK_CPU	PACK_display	new_PACK_job	history_display	recommendation	dependency
 1a0r	2	1a0r_flex_m2	完成	12812439_10	local	本地	已出 11时40分	AMD EPYC 9554 64-Core Processor	11.37分 G		7天07时00分	保留	NA
-1a0r	2	1a0r_flex_p0	运行	12827031_1	compsci	compsci	在跑 2时46分		17.59分 G		≥14天，未完成	保留	(null)
-1b6c	2	1b6c_flex_p2	运行	12812439_41	compsci	compsci	在跑 3时14分	AMD EPYC 9554 64-Core Processor	19.60分 G		1天22时06分	保留	(null)
-1b6c	2	1b6c_flex_p4	排队	12827323_0	compsci	compsci	本地排队		25.53分 G	12827800	未测	保留	afterany:12827032_2(unfulfilled)
+1a0r	2	1a0r_flex_p0	运行	12827031_1	compsci	compsci	在跑 1天20时39分	AMD EPYC 9554 64-Core Processor	17.59分 G		≥14天，未完成	保留	(null)
+1b6c	2	1b6c_flex_p2	完成	12812439_41	compsci	compsci	已出 18时47分	AMD EPYC 9554 64-Core Processor	19.60分 G		1天22时06分	保留	NA
+1b6c	2	1b6c_flex_p4	运行	12827323_0	compsci	compsci	在跑 6时10分	AMD EPYC 9554 64-Core Processor	25.53分 G	12827800	未测	保留	(null)
 1gwc	2	1gwc_flex_p1	完成	57713739_18	dcc	DCC	已出 3时33分	INTEL(R) XEON(R) PLATINUM 8562Y+	10.12分 G		15时06分	保留	NA
-1gwc	2	1gwc_flex_p2	排队	12832727_0	fennario	fennario	本地排队		14.68分 G		1天07时44分	保留	afterany:12812439_2(unfulfilled)
+1gwc	2	1gwc_flex_p2	完成	12832727_0	fennario	fennario	已出 23时17分	Intel(R) Xeon(R) Gold 5320 CPU @ 2.20GHz	14.68分 G		1天07时44分	保留	NA
 2hnu	2	2hnu_flex_p5	完成	12812439_52	compsci	compsci	已出 15时15分	AMD EPYC 9554 64-Core Processor	12.02分 G		1天04时57分	保留	NA
-2hnu	2	2hnu_flex_p11	排队	12827324_1	compsci	compsci	本地排队		20.83分 G	12827800	未测	保留	afterany:12827031_1(unfulfilled)
+2hnu	2	2hnu_flex_p11	运行	12852860_1	fennario	fennario	在跑 13时01分	Intel(R) Xeon(R) Gold 5320 CPU @ 2.20GHz	20.83分 G	12827800	未测	保留	(null)
 2hnv	2	2hnv_flex_p3	完成	57713739_21	dcc	DCC	已出 2时13分	INTEL(R) XEON(R) PLATINUM 8562Y+	7.68分 C		13时18分	保留	NA
 2hnv	2	2hnv_flex_p4	完成	57713739_23	dcc	DCC	已出 4时54分	INTEL(R) XEON(R) PLATINUM 8562Y+	11.08分 G		12时48分	保留	NA
 2p4a	2	2p4a_flex_p9	完成	57713739_47	dcc	DCC	已出 1时55分	INTEL(R) XEON(R) PLATINUM 8562Y+	10.23分 C		4时34分	保留	NA
@@ -27,26 +27,26 @@ system	planned_tier_count	design	state	job	destination	location_display	MARK_dis
 2rfe	2	2rfe_flex_p1	完成	57713739_0	dcc	DCC	已出 10时30分	Intel(R) Xeon(R) Gold 6252 CPU @ 2.10GHz	20.36分 G		1天00时37分	保留	NA
 2rl0	4	2rl0_flex_m1	完成	57713739_30	dcc	DCC	已出 1时56分	INTEL(R) XEON(R) PLATINUM 8562Y+	8.52分 G		9时50分	保留	NA
 2rl0	4	2rl0_flex_p0	完成	57713739_12	dcc	DCC	已出 6时50分	Intel(R) Xeon(R) Gold 6252 CPU @ 2.10GHz	11.80分 G		17时23分	保留	NA
-2rl0	4	2rl0_flex_p2	运行	12812439_4	compsci	compsci	在跑 2天03时49分	AMD EPYC 9554 64-Core Processor	14.83分 G		10天00时55分	保留	(null)
-2rl0	4	2rl0_flex_p3	排队	12826674_1	compsci	compsci	本地排队		16.02分 G	12827802	未测	保留	afterany:12812439_4(unfulfilled)
+2rl0	4	2rl0_flex_p2	完成	12812439_4	local	本地	已出 3天07时41分	AMD EPYC 9554 64-Core Processor	14.83分 G		10天00时55分	保留	NA
+2rl0	4	2rl0_flex_p3	运行	12826674_1	compsci	compsci	在跑 14时00分	AMD EPYC 9554 64-Core Processor	16.02分 G	12827802	未测	保留	(null)
 2xgy	2	2xgy_flex_m1	完成	57713739_68	dcc	DCC	已出 36分	INTEL(R) XEON(R) PLATINUM 8562Y+	7.04分 G		1时05分	保留	NA
 2xgy	2	2xgy_flex_p0	DCC原提交，进度待核		dcc	DCC	DCC已提交，进度待核		8.27分 G		≥14天，未完成	保留	NA
 2xxm	2	2xxm_flex_p1	完成	57713739_29	dcc	DCC	已出 1时46分	INTEL(R) XEON(R) PLATINUM 8562Y+	10.82分 G		10时14分	保留	NA
-2xxm	2	2xxm_flex_p2	排队	12832728_1	fennario	fennario	本地排队		11.66分 G		1天07时37分	保留	afterany:12812439_3(unfulfilled)
+2xxm	2	2xxm_flex_p2	完成	12832728_1	fennario	fennario	已出 7时30分	Intel(R) Xeon(R) Gold 5320 CPU @ 2.20GHz	11.66分 G		1天07时37分	保留	NA
 3bu8	2	3bu8_flex_p9	完成	57713739_28	dcc	DCC	已出 1时31分	INTEL(R) XEON(R) PLATINUM 8562Y+	6.70分 C		10时26分	保留	NA
 3bu8	2	3bu8_flex_p12	DCC新增计划，无提交回执		dcc	DCC	DCC计划，无回执		18.36分 G	12827800	未测	保留	NA
-3bua	2	3bua_flex_m4	DCC新增计划，无提交回执		dcc	DCC	DCC计划，无回执		17.51分 G	12827802	未测	保留	NA
+3bua	2	3bua_flex_m4	备用暂停	12865028_0	compsci	compsci	备用暂停		17.51分 G	12827802	未测	保留	(null)
 3bua	2	3bua_flex_m2	DCC原提交，进度待核		dcc	DCC	DCC已提交，进度待核		25.42分 G		≥14天，未完成	保留	NA
 3cal	2	3cal_flex_p3	完成	12812439_9	local	本地	已出 1天11时57分	AMD EPYC 9554 64-Core Processor	10.43分 G		7天10时19分	保留	NA
-3cal	2	3cal_flex_p4	运行	12826674_7	compsci	compsci	在跑 15时52分	AMD EPYC 9554 64-Core Processor	15.77分 G		≥14天，未完成	保留	(null)
+3cal	2	3cal_flex_p4	运行	12826674_7	compsci	compsci	在跑 2天09时44分	AMD EPYC 9554 64-Core Processor	15.77分 G		≥14天，未完成	保留	(null)
 3eb6	3	3eb6_flex_p4	完成	57713739_27	dcc	DCC	已出 2时09分	Intel(R) Xeon(R) Platinum 8462Y+	4.34分 C		10时37分	保留	NA
-3eb6	3	3eb6_flex_p6	运行	12812439_13	compsci	compsci	在跑 1天07时58分	AMD EPYC 9554 64-Core Processor	7.06分 C		6天08时51分	保留	(null)
-3eb6	3	3eb6_flex_p7	条件保留，暂不排队		compsci	compsci	暂不排队		14.32分 G	12827802	未测	条件保留	NA
+3eb6	3	3eb6_flex_p6	完成	12812439_13	local	本地	已出 2天11时17分	AMD EPYC 9554 64-Core Processor	7.06分 C		6天08时51分	保留	NA
+3eb6	3	3eb6_flex_p7	运行	12853419_0	compsci	compsci	在跑 12时14分	AMD EPYC 9554 64-Core Processor	14.32分 G	12827802	未测	保留	(null)
 3gxu	2	3gxu_flex_p9	完成	57713739_9	dcc	DCC	已出 2时34分	INTEL(R) XEON(R) PLATINUM 8562Y+	9.13分 G		17时59分	保留	NA
 3gxu	2	3gxu_flex_p12	DCC新增计划，无提交回执		dcc	DCC	DCC计划，无回执		16.11分 G	12827802	未测	保留	NA
-3k3q	2	3k3q_flex_m1	排队	12832729_2	compsci	compsci	本地排队		18.94分 G	12832109	未测	保留	afterany:12812439_13(unfulfilled)
+3k3q	2	3k3q_flex_m1	完成	12832729_2	compsci	compsci	已出 10时03分	AMD EPYC 9554 64-Core Processor	18.94分 G	12832109	未测	保留	NA
 3k3q	2	3k3q_flex_p0	完成	12812439_6	local	本地	已出 19时50分	AMD EPYC 9554 64-Core Processor	28.39分 G		9天12时31分	保留	NA
-3ma2	2	3ma2_flex_p0	DCC原提交，进度待核		dcc	DCC	DCC已提交，进度待核		23.49分 G		6天06时38分	保留	NA
+3ma2	2	3ma2_flex_p0	备用暂停	12865028_1	compsci	compsci	备用暂停		23.49分 G		6天06时38分	保留	(null)
 3ma2	2	3ma2_flex_p1	DCC原提交，进度待核		dcc	DCC	DCC已提交，进度待核		27.59分 G		≥14天，未完成	保留	NA
 3u7y	2	3u7y_flex_p3	完成	57713739_10	dcc	DCC	已出 2时23分	INTEL(R) XEON(R) PLATINUM 8562Y+	15.23分 C		17时30分	保留	NA
 3u7y	2	3u7y_flex_p6	完成	12812439_12	local	本地	已出 21时38分	AMD EPYC 9554 64-Core Processor	26.86分 G		6天10时49分	保留	NA
@@ -55,36 +55,36 @@ system	planned_tier_count	design	state	job	destination	location_display	MARK_dis
 4kt6	2	4kt6_flex_p0	完成	57713739_35	dcc	DCC	已出 3时44分	Intel(R) Xeon(R) Gold 6252 CPU @ 2.10GHz	16.12分 G		7时28分	保留	NA
 4kt6	2	4kt6_flex_p1	完成	57713739_1	dcc	DCC	已出 8时39分	Intel(R) Xeon(R) Gold 6248R CPU @ 3.00GHz	21.56分 G		23时38分	保留	NA
 4pxf	2	4pxf_flex_p5	完成	12812439_11	local	本地	已出 1天16时09分	AMD EPYC 9554 64-Core Processor	11.22分 C		6天20时56分	保留	NA
-4pxf	2	4pxf_flex_p6	运行	12826674_9	compsci	compsci	在跑 11时39分	AMD EPYC 9554 64-Core Processor	16.11分 G		≥14天，未完成	保留	(null)
-4u3s	2	4u3s_flex_p0	运行	12812439_1	fennario	fennario	在跑 2天03时49分	Intel(R) Xeon(R) Gold 5320 CPU @ 2.20GHz	14.26分 G		12天03时43分	保留	(null)
-4u3s	2	4u3s_flex_p2	排队	12827035_1	fennario	fennario	本地排队		14.56分 G	12827802	未测	保留	afterany:12812439_1(unfulfilled)
+4pxf	2	4pxf_flex_p6	运行	12826674_9	compsci	compsci	在跑 2天05时32分	AMD EPYC 9554 64-Core Processor	16.11分 G		≥14天，未完成	保留	(null)
+4u3s	2	4u3s_flex_p0	运行	12812439_1	fennario	fennario	在跑 3天21时42分	Intel(R) Xeon(R) Gold 5320 CPU @ 2.20GHz	14.26分 G		12天03时43分	保留	(null)
+4u3s	2	4u3s_flex_p2	运行	12827035_1	fennario	fennario	在跑 13时03分	Intel(R) Xeon(R) Gold 5320 CPU @ 2.20GHz	14.56分 G	12827802	未测	保留	(null)
 4wem	4	4wem_flex_p8	完成	57713739_33	dcc	DCC	已出 2时45分	Intel(R) Xeon(R) Gold 6252 CPU @ 2.10GHz	5.45分 C		9时05分	保留	NA
 4wem	4	4wem_flex_p9	完成	57713739_8	dcc	DCC	已出 5时32分	Intel(R) Xeon(R) Gold 6252 CPU @ 2.10GHz	6.35分 C		18时18分	保留	NA
-4wem	4	4wem_flex_p10	运行	12812439_2	fennario	fennario	在跑 2天03时49分	Intel(R) Xeon(R) Gold 5320 CPU @ 2.20GHz	12.10分 G		10天22时50分	保留	(null)
-4wem	4	4wem_flex_p12	条件保留，暂不排队		fennario	fennario	暂不排队		15.18分 G	12827802	未测	条件保留	NA
-4wwi	2	4wwi_flex_p1	DCC原提交，进度待核		dcc	DCC	DCC已提交，进度待核		17.79分 G		3天11时07分	保留	NA
+4wem	4	4wem_flex_p10	完成	12812439_2	local	本地	已出 2天22时13分	Intel(R) Xeon(R) Gold 5320 CPU @ 2.20GHz	12.10分 G		10天22时50分	保留	NA
+4wem	4	4wem_flex_p12	运行	12853420_0	fennario	fennario	在跑 11分	Intel(R) Xeon(R) Gold 5320 CPU @ 2.20GHz	15.18分 G	12827802	未测	保留	(null)
+4wwi	2	4wwi_flex_p1	备用暂停	12865028_2	compsci	compsci	备用暂停		17.79分 G		3天11时07分	保留	(null)
 4wwi	2	4wwi_flex_p2	DCC原提交，进度待核		dcc	DCC	DCC已提交，进度待核		26.67分 G		≥14天，未完成	保留	NA
 4wyq	2	4wyq_flex_p0	完成	57713739_5	dcc	DCC	已出 5时05分	Intel(R) Xeon(R) Gold 6252 CPU @ 2.10GHz	9.61分 G		19时11分	保留	NA
-4wyq	2	4wyq_flex_p3	排队	12827032_2	compsci	compsci	本地排队		27.36分 G		≥14天，未完成	保留	afterany:12827711_0(unfulfilled)
-4wyu	2	4wyu_flex_p0	DCC原提交，进度待核		dcc	DCC	DCC已提交，进度待核		17.58分 G		5天19时44分	保留	NA
+4wyq	2	4wyq_flex_p3	运行	12827032_2	compsci	compsci	在跑 4时29分	AMD EPYC 9554 64-Core Processor	27.36分 G		≥14天，未完成	保留	(null)
+4wyu	2	4wyu_flex_p0	备用暂停	12865028_3	compsci	compsci	备用暂停		17.58分 G		5天19时44分	保留	(null)
 4wyu	2	4wyu_flex_p1	DCC原提交，进度待核		dcc	DCC	DCC已提交，进度待核		22.34分 G		≥14天，未完成	保留	NA
-4z80	2	4z80_flex_p0	排队	12827711_0	compsci	compsci	本地排队		23.54分 G		2天12时43分	保留	afterany:12812439_7(unfulfilled)
-4z80	2	4z80_flex_p1	运行	12812439_7	compsci	compsci	在跑 2天03时49分	AMD EPYC 9554 64-Core Processor	39.31分 G		9天09时41分	保留	(null)
-4znc	2	4znc_flex_p5	排队	12832730_3	compsci	compsci	本地排队		9.92分 G		5时38分	保留	afterany:12812439_41(unfulfilled)
-4znc	2	4znc_flex_p6	排队	12812439_26	compsci	compsci	本地排队		14.32分 G		3天02时10分	保留	afterany:12832730_3(unfulfilled)
-5a6y	2	5a6y_flex_p1	运行	12812439_5	compsci	compsci	在跑 2天03时49分	AMD EPYC 9554 64-Core Processor	18.84分 G		9天15时45分	保留	(null)
-5a6y	2	5a6y_flex_p2	排队	12826674_3	compsci	compsci	本地排队		24.77分 G		≥14天，未完成	保留	afterany:12812439_5(unfulfilled)
+4z80	2	4z80_flex_p0	运行	12827711_0	compsci	compsci	在跑 13时03分	AMD EPYC 9554 64-Core Processor	23.54分 G		2天12时43分	保留	(null)
+4z80	2	4z80_flex_p1	完成	12812439_7	local	本地	已出 3天09时26分	AMD EPYC 9554 64-Core Processor	39.31分 G		9天09时41分	保留	NA
+4znc	2	4znc_flex_p5	完成	12832730_3	compsci	compsci	已出 2时27分	AMD EPYC 9554 64-Core Processor	9.92分 G		5时38分	保留	NA
+4znc	2	4znc_flex_p6	完成	12812439_26	compsci	compsci	已出 11时46分	AMD EPYC 9554 64-Core Processor	14.32分 G		3天02时10分	保留	NA
+5a6y	2	5a6y_flex_p1	完成	12812439_5	local	本地	已出 3天15时31分	AMD EPYC 9554 64-Core Processor	18.84分 G		9天15时45分	保留	NA
+5a6y	2	5a6y_flex_p2	备用暂停	12826674_3	compsci	compsci	备用暂停		24.77分 G		≥14天，未完成	保留	(null)
 5d68	3	5d68_flex_p2	完成	12812439_8	local	本地	已出 1天11时48分	AMD EPYC 9554 64-Core Processor	9.53分 G		8天10时51分	保留	NA
-5d68	3	5d68_flex_p3	运行	12826674_0	compsci	compsci	在跑 16时01分	AMD EPYC 9554 64-Core Processor	12.22分 G	12827802	未测	保留	(null)
-5d68	3	5d68_flex_p4	排队	12832731_4	compsci	compsci	本地排队		15.30分 G	12832109	未测	保留	afterany:12826674_0(unfulfilled)
+5d68	3	5d68_flex_p3	运行	12826674_0	compsci	compsci	在跑 2天09时53分	AMD EPYC 9554 64-Core Processor	12.22分 G	12827802	未测	保留	(null)
+5d68	3	5d68_flex_p4	运行	12832731_4	compsci	compsci	在跑 12时03分	AMD EPYC 9554 64-Core Processor	15.30分 G	12832109	未测	保留	(null)
 5dc0	2	5dc0_flex_p4	完成	57713739_17	dcc	DCC	已出 4时23分	Intel(R) Xeon(R) Platinum 8462Y+	8.42分 G		15时09分	保留	NA
 5dc0	2	5dc0_flex_p10	DCC新增计划，无提交回执		dcc	DCC	DCC计划，无回执		15.74分 G	12827802	未测	保留	NA
 5dc4	3	5dc4_flex_p0	完成	57713739_15	dcc	DCC	已出 1时10分	INTEL(R) XEON(R) PLATINUM 8562Y+	7.40分 G		15时26分	保留	NA
-5dc4	3	5dc4_flex_p4	运行	12812439_3	fennario	fennario	在跑 2天03时49分	Intel(R) Xeon(R) Gold 5320 CPU @ 2.20GHz	15.22分 G		10天18时46分	保留	(null)
-5dc4	3	5dc4_flex_p6	条件保留，暂不排队		fennario	fennario	暂不排队		21.77分 G	12827802	未测	条件保留	NA
+5dc4	3	5dc4_flex_p4	完成	12812439_3	local	本地	已出 2天21时48分	Intel(R) Xeon(R) Gold 5320 CPU @ 2.20GHz	15.22分 G		10天18时46分	保留	NA
+5dc4	3	5dc4_flex_p6	备用暂停	12853421_3	fennario	fennario	备用暂停		21.77分 G	12827802	未测	保留	(null)
 5em2	3	5em2_flex_p4	完成	57713739_31	dcc	DCC	已出 1时31分	INTEL(R) XEON(R) PLATINUM 8562Y+	32.42分 C		9时46分	保留	NA
 5em2	3	5em2_flex_p5	完成	57713739_32	dcc	DCC	已出 3时35分	INTEL(R) XEON(R) PLATINUM 8562Y+	38.65分 C		9时29分	保留	NA
 5em2	3	5em2_flex_p6	完成	57713739_3	dcc	DCC	已出 6时45分	INTEL(R) XEON(R) PLATINUM 8562Y+	48.94分 C		21时18分	保留	NA
 5it3	3	5it3_flex_p7	完成	57713739_14	dcc	DCC	已出 2时17分	INTEL(R) XEON(R) PLATINUM 8562Y+	5.23分 G		16时47分	保留	NA
-5it3	3	5it3_flex_p9	运行	12812439_0	fennario	fennario	在跑 2天03时49分	Intel(R) Xeon(R) Gold 5320 CPU @ 2.20GHz	8.29分 G		13天12时29分	保留	(null)
-5it3	3	5it3_flex_p10	运行	12826673_4	fennario	fennario	在跑 2时46分	Intel(R) Xeon(R) Gold 5320 CPU @ 2.20GHz	8.20分 G		≥14天，未完成	保留	(null)
+5it3	3	5it3_flex_p9	完成	12812439_0	local	本地	已出 3天05时11分	Intel(R) Xeon(R) Gold 5320 CPU @ 2.20GHz	8.29分 G		13天12时29分	保留	NA
+5it3	3	5it3_flex_p10	运行	12826673_4	fennario	fennario	在跑 1天20时39分	Intel(R) Xeon(R) Gold 5320 CPU @ 2.20GHz	8.20分 G		≥14天，未完成	保留	(null)

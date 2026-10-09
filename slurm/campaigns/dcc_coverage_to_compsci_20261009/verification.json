@@ -1,0 +1,72 @@
+{
+  "status": "PASS",
+  "plan_designs": 89,
+  "systems": 38,
+  "jobs": [
+    {
+      "design": "3bua_flex_m4",
+      "job": "12865028_0",
+      "state": "PENDING",
+      "reason": "JobHeldUser"
+    },
+    {
+      "design": "3ma2_flex_p0",
+      "job": "12865028_1",
+      "state": "PENDING",
+      "reason": "JobHeldUser"
+    },
+    {
+      "design": "4wwi_flex_p1",
+      "job": "12865028_2",
+      "state": "PENDING",
+      "reason": "JobHeldUser"
+    },
+    {
+      "design": "4wyu_flex_p0",
+      "job": "12865028_3",
+      "state": "PENDING",
+      "reason": "JobHeldUser"
+    }
+  ],
+  "controller_job": "12865029",
+  "remote_scheduler_accessed": false,
+  "remote_state": "UNKNOWN",
+  "preflights": [
+    {
+      "design": "3bua_flex_m4",
+      "input_preflight": "PASS",
+      "sequence_set_matches_PACK": true,
+      "expected_sequences": 39,
+      "positions": 14,
+      "heap_gib": 64,
+      "historical_completed_under14days": false
+    },
+    {
+      "design": "3ma2_flex_p0",
+      "input_preflight": "PASS",
+      "sequence_set_matches_PACK": true,
+      "expected_sequences": 39,
+      "positions": 15,
+      "heap_gib": 160,
+      "historical_completed_under14days": true
+    },
+    {
+      "design": "4wwi_flex_p1",
+      "input_preflight": "PASS",
+      "sequence_set_matches_PACK": true,
+      "expected_sequences": 20,
+      "positions": 11,
+      "heap_gib": 160,
+      "historical_completed_under14days": true
+    },
+    {
+      "design": "4wyu_flex_p0",
+      "input_preflight": "PASS",
+      "sequence_set_matches_PACK": true,
+      "expected_sequences": 39,
+      "positions": 12,
+      "heap_gib": 160,
+      "historical_completed_under14days": true
+    }
+  ]
+}

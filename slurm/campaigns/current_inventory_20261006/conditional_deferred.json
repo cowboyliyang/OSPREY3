@@ -1,22 +1,41 @@
 {
   "updated": "2026-10-07T12:49:06.602560-04:00",
-  "designs": {
-    "3eb6_flex_p7": {
-      "previous_job": "12827030_0",
-      "state": "条件保留，暂不排队",
-      "audit": "/usr/xtmp/lz280/markstar_plan_supplements_20261007/apply_12832108"
-    },
-    "4wem_flex_p12": {
-      "previous_job": "12827029_0",
-      "state": "条件保留，暂不排队",
-      "audit": "/usr/xtmp/lz280/markstar_plan_supplements_20261007/apply_12832108"
-    },
-    "5dc4_flex_p6": {
-      "previous_job": "12826673_3",
-      "state": "条件保留，暂不排队",
-      "audit": "/usr/xtmp/lz280/markstar_plan_supplements_20261007/apply_12832108"
-    }
-  },
+  "designs": {},
   "automatic_resubmission": false,
-  "preserve_started": true
+  "preserve_started": true,
+  "restored_20261008": [
+    {
+      "design": "3eb6_flex_p7",
+      "job": "12853419_0",
+      "array_job": "12853419",
+      "destination": "compsci",
+      "cpus": 64,
+      "memory_gib": 192,
+      "previous_job": "12827030_0",
+      "prep": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/cpu_continuation_12827027",
+      "output": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/markstar_A12853419/3eb6_flex_p7"
+    },
+    {
+      "design": "4wem_flex_p12",
+      "job": "12853420_0",
+      "array_job": "12853420",
+      "destination": "fennario",
+      "cpus": 64,
+      "memory_gib": 192,
+      "previous_job": "12827029_0",
+      "prep": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/cpu_continuation_12827027",
+      "output": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/markstar_A12853420/4wem_flex_p12"
+    },
+    {
+      "design": "5dc4_flex_p6",
+      "job": "12853421_3",
+      "array_job": "12853421",
+      "destination": "fennario",
+      "cpus": 64,
+      "memory_gib": 192,
+      "previous_job": "12826673_3",
+      "prep": "/usr/xtmp/lz280/frontier_extension7_20261006/markstar_prep_12826665",
+      "output": "/usr/xtmp/lz280/frontier_extension7_20261006/markstar_A12853421/5dc4_flex_p6"
+    }
+  ]
 }

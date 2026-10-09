@@ -1,0 +1,67 @@
+{
+  "date": "2026-10-09",
+  "designs": [
+    "3bua_flex_m4",
+    "3ma2_flex_p0",
+    "4wwi_flex_p1",
+    "4wyu_flex_p0"
+  ],
+  "action": "MOVED_TO_COMPSCI_DO_NOT_LAUNCH",
+  "remote_scheduler_accessed": false,
+  "remote_state": "UNKNOWN",
+  "local_jobs": [
+    {
+      "design": "3bua_flex_m4",
+      "job": "12865028_0",
+      "array_job": "12865028",
+      "destination": "compsci",
+      "cpus": 64,
+      "memory_gib": 192,
+      "time_limit_hours": 336,
+      "previous_destination": "dcc",
+      "remote_state": "UNKNOWN",
+      "prep": "/usr/xtmp/lz280/markstar_dcc_coverage_to_compsci_20261009/prep_12865027",
+      "output": "/usr/xtmp/lz280/markstar_dcc_coverage_to_compsci_20261009/markstar_A12865028/3bua_flex_m4"
+    },
+    {
+      "design": "3ma2_flex_p0",
+      "job": "12865028_1",
+      "array_job": "12865028",
+      "destination": "compsci",
+      "cpus": 64,
+      "memory_gib": 192,
+      "time_limit_hours": 336,
+      "previous_destination": "dcc",
+      "remote_state": "UNKNOWN",
+      "prep": "/usr/xtmp/lz280/markstar_dcc_coverage_to_compsci_20261009/prep_12865027",
+      "output": "/usr/xtmp/lz280/markstar_dcc_coverage_to_compsci_20261009/markstar_A12865028/3ma2_flex_p0"
+    },
+    {
+      "design": "4wwi_flex_p1",
+      "job": "12865028_2",
+      "array_job": "12865028",
+      "destination": "compsci",
+      "cpus": 64,
+      "memory_gib": 192,
+      "time_limit_hours": 336,
+      "previous_destination": "dcc",
+      "remote_state": "UNKNOWN",
+      "prep": "/usr/xtmp/lz280/markstar_dcc_coverage_to_compsci_20261009/prep_12865027",
+      "output": "/usr/xtmp/lz280/markstar_dcc_coverage_to_compsci_20261009/markstar_A12865028/4wwi_flex_p1"
+    },
+    {
+      "design": "4wyu_flex_p0",
+      "job": "12865028_3",
+      "array_job": "12865028",
+      "destination": "compsci",
+      "cpus": 64,
+      "memory_gib": 192,
+      "time_limit_hours": 336,
+      "previous_destination": "dcc",
+      "remote_state": "UNKNOWN",
+      "prep": "/usr/xtmp/lz280/markstar_dcc_coverage_to_compsci_20261009/prep_12865027",
+      "output": "/usr/xtmp/lz280/markstar_dcc_coverage_to_compsci_20261009/markstar_A12865028/4wyu_flex_p0"
+    }
+  ],
+  "note": "No DCC job was queried or cancelled. Reconcile any existing remote copies on DCC using this migration receipt."
+}

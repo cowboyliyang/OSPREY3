@@ -1,6 +1,35 @@
 {
-  "updated_on": "2026-10-07",
-  "scope": "Approved unified plan; all five local additions are submitted. Conditional tiers remain table-only; DCC receipt gaps remain explicit.",
+  "updated_on": "2026-10-09",
+  "scope": "89 retained designs; four DCC coverage designs submitted on compsci; remaining DCC states unverified.",
+  "queue_backlog_policy": {
+    "controller_job": "12865029",
+    "controller_status": "/usr/xtmp/lz280/markstar_free_backfill_20261008/status.json",
+    "poll_seconds": 30,
+    "managed_jobs": [
+      "12832731_4",
+      "12827323_0",
+      "12827032_2",
+      "12826674_3",
+      "12853420_0",
+      "12853421_3",
+      "12865028_0",
+      "12865028_1",
+      "12865028_2",
+      "12865028_3"
+    ],
+    "admission": "One controller releases explicitly enrolled held tasks when the pool has capacity; prior backlog retained before the four migrated coverage tasks.",
+    "requested_on": "2026-10-09",
+    "purpose": "Maintain the approved concurrency by keeping eligible replacement designs queued for each local execution pool while unfinished approved designs remain.",
+    "target_running": {
+      "compsci": 10,
+      "fennario": 5
+    },
+    "cpus_per_task": 64,
+    "exclude_jerry_from_counts": true,
+    "check_dependencies": "Pending jobs blocked on a specific predecessor are not necessarily available to fill another freed slot; check dependency eligibility as well as queue length.",
+    "dcc": "Update the plan only; remote execution and queue state are not locally verified.",
+    "configuration": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/current_inventory_20261006/free_backfill_jobs.json"
+  },
   "columns": [
     "系统（计划档数）",
     "档位",
@@ -22,11 +51,7 @@
     "4u3s_flex_p1",
     "5dc0_flex_p9"
   ],
-  "conditional_designs": [
-    "3eb6_flex_p7",
-    "4wem_flex_p12",
-    "5dc4_flex_p6"
-  ],
+  "conditional_designs": [],
   "plan_additions": [
     {
       "design": "1gwc_flex_p2",
@@ -69,13 +94,16 @@
   "long_run_target_ratio": 672,
   "PACK_cutoff_minutes_for_new_long_runs": 30,
   "already_running_exception": "Keep every already-running task, including 4z80_flex_p1.",
-  "conditional_scheduling": "Table annotation only; never-started submissions cancelled, no automatic resubmission.",
+  "conditional_scheduling": "All three former conditional tiers explicitly restored and submitted on October 8.",
   "concurrency_limits": {
-    "compsci": 9,
+    "compsci": 10,
     "fennario": 5,
     "dcc": 6
   },
   "submitted_additions_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/queued_five_20261007/registry.json",
+  "extra_pack_registries": [
+    "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/packstar_5dc0_p8_20261007/registry.json"
+  ],
   "withdrawal_20261008": {
     "design": "5dc0_flex_p9",
     "date": "2026-10-08",
@@ -83,5 +111,94 @@
     "remote_state": "UNKNOWN",
     "remote_scheduler_accessed": false,
     "note": "Remove from launch lists; cancel this case on DCC if submitted. Preserve PACK results, p4 and p10."
-  }
+  },
+  "restored_20261008": [
+    {
+      "design": "3eb6_flex_p7",
+      "job": "12853419_0",
+      "array_job": "12853419",
+      "destination": "compsci",
+      "cpus": 64,
+      "memory_gib": 192,
+      "previous_job": "12827030_0",
+      "prep": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/cpu_continuation_12827027",
+      "output": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/markstar_A12853419/3eb6_flex_p7"
+    },
+    {
+      "design": "4wem_flex_p12",
+      "job": "12853420_0",
+      "array_job": "12853420",
+      "destination": "fennario",
+      "cpus": 64,
+      "memory_gib": 192,
+      "previous_job": "12827029_0",
+      "prep": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/cpu_continuation_12827027",
+      "output": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/markstar_A12853420/4wem_flex_p12"
+    },
+    {
+      "design": "5dc4_flex_p6",
+      "job": "12853421_3",
+      "array_job": "12853421",
+      "destination": "fennario",
+      "cpus": 64,
+      "memory_gib": 192,
+      "previous_job": "12826673_3",
+      "prep": "/usr/xtmp/lz280/frontier_extension7_20261006/markstar_prep_12826665",
+      "output": "/usr/xtmp/lz280/frontier_extension7_20261006/markstar_A12853421/5dc4_flex_p6"
+    }
+  ],
+  "dcc_coverage_migration_20261009": [
+    {
+      "design": "3bua_flex_m4",
+      "job": "12865028_0",
+      "array_job": "12865028",
+      "destination": "compsci",
+      "cpus": 64,
+      "memory_gib": 192,
+      "time_limit_hours": 336,
+      "previous_destination": "dcc",
+      "remote_state": "UNKNOWN",
+      "prep": "/usr/xtmp/lz280/markstar_dcc_coverage_to_compsci_20261009/prep_12865027",
+      "output": "/usr/xtmp/lz280/markstar_dcc_coverage_to_compsci_20261009/markstar_A12865028/3bua_flex_m4"
+    },
+    {
+      "design": "3ma2_flex_p0",
+      "job": "12865028_1",
+      "array_job": "12865028",
+      "destination": "compsci",
+      "cpus": 64,
+      "memory_gib": 192,
+      "time_limit_hours": 336,
+      "previous_destination": "dcc",
+      "remote_state": "UNKNOWN",
+      "prep": "/usr/xtmp/lz280/markstar_dcc_coverage_to_compsci_20261009/prep_12865027",
+      "output": "/usr/xtmp/lz280/markstar_dcc_coverage_to_compsci_20261009/markstar_A12865028/3ma2_flex_p0"
+    },
+    {
+      "design": "4wwi_flex_p1",
+      "job": "12865028_2",
+      "array_job": "12865028",
+      "destination": "compsci",
+      "cpus": 64,
+      "memory_gib": 192,
+      "time_limit_hours": 336,
+      "previous_destination": "dcc",
+      "remote_state": "UNKNOWN",
+      "prep": "/usr/xtmp/lz280/markstar_dcc_coverage_to_compsci_20261009/prep_12865027",
+      "output": "/usr/xtmp/lz280/markstar_dcc_coverage_to_compsci_20261009/markstar_A12865028/4wwi_flex_p1"
+    },
+    {
+      "design": "4wyu_flex_p0",
+      "job": "12865028_3",
+      "array_job": "12865028",
+      "destination": "compsci",
+      "cpus": 64,
+      "memory_gib": 192,
+      "time_limit_hours": 336,
+      "previous_destination": "dcc",
+      "remote_state": "UNKNOWN",
+      "prep": "/usr/xtmp/lz280/markstar_dcc_coverage_to_compsci_20261009/prep_12865027",
+      "output": "/usr/xtmp/lz280/markstar_dcc_coverage_to_compsci_20261009/markstar_A12865028/4wyu_flex_p0"
+    }
+  ]
 }

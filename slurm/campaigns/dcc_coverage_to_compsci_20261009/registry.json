@@ -1,0 +1,110 @@
+{
+  "status": "SUBMITTED",
+  "management_job": "12865027",
+  "prep": "/usr/xtmp/lz280/markstar_dcc_coverage_to_compsci_20261009/prep_12865027",
+  "package": "/usr/xtmp/lz280/markstar_dcc_coverage_to_compsci_20261009/prep_12865027/package",
+  "verification": [
+    {
+      "design": "3bua_flex_m4",
+      "input_preflight": "PASS",
+      "sequence_set_matches_PACK": true,
+      "expected_sequences": 39,
+      "positions": 14,
+      "heap_gib": 64,
+      "historical_completed_under14days": false
+    },
+    {
+      "design": "3ma2_flex_p0",
+      "input_preflight": "PASS",
+      "sequence_set_matches_PACK": true,
+      "expected_sequences": 39,
+      "positions": 15,
+      "heap_gib": 160,
+      "historical_completed_under14days": true
+    },
+    {
+      "design": "4wwi_flex_p1",
+      "input_preflight": "PASS",
+      "sequence_set_matches_PACK": true,
+      "expected_sequences": 20,
+      "positions": 11,
+      "heap_gib": 160,
+      "historical_completed_under14days": true
+    },
+    {
+      "design": "4wyu_flex_p0",
+      "input_preflight": "PASS",
+      "sequence_set_matches_PACK": true,
+      "expected_sequences": 39,
+      "positions": 12,
+      "heap_gib": 160,
+      "historical_completed_under14days": true
+    }
+  ],
+  "jobs": [
+    {
+      "design": "3bua_flex_m4",
+      "job": "12865028_0",
+      "array_job": "12865028",
+      "destination": "compsci",
+      "cpus": 64,
+      "memory_gib": 192,
+      "time_limit_hours": 336,
+      "previous_destination": "dcc",
+      "remote_state": "UNKNOWN",
+      "prep": "/usr/xtmp/lz280/markstar_dcc_coverage_to_compsci_20261009/prep_12865027",
+      "output": "/usr/xtmp/lz280/markstar_dcc_coverage_to_compsci_20261009/markstar_A12865028/3bua_flex_m4"
+    },
+    {
+      "design": "3ma2_flex_p0",
+      "job": "12865028_1",
+      "array_job": "12865028",
+      "destination": "compsci",
+      "cpus": 64,
+      "memory_gib": 192,
+      "time_limit_hours": 336,
+      "previous_destination": "dcc",
+      "remote_state": "UNKNOWN",
+      "prep": "/usr/xtmp/lz280/markstar_dcc_coverage_to_compsci_20261009/prep_12865027",
+      "output": "/usr/xtmp/lz280/markstar_dcc_coverage_to_compsci_20261009/markstar_A12865028/3ma2_flex_p0"
+    },
+    {
+      "design": "4wwi_flex_p1",
+      "job": "12865028_2",
+      "array_job": "12865028",
+      "destination": "compsci",
+      "cpus": 64,
+      "memory_gib": 192,
+      "time_limit_hours": 336,
+      "previous_destination": "dcc",
+      "remote_state": "UNKNOWN",
+      "prep": "/usr/xtmp/lz280/markstar_dcc_coverage_to_compsci_20261009/prep_12865027",
+      "output": "/usr/xtmp/lz280/markstar_dcc_coverage_to_compsci_20261009/markstar_A12865028/4wwi_flex_p1"
+    },
+    {
+      "design": "4wyu_flex_p0",
+      "job": "12865028_3",
+      "array_job": "12865028",
+      "destination": "compsci",
+      "cpus": 64,
+      "memory_gib": 192,
+      "time_limit_hours": 336,
+      "previous_destination": "dcc",
+      "remote_state": "UNKNOWN",
+      "prep": "/usr/xtmp/lz280/markstar_dcc_coverage_to_compsci_20261009/prep_12865027",
+      "output": "/usr/xtmp/lz280/markstar_dcc_coverage_to_compsci_20261009/markstar_A12865028/4wyu_flex_p0"
+    }
+  ],
+  "remote_scheduler_accessed": false,
+  "remote_state": "UNKNOWN",
+  "cpu_model": "AMD EPYC 9554",
+  "hardware_note": "Separate compsci cohort; do not assume DCC CPU matches.",
+  "replaced_controller": "12854859",
+  "controller_job": "12865029",
+  "applied": "2026-10-09T10:03:02.900396-04:00",
+  "dcc_launch_lists_updated": true,
+  "admission_limits": {
+    "compsci": 10,
+    "grisman": 5
+  }
+}

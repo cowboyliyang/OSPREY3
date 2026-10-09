@@ -1,0 +1,46 @@
+{
+  "prep_job": "12832746",
+  "prep_root": "/usr/xtmp/lz280/packstar_5dc0_p8_20261007/prep_12832746",
+  "package": "/usr/xtmp/lz280/packstar_5dc0_p8_20261007/prep_12832746/package",
+  "designs": 1,
+  "design": "5dc0_flex_p8",
+  "verification": [
+    {
+      "design_id": "5dc0_flex_p8",
+      "positions": 14,
+      "sequences": 39,
+      "anchor_sequences_identical": true,
+      "mark_preflight": "PASS",
+      "pack_preflight": "PASS"
+    }
+  ],
+  "packstar_status": "INCOMPLETE_ESTIMATES",
+  "markstar_status": "NOT_REQUESTED",
+  "pack_job": "12832747",
+  "pack_output": "/usr/xtmp/lz280/packstar_5dc0_p8_20261007/pack_12832747",
+  "submission_job": "12832746",
+  "benchmark_mark_jobs_submitted": [],
+  "gpu_model": "RTX PRO 6000",
+  "gpus": 4,
+  "cpus": 128,
+  "memory_gib": 1000,
+  "case_limit_seconds": 3600,
+  "collector_job": "12832748",
+  "scheduler_state_after_submission": "PENDING",
+  "result": {
+    "index": "0",
+    "design": "5dc0_flex_p8",
+    "start": "1791425090.0236616",
+    "end": "1791425875.0332453",
+    "budget_seconds": "3600",
+    "runner_exit_code": "5",
+    "status": "INCOMPLETE_ESTIMATES",
+    "result_rows": "39",
+    "expected_rows": "39",
+    "estimated_rows": "37",
+    "output": "/usr/xtmp/lz280/packstar_5dc0_p8_20261007/pack_12832747/results/5dc0_flex_p8_full_pair-only_s42_J12832747_T0"
+  },
+  "pack_seconds": 779.56,
+  "scheduler_accounting": "JobIDRaw|State|ExitCode|Elapsed\n12832747|COMPLETED|0:0|00:13:07\n",
+  "collection_job": "12832748"
+}

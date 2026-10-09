@@ -5,7 +5,7 @@
   "latest_start_for_full_14_days": "2026-10-16",
   "coverage": "At least one completed current-round 64-CPU MARK* design per system, elapsed strictly under 336 hours; approaching 14 days is a preference, not a reason to sacrifice coverage.",
   "slots": {
-    "compsci": 9,
+    "compsci": 10,
     "fennario": 5,
     "dcc": 6
   },
@@ -14,13 +14,13 @@
     "2hnu_flex_p5": "compsci",
     "2p4a_flex_p9": "dcc",
     "2xgy_flex_m1": "dcc",
-    "3ma2_flex_p0": "dcc",
-    "4wwi_flex_p1": "dcc",
-    "4wyu_flex_p0": "dcc",
+    "3ma2_flex_p0": "compsci",
+    "4wwi_flex_p1": "compsci",
+    "4wyu_flex_p0": "compsci",
     "4znc_flex_p6": "compsci"
   },
   "coverage_new": {
-    "3bua_flex_m4": "dcc"
+    "3bua_flex_m4": "compsci"
   },
   "coverage_unconfirmed": {},
   "primary_targets": {
@@ -59,13 +59,14 @@
   "dcc_counts": {
     "DEFER_UNSTARTED": 57,
     "KEEP_COMPLETED": 30,
-    "KEEP_COVERAGE": 5,
+    "KEEP_COVERAGE": 2,
     "PROPOSE_NEW_PRIMARY": 3,
     "KEEP_REPORTED_RUNNING": 3,
     "KEEP_PRIMARY": 1,
     "KEEP_CONTINUATION_RESERVE": 4,
-    "PROPOSE_NEW_COVERAGE": 1,
-    "APPEND_EXPLORATORY_ADDITION": 5
+    "MOVED_TO_COMPSCI_DO_NOT_LAUNCH": 4,
+    "DEFER_USER_REMOVED": 4,
+    "APPEND_EXPLORATORY_ADDITION": 2
   },
   "local_adjustment": {
     "timestamp": "2026-10-06T19:46:27.506600+00:00",
@@ -409,23 +410,7 @@
     "audit": "/usr/xtmp/lz280/markstar_remove_six_12832018",
     "management_job": "12832018"
   },
-  "conditional_plan_only": {
-    "3eb6_flex_p7": {
-      "previous_job": "12827030_0",
-      "state": "条件保留，暂不排队",
-      "audit": "/usr/xtmp/lz280/markstar_plan_supplements_20261007/apply_12832108"
-    },
-    "4wem_flex_p12": {
-      "previous_job": "12827029_0",
-      "state": "条件保留，暂不排队",
-      "audit": "/usr/xtmp/lz280/markstar_plan_supplements_20261007/apply_12832108"
-    },
-    "5dc4_flex_p6": {
-      "previous_job": "12826673_3",
-      "state": "条件保留，暂不排队",
-      "audit": "/usr/xtmp/lz280/markstar_plan_supplements_20261007/apply_12832108"
-    }
-  },
+  "conditional_plan_only": [],
   "supplemental_targets": {},
   "queue_alignment_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/queue_alignment_20261007/registry.json",
   "local_concurrency_registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/local_concurrency14_20261007/registry.json",
@@ -437,5 +422,52 @@
     "remote_state": "UNKNOWN",
     "remote_scheduler_accessed": false,
     "note": "Remove from launch lists; cancel this case on DCC if submitted. Preserve PACK results, p4 and p10."
+  },
+  "restored_20261008": [
+    {
+      "design": "3eb6_flex_p7",
+      "job": "12853419_0",
+      "array_job": "12853419",
+      "destination": "compsci",
+      "cpus": 64,
+      "memory_gib": 192,
+      "previous_job": "12827030_0",
+      "prep": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/cpu_continuation_12827027",
+      "output": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/markstar_A12853419/3eb6_flex_p7"
+    },
+    {
+      "design": "4wem_flex_p12",
+      "job": "12853420_0",
+      "array_job": "12853420",
+      "destination": "fennario",
+      "cpus": 64,
+      "memory_gib": 192,
+      "previous_job": "12827029_0",
+      "prep": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/cpu_continuation_12827027",
+      "output": "/usr/xtmp/lz280/markstar_deadline_focus_20261006/markstar_A12853420/4wem_flex_p12"
+    },
+    {
+      "design": "5dc4_flex_p6",
+      "job": "12853421_3",
+      "array_job": "12853421",
+      "destination": "fennario",
+      "cpus": 64,
+      "memory_gib": 192,
+      "previous_job": "12826673_3",
+      "prep": "/usr/xtmp/lz280/frontier_extension7_20261006/markstar_prep_12826665",
+      "output": "/usr/xtmp/lz280/frontier_extension7_20261006/markstar_A12853421/5dc4_flex_p6"
+    }
+  ],
+  "dcc_coverage_migration_20261009": {
+    "registry": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/dcc_coverage_to_compsci_20261009/registry.json",
+    "designs": [
+      "3bua_flex_m4",
+      "3ma2_flex_p0",
+      "4wwi_flex_p1",
+      "4wyu_flex_p0"
+    ],
+    "remote_state": "UNKNOWN",
+    "remote_scheduler_accessed": false,
+    "remove_from_DCC_launch_lists": true
   }
 }

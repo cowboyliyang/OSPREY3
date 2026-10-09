@@ -27,7 +27,12 @@ limits=preferences.get('concurrency_limits')
 if limits:
     text+=f'本地并发上限：compsci {limits["compsci"]} + fennario {limits["fennario"]} = {limits["compsci"]+limits["fennario"]}，每任务 64 CPU、192 GiB 内存；实际运行数以本表快照为准。DCC 计划上限仍为 {limits["dcc"]}，远端状态未核实。详见[并发调整记录](../local_concurrency14_20261007/registry.json)。\n\n'
 text+=f'PACK* 补测任务 `{supplement["pack_job"]}` 包含 `5dc0_p9`、`5d68_p4`、`3k3q_m1`，使用四张 PRO 6000 GPU。\n\n'
+for registry_path in preferences.get('extra_pack_registries', []):
+    extra=json.loads(Path(registry_path).read_text())
+    text+=f'追加 PACK* 补测：`{extra["design"].replace("_flex_","_")}`，任务 `{extra["pack_job"]}`，四张 PRO 6000；状态与耗时见下方记录。\n\n'
 text+='[逐档任务号与依赖](current_plan.tsv) · [本地队列调整记录](../queue_alignment_20261007/registry.json) · [DCC 提交清单](../deadline_focus_20261006/dcc_launch_priority.tsv)\n\n'
+if preferences.get('dcc_coverage_migration_20261009'):
+    text+='10月9日将四个覆盖补测档（3bua_m4、3ma2_p0、4wwi_p1、4wyu_p0）从 DCC 计划迁到 compsci，接入 10 并发补位队列。DCC 实际状态未查询，也未执行远端取消；这四档已移出 DCC 启动清单。3bua_m4 无历史 MARK* 实测，其余三档历史完成耗时均小于14天。详见[迁移任务回执](../dcc_coverage_to_compsci_20261009/registry.json)。\n\n'
 text+=(report/'unified_table.txt').read_text()
 text+='\n## 5dc0 PACK* 记录\n\n'+(report/'5dc0_table.txt').read_text()
 (here/'CURRENT_PLAN.md').write_text(text)
