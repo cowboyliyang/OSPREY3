@@ -1,12 +1,12 @@
 {
   "snapshot": "2026-10-07T16:10:32.613969-04:00",
   "systems": 38,
-  "designs_in_current_inventory": 90,
+  "designs_in_current_inventory": 89,
   "states": {
     "完成": 45,
     "运行": 14,
     "排队": 13,
-    "DCC新增计划，无提交回执": 7,
+    "DCC新增计划，无提交回执": 6,
     "DCC原提交，进度待核": 8,
     "条件保留，暂不排队": 3
   },
@@ -52,5 +52,13 @@
     "4u3s_flex_p1",
     "4znc_flex_p14"
   ],
-  "exclusions_manifest": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/current_inventory_20261006/excluded_designs.json"
+  "exclusions_manifest": "/home/users/lz280/OSPREY3-fresh-packstar/slurm/campaigns/current_inventory_20261006/excluded_designs.json",
+  "withdrawal_20261008": {
+    "design": "5dc0_flex_p9",
+    "date": "2026-10-08",
+    "action": "WITHDRAW_AND_REQUEST_REMOTE_CANCELLATION",
+    "remote_state": "UNKNOWN",
+    "remote_scheduler_accessed": false,
+    "note": "Remove from launch lists; cancel this case on DCC if submitted. Preserve PACK results, p4 and p10."
+  }
 }

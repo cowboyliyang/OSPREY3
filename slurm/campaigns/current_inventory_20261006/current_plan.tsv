@@ -77,9 +77,8 @@ system	planned_tier_count	design	state	job	destination	location_display	MARK_dis
 5d68	3	5d68_flex_p2	完成	12812439_8	local	本地	已出 1天11时48分	AMD EPYC 9554 64-Core Processor	9.53分 G		8天10时51分	保留	NA
 5d68	3	5d68_flex_p3	运行	12826674_0	compsci	compsci	在跑 16时01分	AMD EPYC 9554 64-Core Processor	12.22分 G	12827802	未测	保留	(null)
 5d68	3	5d68_flex_p4	排队	12832731_4	compsci	compsci	本地排队		15.30分 G	12832109	未测	保留	afterany:12826674_0(unfulfilled)
-5dc0	3	5dc0_flex_p4	完成	57713739_17	dcc	DCC	已出 4时23分	Intel(R) Xeon(R) Platinum 8462Y+	8.42分 G		15时09分	保留	NA
-5dc0	3	5dc0_flex_p9	DCC新增计划，无提交回执		dcc	DCC	DCC计划，无回执		15.33分 G	12832109	未测	保留	NA
-5dc0	3	5dc0_flex_p10	DCC新增计划，无提交回执		dcc	DCC	DCC计划，无回执		15.74分 G	12827802	未测	保留	NA
+5dc0	2	5dc0_flex_p4	完成	57713739_17	dcc	DCC	已出 4时23分	Intel(R) Xeon(R) Platinum 8462Y+	8.42分 G		15时09分	保留	NA
+5dc0	2	5dc0_flex_p10	DCC新增计划，无提交回执		dcc	DCC	DCC计划，无回执		15.74分 G	12827802	未测	保留	NA
 5dc4	3	5dc4_flex_p0	完成	57713739_15	dcc	DCC	已出 1时10分	INTEL(R) XEON(R) PLATINUM 8562Y+	7.40分 G		15时26分	保留	NA
 5dc4	3	5dc4_flex_p4	运行	12812439_3	fennario	fennario	在跑 2天03时49分	Intel(R) Xeon(R) Gold 5320 CPU @ 2.20GHz	15.22分 G		10天18时46分	保留	(null)
 5dc4	3	5dc4_flex_p6	条件保留，暂不排队		fennario	fennario	暂不排队		21.77分 G	12827802	未测	条件保留	NA

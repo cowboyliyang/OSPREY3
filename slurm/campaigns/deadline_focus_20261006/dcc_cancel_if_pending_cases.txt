@@ -58,3 +58,4 @@
 1gwc_flex_p4
 2xxm_flex_p7
 4kt6_flex_p4
+5dc0_flex_p9

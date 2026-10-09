@@ -60,10 +60,18 @@
   ],
   "dcc_addition": {
     "design": "5dc0_flex_p9",
-    "status": "HANDOFF_READY_NO_REMOTE_RECEIPT",
+    "status": "WITHDRAWN_HANDOFF_REMOTE_STATE_UNVERIFIED",
     "requested_cpus": 64,
     "limit_hours": 336,
     "combined_concurrency": 6,
     "cpu_model": "Intel Xeon Platinum 8462Y+"
+  },
+  "withdrawal_20261008": {
+    "design": "5dc0_flex_p9",
+    "date": "2026-10-08",
+    "action": "WITHDRAW_AND_REQUEST_REMOTE_CANCELLATION",
+    "remote_state": "UNKNOWN",
+    "remote_scheduler_accessed": false,
+    "note": "Remove from launch lists; cancel this case on DCC if submitted. Preserve PACK results, p4 and p10."
   }
 }

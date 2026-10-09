@@ -1,0 +1,8 @@
+{
+  "design": "5dc0_flex_p9",
+  "date": "2026-10-08",
+  "action": "WITHDRAW_AND_REQUEST_REMOTE_CANCELLATION",
+  "remote_state": "UNKNOWN",
+  "remote_scheduler_accessed": false,
+  "note": "Remove from launch lists; cancel this case on DCC if submitted. Preserve PACK results, p4 and p10."
+}

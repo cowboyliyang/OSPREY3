@@ -263,3 +263,5 @@ Old array manifests remain intact and must not be submitted as active lists.
 Full scheduler snapshots and generated artifacts remain under
 `/usr/xtmp/lz280/markstar_deadline_focus_20261006`; repository files contain
 only source, definitions, small registries and documentation.
+
+October 8 update (supersedes earlier p9 additions): `5dc0_flex_p9` is withdrawn from the MARK* plan and launch lists. Cancel it on DCC if already submitted, whether pending or running; no remote scheduler action or verification was performed here. Keep p4, p10 and all completed PACK* measurements. The new-definition handoff now has six entries. See `dcc_cancellation_requests_20261008.json`.

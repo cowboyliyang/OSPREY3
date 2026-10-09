@@ -10,7 +10,8 @@
     "3k3q_flex_p3",
     "4kt6_flex_p4",
     "4u3s_flex_p1",
-    "4znc_flex_p14"
+    "4znc_flex_p14",
+    "5dc0_flex_p9"
   ],
   "local_cancelled_jobs": {
     "3k3q_flex_p3": "12827325_2",
@@ -23,10 +24,19 @@
   "dcc_withdrawn_definitions": [
     "1gwc_flex_p4",
     "2xxm_flex_p7",
-    "4kt6_flex_p4"
+    "4kt6_flex_p4",
+    "5dc0_flex_p9"
   ],
   "dcc_remote_state": "UNVERIFIED_NO_REMOTE_CANCELLATION_CLAIMED",
   "audit": "/usr/xtmp/lz280/markstar_remove_six_12832018",
   "management_job": "12832018",
-  "queue_alignment_audit": "/usr/xtmp/lz280/markstar_queue_alignment_20261007/12832118"
+  "queue_alignment_audit": "/usr/xtmp/lz280/markstar_queue_alignment_20261007/12832118",
+  "withdrawal_20261008": {
+    "design": "5dc0_flex_p9",
+    "date": "2026-10-08",
+    "action": "WITHDRAW_AND_REQUEST_REMOTE_CANCELLATION",
+    "remote_state": "UNKNOWN",
+    "remote_scheduler_accessed": false,
+    "note": "Remove from launch lists; cancel this case on DCC if submitted. Preserve PACK results, p4 and p10."
+  }
 }

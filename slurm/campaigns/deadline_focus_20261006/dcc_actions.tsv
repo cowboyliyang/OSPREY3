@@ -108,4 +108,4 @@ design_id	action	reported_status	requested_cpus	limit_hours	combined_concurrency
 2xxm_flex_p7	DEFER_USER_REMOVED	WITHDRAWN_HANDOFF_REMOTE_STATE_UNVERIFIED	64	336	6	NONE	Verify and use the actual CPU model of the current-round same-system anchor; do not infer from partition
 3bu8_flex_p12	APPEND_EXPLORATORY_ADDITION	HANDOFF_NOT_SUBMITTED_REMOTELY	64	336	6	NONE	Verify and use the actual CPU model of the current-round same-system anchor; do not infer from partition
 4kt6_flex_p4	DEFER_USER_REMOVED	WITHDRAWN_HANDOFF_REMOTE_STATE_UNVERIFIED	64	336	6	NONE	Verify and use the actual CPU model of the current-round same-system anchor; do not infer from partition
-5dc0_flex_p9	KEEP_USER_ADDITION	NOT_SUBMITTED_REMOTELY	64	336	6	NONE	Match 5dc0_p4: Intel Xeon Platinum 8462Y+; verify actual model before launch
+5dc0_flex_p9	DEFER_USER_REMOVED	WITHDRAWN_HANDOFF_REMOTE_STATE_UNVERIFIED	64	336	6	NONE	Match 5dc0_p4: Intel Xeon Platinum 8462Y+; verify actual model before launch

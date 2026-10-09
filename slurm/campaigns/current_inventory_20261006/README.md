@@ -93,3 +93,5 @@ are italicized.
 
 Export the latest small versioned snapshot by running `export_plan.py`
 through Slurm after a successful render. Runtime artifacts remain in scratch.
+
+October 8 update (supersedes earlier p9 additions): `5dc0_flex_p9` is withdrawn from the MARK* plan and launch lists. Cancel it on DCC if already submitted, whether pending or running; no remote scheduler action or verification was performed here. Keep p4, p10 and all completed PACK* measurements. The new-definition handoff now has six entries. See `../deadline_focus_20261006/dcc_cancellation_requests_20261008.json`.
